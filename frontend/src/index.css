@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Outfit", sans-serif;
+}
+
+@layer base {
+  body {
+    @apply antialiased;
+  }
+}
+
+.prose h1 {
+  @apply text-3xl font-bold mb-6 text-emerald-900;
+}
+
+.prose h2 {
+  @apply text-2xl font-bold mt-8 mb-4 text-emerald-800;
+}
+
+.prose h3 {
+  @apply text-xl font-bold mt-6 mb-3 text-emerald-700;
+}
+
+.prose p {
+  @apply mb-4 leading-relaxed text-gray-700;
+}
+
+.prose ul {
+  @apply list-disc list-inside mb-4 space-y-2 text-gray-700;
+}
+
+.prose strong {
+  @apply font-bold text-emerald-900;
+}
