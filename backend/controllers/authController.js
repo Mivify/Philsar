@@ -236,7 +236,14 @@ const forgotPassword = async (req, res) => {
             await user.save();
 
             const link = `${process.env.BACKEND_URL}/reset-password?token=${rawToken}`;
-            await sendPasswordResetEmail(user.email, link);
+            // Caught separately from the outer try/catch — a delivery failure must
+            // still fall through to the identical generic response below, or the
+            // response itself would leak whether the email is registered.
+            try {
+                await sendPasswordResetEmail(user.email, link);
+            } catch (emailError) {
+                console.error('Failed to send password reset email:', emailError);
+            }
         }
 
         res.status(200).json({ message: 'If an account exists for that email, a reset link has been sent.' });
