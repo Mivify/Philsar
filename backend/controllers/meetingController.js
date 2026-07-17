@@ -52,7 +52,13 @@ const createMeeting = async (req, res) => {
             return res.status(400).json({ message: 'Missing required meeting details' });
         }
 
-        const meeting = await Meeting.create({ title, host, dateTime, status, videoLink });
+        const meeting = await Meeting.create({
+            title,
+            host,
+            dateTime,
+            status,
+            videoLink: videoLink && videoLink.trim() ? videoLink.trim() : undefined
+        });
         res.status(201).json({ message: 'Meeting created successfully', meeting });
     } catch (error) {
         res.status(500).json({ message: 'Error creating meeting', error: error.message });
