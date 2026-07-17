@@ -235,7 +235,10 @@ const forgotPassword = async (req, res) => {
             user.resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000);
             await user.save();
 
-            const link = `${process.env.BACKEND_URL}/reset-password?token=${rawToken}`;
+            // Falls back to the actual request host if BACKEND_URL isn't configured,
+            // so a missing env var can't produce a broken "undefined/..." link.
+            const baseUrl = process.env.BACKEND_URL || `https://${req.get('host')}`;
+            const link = `${baseUrl}/reset-password?token=${rawToken}`;
             // Caught separately from the outer try/catch — a delivery failure must
             // still fall through to the identical generic response below, or the
             // response itself would leak whether the email is registered.
