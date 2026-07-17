@@ -12,12 +12,15 @@ const moduleRoutes = require('./routes/moduleRoutes');
 const assessmentRoutes = require('./routes/assessmentRoutes');
 const meetingRoutes = require('./routes/meetingRoutes');
 const settingRoutes = require('./routes/settingRoutes');
+const progressRoutes = require('./routes/progressRoutes');
+const cattleRoutes = require('./routes/cattleRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Middleware
-app.use(cors());
+// Falls back to allow-all in local dev; set FRONTEND_URL in production to lock this down.
+app.use(cors(process.env.FRONTEND_URL ? { origin: process.env.FRONTEND_URL } : {}));
 // Configure higher limit to support Base64 cover uploads
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
@@ -32,6 +35,8 @@ app.use('/api/modules', moduleRoutes);
 app.use('/api/assessments', assessmentRoutes);
 app.use('/api/meetings', meetingRoutes);
 app.use('/api/settings', settingRoutes);
+app.use('/api/progress', progressRoutes);
+app.use('/api/cattle', cattleRoutes);
 
 app.get('/', (req, res) => {
     res.send('PHILSAR API is running.');

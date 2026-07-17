@@ -27,6 +27,7 @@ const register = async (req, res) => {
                 role: user.role,
                 organization: user.organization,
                 status: user.status,
+                profilePicture: user.profilePicture,
                 modulesCompleted: user.modulesCompleted,
                 seminarsAttended: user.seminarsAttended,
                 dssAssessmentsRun: user.dssAssessmentsRun
@@ -60,6 +61,7 @@ const login = async (req, res) => {
                 role: user.role,
                 organization: user.organization,
                 status: user.status,
+                profilePicture: user.profilePicture,
                 modulesCompleted: user.modulesCompleted,
                 seminarsAttended: user.seminarsAttended,
                 dssAssessmentsRun: user.dssAssessmentsRun
@@ -73,7 +75,7 @@ const login = async (req, res) => {
 const updateProfile = async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, email, role, organization, password, currentPassword, modulesCompleted } = req.body;
+        const { name, email, role, organization, status, profilePicture, password, currentPassword, modulesCompleted } = req.body;
 
         const user = await User.findByPk(id);
         if (!user) {
@@ -92,6 +94,8 @@ const updateProfile = async (req, res) => {
         if (email) user.email = email;
         if (role) user.role = role;
         if (organization !== undefined) user.organization = organization;
+        if (status) user.status = status;
+        if (profilePicture !== undefined) user.profilePicture = profilePicture;
         if (modulesCompleted !== undefined) user.modulesCompleted = parseInt(modulesCompleted);
 
         await user.save();
@@ -105,6 +109,7 @@ const updateProfile = async (req, res) => {
                 role: user.role,
                 organization: user.organization,
                 status: user.status,
+                profilePicture: user.profilePicture,
                 modulesCompleted: user.modulesCompleted,
                 seminarsAttended: user.seminarsAttended,
                 dssAssessmentsRun: user.dssAssessmentsRun

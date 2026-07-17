@@ -21,10 +21,14 @@ import {
   Trash,
   Plus,
   Check,
-  Upload
+  Upload,
+  Award,
+  Pencil
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import axios from 'axios';
+import { jsPDF } from 'jspdf';
+import philsarLogo from './assets/logo-transparent.png';
 
 // Interfaces mapping database entities
 interface User {
@@ -34,6 +38,7 @@ interface User {
   role: 'Livestock Manager' | 'Farmer' | 'Veterinarian' | 'Extension Worker' | 'Admin';
   organization: string;
   status: 'Active' | 'Inactive';
+  profilePicture?: string;
   modulesCompleted: number;
   seminarsAttended: number;
   dssAssessmentsRun: number;
@@ -57,6 +62,15 @@ interface Meeting {
   videoLink: string;
 }
 
+interface CattleRecord {
+  id: number;
+  tagId: string;
+  breed: string | null;
+  notes: string | null;
+  isReady: boolean | null;
+  lastAssessedAt: string | null;
+}
+
 interface Assessment {
   id: number;
   cattleId: string;
@@ -77,6 +91,12 @@ interface SystemSettings {
   aiProvider: string;
   videoProvider: string;
   dssVersion: string;
+  certTitleText: string;
+  certBodyText: string;
+  certClosingText: string;
+  certPrimaryColor: string;
+  certAccentColor: string;
+  certBackgroundImage: string;
 }
 
 function isValidImageUrl(url?: string): boolean {
@@ -84,6 +104,15 @@ function isValidImageUrl(url?: string): boolean {
   const trimmed = url.trim();
   if (!trimmed || /[\s{}();]/.test(trimmed)) return false;
   return /^(https?:\/\/|\/uploads\/|data:image\/)/.test(trimmed);
+}
+
+// jsPDF's color setters take separate r/g/b numbers, not CSS hex strings
+function hexToRgb(hex: string): [number, number, number] {
+  const clean = hex.replace('#', '');
+  const bigint = parseInt(clean.length === 3
+    ? clean.split('').map(c => c + c).join('')
+    : clean, 16);
+  return [(bigint >> 16) & 255, (bigint >> 8) & 255, bigint & 255];
 }
 
 function parseLessons(content: string): { title: string; content: string }[] {
@@ -152,13 +181,31 @@ export default function App() {
   const [selectedModule, setSelectedModule] = useState<LearningModule | null>(null);
   const [editingModule, setEditingModule] = useState<LearningModule | null>(null);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [myAttendance, setMyAttendance] = useState<Record<number, { secondsAttended: number; eligible: boolean }>>({});
+  const attendanceIntervalRef = useRef<number | null>(null);
+  const logoImgRef = useRef<HTMLImageElement | null>(null);
+  const certBgImgRef = useRef<HTMLImageElement | null>(null);
+  const [certModalOpen, setCertModalOpen] = useState(false);
+  const [certModalMeeting, setCertModalMeeting] = useState<Meeting | null>(null);
+  const [certAttendanceRows, setCertAttendanceRows] = useState<Record<number, { secondsAttended: number; eligible: boolean; granted: boolean }>>({});
+  const [cattleModalOpen, setCattleModalOpen] = useState(false);
+  const [cattleList, setCattleList] = useState<CattleRecord[]>([]);
+  const [newCattleForm, setNewCattleForm] = useState({ tagId: '', breed: '', notes: '' });
+  const [editingCattleId, setEditingCattleId] = useState<number | null>(null);
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [herdStats, setHerdStats] = useState({ totalCattle: 0, readyForBreeding: 0, newThisMonth: 0 });
   const [settings, setSettings] = useState<SystemSettings>({
     portalName: 'PHILSAR — Cattle Reproductive Management Portal',
     aiProvider: 'Gemini API (Google)',
     videoProvider: 'Jitsi Meet (Open Source)',
-    dssVersion: 'v2.1 — AI-Assisted Rule-Based'
+    dssVersion: 'v2.1 — AI-Assisted Rule-Based',
+    certTitleText: 'Certificate of Attendance',
+    certBodyText: 'has successfully attended the virtual seminar',
+    certClosingText: 'PHILSAR Cattle Reproductive Portal',
+    certPrimaryColor: '#8B5E3C',
+    certAccentColor: '#D4A574',
+    certBackgroundImage: ''
   });
 
   // Auth Forms State
@@ -176,6 +223,14 @@ export default function App() {
     password: '',
     currentPassword: ''
   });
+
+  // Profile Avatar Upload State
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const avatarFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Certificate Background Upload State
+  const [uploadingCertBg, setUploadingCertBg] = useState(false);
+  const certBgFileInputRef = useRef<HTMLInputElement>(null);
 
   // Chat State
   const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([
@@ -215,7 +270,7 @@ export default function App() {
   // Loaders
   const [dataLoading, setDataLoading] = useState(false);
 
-  const API_BASE = 'http://localhost:5000/api';
+  const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:5000/api';
 
   // Core Hooks & Effects
   useEffect(() => {
@@ -245,11 +300,35 @@ export default function App() {
               startWithVideoMuted: true
             }
           });
+
+          // Track cumulative seminar attendance so a 30-minute certificate can be issued
+          const meetingId = activeMeeting.id;
+          const userId = currentUser?.id;
+          const sendHeartbeat = () => {
+            if (!userId) return;
+            axios.post(`${API_BASE}/meetings/${meetingId}/attendance/ping`, { userId })
+              .then(res => setMyAttendance(prev => ({ ...prev, [meetingId]: res.data })))
+              .catch(err => console.error('Attendance ping failed:', err));
+          };
+          jitsiApiRef.current.addEventListener('videoConferenceJoined', () => {
+            sendHeartbeat();
+            attendanceIntervalRef.current = window.setInterval(sendHeartbeat, 30000);
+          });
+          jitsiApiRef.current.addEventListener('videoConferenceLeft', () => {
+            if (attendanceIntervalRef.current) {
+              clearInterval(attendanceIntervalRef.current);
+              attendanceIntervalRef.current = null;
+            }
+          });
         }
       }, 150);
 
       return () => {
         clearTimeout(timer);
+        if (attendanceIntervalRef.current) {
+          clearInterval(attendanceIntervalRef.current);
+          attendanceIntervalRef.current = null;
+        }
         if (jitsiApiRef.current) {
           jitsiApiRef.current.dispose();
           jitsiApiRef.current = null;
@@ -273,16 +352,35 @@ export default function App() {
         password: '',
         currentPassword: ''
       });
-    }
-    const storedLessons = localStorage.getItem('philsar_completed_lessons');
-    if (storedLessons) {
-      setCompletedLessonsMap(JSON.parse(storedLessons));
+      // Lesson completion is server-persisted so it survives cleared storage / device changes
+      axios.get(`${API_BASE}/progress/${parsedUser.id}`)
+        .then(res => setCompletedLessonsMap(res.data))
+        .catch(err => console.error('Error loading lesson progress:', err));
     }
     fetchGlobalData();
+
+    // Preload the logo so certificate PDFs can embed it synchronously on click
+    const logoImg = new Image();
+    logoImg.src = philsarLogo;
+    logoImgRef.current = logoImg;
 
     // Normalize the landing URL so it always reflects the active tab
     window.history.replaceState({}, '', `/${tabFromPath(window.location.pathname)}`);
   }, []);
+
+  // Preload the admin-configured certificate background so it can be embedded
+  // synchronously; crossOrigin is required since jsPDF reads pixels via canvas
+  // and the file is served from the backend's origin.
+  useEffect(() => {
+    if (settings.certBackgroundImage) {
+      const bgImg = new Image();
+      bgImg.crossOrigin = 'anonymous';
+      bgImg.src = settings.certBackgroundImage;
+      certBgImgRef.current = bgImg;
+    } else {
+      certBgImgRef.current = null;
+    }
+  }, [settings.certBackgroundImage]);
 
   // Keep activeTab in sync with browser back/forward navigation
   useEffect(() => {
@@ -296,20 +394,39 @@ export default function App() {
   }, []);
 
   // Fetch all necessary data from the backend APIs
+  // Cattle/DSS data is private per user, so we read the userId fresh from localStorage
+  // rather than the `currentUser` closure — several call sites invoke this in the same
+  // synchronous block as setCurrentUser(...), where that state update hasn't landed yet.
   const fetchGlobalData = async () => {
     try {
       setDataLoading(true);
-      const [modulesRes, meetingsRes, assessmentsRes, settingsRes] = await Promise.all([
+      const storedUser = localStorage.getItem('philsar_user');
+      const userId = storedUser ? JSON.parse(storedUser).id : null;
+
+      const [modulesRes, meetingsRes, settingsRes] = await Promise.all([
         axios.get(`${API_BASE}/modules`),
         axios.get(`${API_BASE}/meetings`),
-        axios.get(`${API_BASE}/assessments`),
         axios.get(`${API_BASE}/settings`)
       ]);
 
       setModules(modulesRes.data);
       setMeetings(meetingsRes.data);
-      setAssessments(assessmentsRes.data);
       setSettings(settingsRes.data);
+
+      if (userId) {
+        const [assessmentsRes, herdStatsRes, attendanceRes] = await Promise.all([
+          axios.get(`${API_BASE}/assessments`, { params: { userId } }),
+          axios.get(`${API_BASE}/assessments/stats`, { params: { userId } }),
+          axios.get(`${API_BASE}/meetings/attendance/${userId}`)
+        ]);
+        setAssessments(assessmentsRes.data);
+        setHerdStats(herdStatsRes.data);
+        setMyAttendance(attendanceRes.data);
+      } else {
+        setAssessments([]);
+        setHerdStats({ totalCattle: 0, readyForBreeding: 0, newThisMonth: 0 });
+        setMyAttendance({});
+      }
     } catch (error) {
       console.error('Error fetching global database data:', error);
     } finally {
@@ -329,6 +446,16 @@ export default function App() {
   useEffect(() => {
     if (activeTab === 'admin' && currentUser?.role === 'Admin') {
       fetchUsersList();
+    }
+  }, [activeTab]);
+
+  // Re-check certificate eligibility whenever the user opens Virtual Meetings —
+  // covers certificates an admin granted manually since the last page load.
+  useEffect(() => {
+    if (activeTab === 'meetings' && currentUser) {
+      axios.get(`${API_BASE}/meetings/attendance/${currentUser.id}`)
+        .then(res => setMyAttendance(res.data))
+        .catch(err => console.error('Error loading seminar attendance:', err));
     }
   }, [activeTab]);
 
@@ -407,7 +534,13 @@ export default function App() {
     localStorage.removeItem('philsar_user');
     setIsAuthenticated(false);
     setCurrentUser(null);
+    setCompletedLessonsMap({});
     setActiveTab('dashboard');
+    // Client-only state with no per-user backend fetch — must be reset explicitly
+    // so the next account to log in in this tab doesn't inherit it.
+    setChatMessages([{ role: 'assistant', content: 'Hello! I am **PHILSARBot**, your AI assistant for cattle reproductive management. I can help you understand estrus cycles, AI procedures, breeding techniques, and more. What would you like to know today?' }]);
+    setInputMessage('');
+    setDssResult(null);
   };
 
   // Profile Updates
@@ -430,6 +563,79 @@ export default function App() {
       setProfileForm(prev => ({ ...prev, password: '', currentPassword: '' }));
     } catch (error: any) {
       alert(error.response?.data?.message || 'Failed to update profile.');
+    }
+  };
+
+  const handleAvatarUpload = async (file: File) => {
+    if (!file || !currentUser) return;
+
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file (PNG, JPG, JPEG, WEBP, GIF).');
+      return;
+    }
+
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) {
+      alert('Image size exceeds 5MB limit. Please choose a smaller image.');
+      return;
+    }
+
+    setUploadingAvatar(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64Data = reader.result as string;
+        try {
+          const uploadRes = await axios.post(`${API_BASE}/auth/upload-avatar`, {
+            base64Data,
+            fileName: file.name
+          });
+          const profileRes = await axios.put(`${API_BASE}/auth/profile/${currentUser.id}`, {
+            profilePicture: uploadRes.data.url
+          });
+          const updated = profileRes.data.user;
+          localStorage.setItem('philsar_user', JSON.stringify(updated));
+          setCurrentUser(updated);
+          alert('Profile picture updated!');
+        } catch (uploadError: any) {
+          console.error('Avatar upload error:', uploadError);
+          alert(uploadError.response?.data?.message || 'Failed to upload profile picture.');
+        } finally {
+          setUploadingAvatar(false);
+        }
+      };
+      reader.onerror = () => {
+        alert('Error reading the image file.');
+        setUploadingAvatar(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      console.error('FileReader error:', error);
+      alert('Error processing the file.');
+      setUploadingAvatar(false);
+    }
+  };
+
+  const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handleAvatarUpload(e.target.files[0]);
+      e.target.value = '';
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    if (!currentUser) return;
+    try {
+      const response = await axios.put(`${API_BASE}/auth/profile/${currentUser.id}`, {
+        profilePicture: ''
+      });
+      const updated = response.data.user;
+      localStorage.setItem('philsar_user', JSON.stringify(updated));
+      setCurrentUser(updated);
+      alert('Profile picture removed.');
+    } catch (error) {
+      console.error(error);
+      alert('Error removing profile picture.');
     }
   };
 
@@ -531,6 +737,213 @@ export default function App() {
   const handleJoinMeeting = (meeting: Meeting) => {
     setActiveMeeting(meeting);
     setMeetingModalOpen(true);
+  };
+
+  const handleDownloadCertificate = (meeting: Meeting, userName?: string, styleOverride?: SystemSettings) => {
+    const recipientName = userName || currentUser?.name;
+    if (!recipientName) return;
+
+    const style = styleOverride || settings;
+    const [pr, pg, pb] = hexToRgb(style.certPrimaryColor || '#8B5E3C');
+    const [ar, ag, ab] = hexToRgb(style.certAccentColor || '#D4A574');
+
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+    const w = doc.internal.pageSize.getWidth();
+    const h = doc.internal.pageSize.getHeight();
+
+    const bgImg = certBgImgRef.current;
+    const hasBackground = style.certBackgroundImage && bgImg && bgImg.complete && bgImg.naturalWidth > 0;
+
+    if (hasBackground) {
+      doc.addImage(bgImg as HTMLImageElement, 'JPEG', 0, 0, w, h);
+    } else {
+      // Outer border
+      doc.setDrawColor(pr, pg, pb);
+      doc.setLineWidth(4);
+      doc.rect(24, 24, w - 48, h - 48);
+      doc.setDrawColor(ar, ag, ab);
+      doc.setLineWidth(1);
+      doc.rect(34, 34, w - 68, h - 68);
+
+      const logoImg = logoImgRef.current;
+      if (logoImg && logoImg.complete && logoImg.naturalWidth > 0) {
+        doc.addImage(logoImg, 'PNG', w / 2 - 40, 50, 80, 80);
+      }
+    }
+
+    doc.setTextColor(pr, pg, pb);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(30);
+    doc.text(style.certTitleText || 'Certificate of Attendance', w / 2, 165, { align: 'center' });
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(14);
+    doc.text('This certifies that', w / 2, 205, { align: 'center' });
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(26);
+    doc.text(recipientName, w / 2, 240, { align: 'center' });
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(14);
+    doc.text(style.certBodyText || 'has successfully attended the virtual seminar', w / 2, 270, { align: 'center' });
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.text(`"${meeting.title}"`, w / 2, 300, { align: 'center' });
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(14);
+    doc.text(`hosted by ${meeting.host}`, w / 2, 325, { align: 'center' });
+
+    const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    doc.setFontSize(11);
+    doc.setTextColor(ar, ag, ab);
+    doc.text(`Issued on ${dateStr} · ${style.certClosingText || 'PHILSAR Cattle Reproductive Portal'}`, w / 2, h - 60, { align: 'center' });
+
+    doc.save(`Certificate - ${meeting.title} - ${recipientName}.pdf`);
+  };
+
+  const openCertModal = async (meeting: Meeting) => {
+    setCertModalMeeting(meeting);
+    setCertModalOpen(true);
+    setCertAttendanceRows({});
+    try {
+      const res = await axios.get(`${API_BASE}/meetings/${meeting.id}/attendance`);
+      const map: Record<number, { secondsAttended: number; eligible: boolean; granted: boolean }> = {};
+      for (const row of res.data) {
+        map[row.userId] = { secondsAttended: row.secondsAttended, eligible: row.eligible, granted: row.granted };
+      }
+      setCertAttendanceRows(map);
+    } catch (error) {
+      console.error('Error loading meeting attendance:', error);
+    }
+  };
+
+  const handleToggleCertificate = async (userId: number, currentlyGranted: boolean) => {
+    if (!certModalMeeting) return;
+    const endpoint = currentlyGranted ? 'revoke' : 'grant';
+    try {
+      const res = await axios.post(`${API_BASE}/meetings/${certModalMeeting.id}/attendance/${endpoint}`, { userId });
+      setCertAttendanceRows(prev => ({ ...prev, [userId]: res.data }));
+    } catch (error) {
+      alert('Error updating certificate.');
+    }
+  };
+
+  const openCattleModal = async () => {
+    setCattleModalOpen(true);
+    try {
+      const res = await axios.get(`${API_BASE}/cattle`, { params: { userId: currentUser?.id } });
+      setCattleList(res.data);
+    } catch (error) {
+      console.error('Error loading cattle list:', error);
+    }
+  };
+
+  const resetCattleForm = () => {
+    setNewCattleForm({ tagId: '', breed: '', notes: '' });
+    setEditingCattleId(null);
+  };
+
+  const handleEditCattleClick = (c: CattleRecord) => {
+    setEditingCattleId(c.id);
+    setNewCattleForm({ tagId: c.tagId, breed: c.breed || '', notes: c.notes || '' });
+  };
+
+  const handleSaveCattle = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCattleForm.tagId.trim()) return;
+    try {
+      if (editingCattleId) {
+        await axios.put(`${API_BASE}/cattle/${editingCattleId}`, {
+          tagId: newCattleForm.tagId.trim(),
+          breed: newCattleForm.breed.trim() || undefined,
+          notes: newCattleForm.notes.trim() || undefined,
+          userId: currentUser?.id
+        });
+      } else {
+        await axios.post(`${API_BASE}/cattle`, {
+          tagId: newCattleForm.tagId.trim(),
+          breed: newCattleForm.breed.trim() || undefined,
+          notes: newCattleForm.notes.trim() || undefined,
+          userId: currentUser?.id
+        });
+      }
+      resetCattleForm();
+      const res = await axios.get(`${API_BASE}/cattle`, { params: { userId: currentUser?.id } });
+      setCattleList(res.data);
+      fetchGlobalData();
+    } catch (error: any) {
+      alert(error.response?.data?.message || 'Error saving cattle.');
+    }
+  };
+
+  const handleDeleteCattle = async (id: number, tagId: string) => {
+    if (!confirm(`Remove ${tagId} from the herd registry? Past DSS assessments for this cattle are kept.`)) return;
+    try {
+      await axios.delete(`${API_BASE}/cattle/${id}`, { params: { userId: currentUser?.id } });
+      setCattleList(prev => prev.filter(c => c.id !== id));
+      if (editingCattleId === id) resetCattleForm();
+      fetchGlobalData();
+    } catch (error) {
+      alert('Error removing cattle.');
+    }
+  };
+
+  const handleCertBackgroundUpload = async (file: File) => {
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file (PNG, JPG, JPEG, WEBP, GIF).');
+      return;
+    }
+
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) {
+      alert('Image size exceeds 5MB limit. Please choose a smaller image.');
+      return;
+    }
+
+    setUploadingCertBg(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64Data = reader.result as string;
+        try {
+          const uploadRes = await axios.post(`${API_BASE}/modules/upload`, {
+            base64Data,
+            fileName: file.name
+          });
+          setSettings(prev => ({ ...prev, certBackgroundImage: uploadRes.data.url }));
+        } catch (uploadError: any) {
+          console.error('Certificate background upload error:', uploadError);
+          alert(uploadError.response?.data?.message || 'Failed to upload background image.');
+        } finally {
+          setUploadingCertBg(false);
+        }
+      };
+      reader.onerror = () => {
+        alert('Error reading the image file.');
+        setUploadingCertBg(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      console.error('FileReader error:', error);
+      alert('Error processing the file.');
+      setUploadingCertBg(false);
+    }
+  };
+
+  const handleCertBackgroundFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handleCertBackgroundUpload(e.target.files[0]);
+      e.target.value = '';
+    }
+  };
+
+  const handleRemoveCertBackground = () => {
+    setSettings(prev => ({ ...prev, certBackgroundImage: '' }));
   };
 
   // Admin Dashboard CRUD Operations
@@ -785,68 +1198,56 @@ export default function App() {
   };
 
   const handleMarkLessonComplete = async (mod: LearningModule) => {
-    if (!mod) return;
+    if (!mod || !currentUser) return;
     const currentCompleted = completedLessonsMap[mod.id] || [];
     if (currentCompleted.includes(selectedLessonIndex)) {
       alert('This lesson is already marked complete!');
       return;
     }
-    
-    const updatedCompleted = [...currentCompleted, selectedLessonIndex];
-    const newMap = { ...completedLessonsMap, [mod.id]: updatedCompleted };
-    setCompletedLessonsMap(newMap);
-    localStorage.setItem('philsar_completed_lessons', JSON.stringify(newMap));
-    
+
     const parsedLessons = parseLessons(mod.content);
-    if (updatedCompleted.length === parsedLessons.length) {
-      if (currentUser) {
-        try {
-          const updatedStats = currentUser.modulesCompleted + 1;
-          const response = await axios.put(`${API_BASE}/auth/profile/${currentUser.id}`, {
-            modulesCompleted: updatedStats
-          });
-          const updatedUser = response.data.user;
-          localStorage.setItem('philsar_user', JSON.stringify(updatedUser));
-          setCurrentUser(updatedUser);
-          alert(`Congratulations! You've fully completed the "${mod.title}" module!`);
-        } catch (error) {
-          console.error(error);
-        }
-      } else {
+    try {
+      const response = await axios.post(`${API_BASE}/progress/complete`, {
+        userId: currentUser.id,
+        moduleId: mod.id,
+        lessonIndex: selectedLessonIndex
+      });
+      setCompletedLessonsMap(prev => ({ ...prev, [mod.id]: response.data.completedLessons }));
+      const updatedUser = response.data.user;
+      localStorage.setItem('philsar_user', JSON.stringify({ ...currentUser, ...updatedUser }));
+      setCurrentUser(prev => prev ? { ...prev, ...updatedUser } : prev);
+
+      if (response.data.justCompletedModule) {
         alert(`Congratulations! You've fully completed the "${mod.title}" module!`);
+      } else {
+        alert(`Lesson "${parsedLessons[selectedLessonIndex]?.title}" marked as complete!`);
       }
-    } else {
-      alert(`Lesson "${parsedLessons[selectedLessonIndex]?.title}" marked as complete!`);
+    } catch (error) {
+      console.error(error);
+      alert('Error updating completion progress.');
     }
   };
 
   const handleUnmarkLessonComplete = async (mod: LearningModule) => {
-    if (!mod) return;
+    if (!mod || !currentUser) return;
     const currentCompleted = completedLessonsMap[mod.id] || [];
     if (!currentCompleted.includes(selectedLessonIndex)) {
       return;
     }
 
-    const updatedCompleted = currentCompleted.filter(idx => idx !== selectedLessonIndex);
-    const newMap = { ...completedLessonsMap, [mod.id]: updatedCompleted };
-    setCompletedLessonsMap(newMap);
-    localStorage.setItem('philsar_completed_lessons', JSON.stringify(newMap));
-
     const parsedLessons = parseLessons(mod.content);
-    if (currentCompleted.length === parsedLessons.length && updatedCompleted.length < parsedLessons.length) {
-      if (currentUser) {
-        try {
-          const updatedStats = Math.max(0, currentUser.modulesCompleted - 1);
-          const response = await axios.put(`${API_BASE}/auth/profile/${currentUser.id}`, {
-            modulesCompleted: updatedStats
-          });
-          const updatedUser = response.data.user;
-          localStorage.setItem('philsar_user', JSON.stringify(updatedUser));
-          setCurrentUser(updatedUser);
-        } catch (error) {
-          console.error('Error decrementing completed modules:', error);
-        }
-      }
+    try {
+      const response = await axios.post(`${API_BASE}/progress/uncomplete`, {
+        userId: currentUser.id,
+        moduleId: mod.id,
+        lessonIndex: selectedLessonIndex
+      });
+      setCompletedLessonsMap(prev => ({ ...prev, [mod.id]: response.data.completedLessons }));
+      const updatedUser = response.data.user;
+      localStorage.setItem('philsar_user', JSON.stringify({ ...currentUser, ...updatedUser }));
+      setCurrentUser(prev => prev ? { ...prev, ...updatedUser } : prev);
+    } catch (error) {
+      console.error('Error decrementing completed modules:', error);
     }
     alert(`Lesson "${parsedLessons[selectedLessonIndex]?.title}" unmarked.`);
   };
@@ -873,7 +1274,7 @@ export default function App() {
           <div className="auth-left">
             <div className="auth-left-content">
               <div className="auth-brand">
-                <div className="auth-brand-icon">🐄</div>
+                <div className="auth-brand-icon"><img src={philsarLogo} alt="PHILSAR" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /></div>
                 <span className="auth-brand-name">PHILSAR</span>
               </div>
 
@@ -1110,7 +1511,7 @@ export default function App() {
       <nav className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-logo">
           <div className="logo-badge">
-            <div className="logo-icon">🐄</div>
+            <div className="logo-icon"><img src={philsarLogo} alt="PHILSAR" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /></div>
             <div>
               <div className="logo-text">PHILSAR</div>
               <span className="logo-sub">Portal</span>
@@ -1120,7 +1521,11 @@ export default function App() {
 
         <div className="sidebar-user">
           <div className="user-avatar">
-            {currentUser?.name ? currentUser.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : 'JD'}
+            {isValidImageUrl(currentUser?.profilePicture) ? (
+              <img src={currentUser?.profilePicture} alt={currentUser?.name} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+            ) : (
+              currentUser?.name ? currentUser.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : 'JD'
+            )}
           </div>
           <div className="user-info">
             <div className="user-name">{currentUser?.name}</div>
@@ -1202,14 +1607,17 @@ export default function App() {
         </div>
       </nav>
 
+      {sidebarOpen && (
+        <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />
+      )}
+
       {/* MAIN CONTENT REGION */}
       <div className="main">
         {/* TOPBAR */}
         <div className="topbar">
           <div className="topbar-left">
             <button
-              className="md:hidden mr-3 p-2 bg-warm-white border border-border rounded-lg text-text-primary"
-              style={{ display: 'none' /* Handled dynamically by CSS but React can declare */ }}
+              className="mobile-menu-btn"
               onClick={() => setSidebarOpen(!sidebarOpen)}
             >
               <Menu size={20} />
@@ -1222,10 +1630,6 @@ export default function App() {
             <div className="search-bar">
               <span>🔍</span>
               <input type="text" placeholder="Search modules, topics…" />
-            </div>
-            <div className="topbar-btn">
-              🔔
-              <div className="notif-dot"></div>
             </div>
             <div className="topbar-btn" onClick={() => handleTabNavigate('profile')}>👤</div>
           </div>
@@ -1246,17 +1650,23 @@ export default function App() {
 
               {/* STATS CARDS */}
               <div className="stats-grid">
-                <div className="stat-card amber">
+                <div className="stat-card amber" style={{ cursor: 'pointer' }} onClick={openCattleModal}>
                   <div className="stat-icon">🐄</div>
-                  <div className="stat-value">48</div>
+                  <div className="stat-value">{herdStats.totalCattle}</div>
                   <div className="stat-label">Total Cattle</div>
-                  <div className="stat-change up">↑ 3 this month</div>
+                  {herdStats.newThisMonth > 0 ? (
+                    <div className="stat-change up">↑ {herdStats.newThisMonth} this month</div>
+                  ) : (
+                    <div className="stat-change neutral">No new cattle this month</div>
+                  )}
                 </div>
                 <div className="stat-card green">
                   <div className="stat-icon">🌿</div>
-                  <div className="stat-value">12</div>
+                  <div className="stat-value">{herdStats.readyForBreeding}</div>
                   <div className="stat-label">Ready for Breeding</div>
-                  <div className="stat-change up">↑ 2 from last week</div>
+                  <div className="stat-change neutral">
+                    {herdStats.totalCattle > 0 ? Math.round((herdStats.readyForBreeding / herdStats.totalCattle) * 100) : 0}% of assessed herd
+                  </div>
                 </div>
                 <div className="stat-card brown">
                   <div className="stat-icon">📖</div>
@@ -1858,6 +2268,15 @@ export default function App() {
                       ) : (
                         <button className="meeting-action ended">Watch Replay</button>
                       )}
+                      {myAttendance[session.id]?.eligible && (
+                        <button
+                          className="meeting-action live"
+                          style={{ background: 'var(--amber)', marginLeft: '8px' }}
+                          onClick={(e) => { e.stopPropagation(); handleDownloadCertificate(session); }}
+                        >
+                          🎓 Certificate
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1917,8 +2336,38 @@ export default function App() {
               </div>
 
               <div className="profile-hero">
-                <div className="profile-avatar-lg">
-                  {currentUser?.name ? currentUser.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : 'JD'}
+                <div className="profile-avatar-lg" style={{ position: 'relative' }}>
+                  {isValidImageUrl(currentUser?.profilePicture) ? (
+                    <img src={currentUser?.profilePicture} alt={currentUser?.name} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+                  ) : (
+                    currentUser?.name ? currentUser.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : 'JD'
+                  )}
+                  <input
+                    ref={avatarFileInputRef}
+                    type="file"
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={handleAvatarFileChange}
+                  />
+                  <button
+                    type="button"
+                    className="avatar-upload-btn"
+                    onClick={() => avatarFileInputRef.current?.click()}
+                    disabled={uploadingAvatar}
+                    title="Change profile picture"
+                  >
+                    {uploadingAvatar ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                  </button>
+                  {isValidImageUrl(currentUser?.profilePicture) && (
+                    <button
+                      type="button"
+                      className="avatar-remove-btn"
+                      onClick={handleRemoveAvatar}
+                      title="Remove profile picture"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
                 </div>
                 <div>
                   <div className="profile-name">{currentUser?.name}</div>
@@ -2186,7 +2635,11 @@ export default function App() {
                                 <td>
                                   <div className="user-chip">
                                     <div className="chip-avatar" style={{ background: 'var(--green-mid)' }}>
-                                      {u.name.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase()}
+                                      {isValidImageUrl(u.profilePicture) ? (
+                                        <img src={u.profilePicture} alt={u.name} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+                                      ) : (
+                                        u.name.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase()
+                                      )}
                                     </div>
                                     <div>
                                       <div style={{ fontWeight: 600 }}>{u.name}</div>
@@ -2540,9 +2993,14 @@ export default function App() {
                                   </span>
                                 </td>
                                 <td>
-                                  <button className="table-action" onClick={() => handleDeleteMeeting(m.id)}>
-                                    <Trash size={14} style={{ color: '#cf1322' }} />
-                                  </button>
+                                  <div style={{ display: 'flex', gap: '8px' }}>
+                                    <button className="table-action" onClick={() => openCertModal(m)} title="Manage certificates">
+                                      <Award size={14} style={{ color: 'var(--amber)' }} />
+                                    </button>
+                                    <button className="table-action" onClick={() => handleDeleteMeeting(m.id)}>
+                                      <Trash size={14} style={{ color: '#cf1322' }} />
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             ))}
@@ -2605,7 +3063,101 @@ export default function App() {
                             <option>v1.0 — Rule-Based Only</option>
                           </select>
                         </div>
-                        <button type="submit" className="btn btn-primary" style={{ marginTop: '8px' }}>Save Settings</button>
+                        <div style={{ borderTop: '1px solid var(--border)', margin: '20px 0 16px', paddingTop: '16px', fontWeight: 700, fontSize: '14px' }}>
+                          🎓 Certificate Design
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">Certificate Title</label>
+                          <input
+                            className="form-control"
+                            type="text"
+                            value={settings.certTitleText}
+                            onChange={e => setSettings({ ...settings, certTitleText: e.target.value })}
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">Attendance Statement</label>
+                          <input
+                            className="form-control"
+                            type="text"
+                            value={settings.certBodyText}
+                            onChange={e => setSettings({ ...settings, certBodyText: e.target.value })}
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">Footer / Organization Line</label>
+                          <input
+                            className="form-control"
+                            type="text"
+                            value={settings.certClosingText}
+                            onChange={e => setSettings({ ...settings, certClosingText: e.target.value })}
+                          />
+                        </div>
+                        <div style={{ display: 'flex', gap: '16px' }}>
+                          <div className="form-group" style={{ flex: 1 }}>
+                            <label className="form-label">Primary Color</label>
+                            <input
+                              className="form-control"
+                              type="color"
+                              style={{ height: '40px', padding: '4px' }}
+                              value={settings.certPrimaryColor}
+                              onChange={e => setSettings({ ...settings, certPrimaryColor: e.target.value })}
+                            />
+                          </div>
+                          <div className="form-group" style={{ flex: 1 }}>
+                            <label className="form-label">Accent Color</label>
+                            <input
+                              className="form-control"
+                              type="color"
+                              style={{ height: '40px', padding: '4px' }}
+                              value={settings.certAccentColor}
+                              onChange={e => setSettings({ ...settings, certAccentColor: e.target.value })}
+                            />
+                          </div>
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">Custom Background (optional — replaces the border/logo layout)</label>
+                          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                            {settings.certBackgroundImage && (
+                              <img
+                                src={settings.certBackgroundImage}
+                                alt="Certificate background"
+                                style={{ width: '80px', height: '56px', objectFit: 'cover', borderRadius: '6px', border: '1px solid var(--border)' }}
+                              />
+                            )}
+                            <input
+                              ref={certBgFileInputRef}
+                              type="file"
+                              accept="image/*"
+                              style={{ display: 'none' }}
+                              onChange={handleCertBackgroundFileChange}
+                            />
+                            <button
+                              type="button"
+                              className="btn"
+                              onClick={() => certBgFileInputRef.current?.click()}
+                              disabled={uploadingCertBg}
+                            >
+                              {uploadingCertBg ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} Upload
+                            </button>
+                            {settings.certBackgroundImage && (
+                              <button type="button" className="btn" onClick={handleRemoveCertBackground}>Remove</button>
+                            )}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
+                          <button type="submit" className="btn btn-primary">Save Settings</button>
+                          <button
+                            type="button"
+                            className="btn"
+                            onClick={() => {
+                              const sampleMeeting: Meeting = { id: 0, title: 'Sample Seminar', host: 'Dr. Jane Doe', dateTime: '', status: 'Ended', registrants: 0, videoLink: '' };
+                              handleDownloadCertificate(sampleMeeting, currentUser?.name || 'Preview User', settings);
+                            }}
+                          >
+                            Preview Certificate
+                          </button>
+                        </div>
                       </form>
                     </div>
                   </div>
@@ -2749,6 +3301,151 @@ export default function App() {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Cattle Herd Registry */}
+      {cattleModalOpen && (
+        <div className="confirm-overlay" onClick={() => { setCattleModalOpen(false); resetCattleForm(); }}>
+          <div className="confirm-box" style={{ maxWidth: '600px' }} onClick={e => e.stopPropagation()}>
+            <div className="confirm-message" style={{ fontWeight: 700, marginBottom: '14px' }}>
+              🐄 Herd Registry
+            </div>
+            <form onSubmit={handleSaveCattle} style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
+              <input
+                className="form-control"
+                type="text"
+                placeholder="Cattle ID (required)"
+                style={{ flex: '1 1 140px' }}
+                value={newCattleForm.tagId}
+                onChange={e => setNewCattleForm({ ...newCattleForm, tagId: e.target.value })}
+                required
+              />
+              <input
+                className="form-control"
+                type="text"
+                placeholder="Breed (optional)"
+                style={{ flex: '1 1 120px' }}
+                value={newCattleForm.breed}
+                onChange={e => setNewCattleForm({ ...newCattleForm, breed: e.target.value })}
+              />
+              <input
+                className="form-control"
+                type="text"
+                placeholder="Notes (optional)"
+                style={{ flex: '1 1 120px' }}
+                value={newCattleForm.notes}
+                onChange={e => setNewCattleForm({ ...newCattleForm, notes: e.target.value })}
+              />
+              <button type="submit" className="submit-btn" style={{ margin: 0, flex: '0 0 auto' }}>
+                {editingCattleId ? 'Save Changes' : '+ Add Cattle'}
+              </button>
+              {editingCattleId && (
+                <button type="button" className="table-action" style={{ flex: '0 0 auto' }} onClick={resetCattleForm}>
+                  Cancel
+                </button>
+              )}
+            </form>
+            <div style={{ maxHeight: '340px', overflowY: 'auto' }}>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Cattle ID</th>
+                    <th>Breed</th>
+                    <th>Status</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cattleList.length === 0 ? (
+                    <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>No cattle registered yet.</td></tr>
+                  ) : cattleList.map(c => (
+                    <tr key={c.id}>
+                      <td style={{ fontWeight: 600 }}>{c.tagId}</td>
+                      <td>{c.breed || '—'}</td>
+                      <td>
+                        {c.isReady === true ? (
+                          <span style={{ color: '#52c41a', fontSize: '12px', fontWeight: 600 }}>✓ Ready for Breeding</span>
+                        ) : c.isReady === false ? (
+                          <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>Not Ready</span>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>Not Yet Assessed</span>
+                        )}
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button className="table-action" onClick={() => handleEditCattleClick(c)}>
+                            <Pencil size={14} />
+                          </button>
+                          <button className="table-action" onClick={() => handleDeleteCattle(c.id, c.tagId)}>
+                            <Trash size={14} style={{ color: '#cf1322' }} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="confirm-actions" style={{ marginTop: '16px' }}>
+              <button className="confirm-btn confirm-btn-cancel" onClick={() => { setCattleModalOpen(false); resetCattleForm(); }}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Seminar Certificate Management (Admin) */}
+      {certModalOpen && certModalMeeting && (
+        <div className="confirm-overlay" onClick={() => setCertModalOpen(false)}>
+          <div className="confirm-box" style={{ maxWidth: '560px' }} onClick={e => e.stopPropagation()}>
+            <div className="confirm-message" style={{ fontWeight: 700, marginBottom: '14px' }}>
+              🎓 Certificates — {certModalMeeting.title}
+            </div>
+            <div style={{ maxHeight: '360px', overflowY: 'auto' }}>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th>Attended</th>
+                    <th>Certificate</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allUsers.map(u => {
+                    const row = certAttendanceRows[u.id];
+                    const seconds = row?.secondsAttended || 0;
+                    const granted = row?.granted || false;
+                    const eligible = row?.eligible || false;
+                    return (
+                      <tr key={u.id}>
+                        <td>{u.name}</td>
+                        <td>{Math.floor(seconds / 60)} min</td>
+                        <td>
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            {granted ? (
+                              <button className="table-action" onClick={() => handleToggleCertificate(u.id, true)}>Revoke</button>
+                            ) : eligible ? (
+                              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>✓ Earned</span>
+                            ) : (
+                              <button className="table-action" onClick={() => handleToggleCertificate(u.id, false)}>Grant</button>
+                            )}
+                            {(granted || eligible) && (
+                              <button className="table-action" onClick={() => handleDownloadCertificate(certModalMeeting, u.name)}>
+                                Download
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="confirm-actions" style={{ marginTop: '16px' }}>
+              <button className="confirm-btn confirm-btn-cancel" onClick={() => setCertModalOpen(false)}>Close</button>
+            </div>
           </div>
         </div>
       )}

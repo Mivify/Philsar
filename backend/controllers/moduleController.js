@@ -106,7 +106,8 @@ const uploadImage = async (req, res) => {
         fs.writeFileSync(filePath, buffer);
 
         // Return public url
-        const publicUrl = `http://localhost:5000/uploads/${uniqueFileName}`;
+        const backendUrl = process.env.BACKEND_URL || 'http://localhost:5000';
+        const publicUrl = `${backendUrl}/uploads/${uniqueFileName}`;
         res.status(200).json({ url: publicUrl });
     } catch (error) {
         console.error('Upload error:', error);

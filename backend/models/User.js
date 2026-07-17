@@ -14,7 +14,7 @@ const User = sequelize.define('User', {
     email: {
         type: DataTypes.STRING,
         allowNull: false,
-        unique: true,
+        unique: 'users_email_unique',
     },
     password: {
         type: DataTypes.STRING,
@@ -25,6 +25,10 @@ const User = sequelize.define('User', {
         defaultValue: 'Farmer',
     },
     organization: {
+        type: DataTypes.STRING,
+        allowNull: true,
+    },
+    profilePicture: {
         type: DataTypes.STRING,
         allowNull: true,
     },
