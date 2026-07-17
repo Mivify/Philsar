@@ -47,6 +47,14 @@ const User = sequelize.define('User', {
     dssAssessmentsRun: {
         type: DataTypes.INTEGER,
         defaultValue: 0,
+    },
+    resetPasswordTokenHash: {
+        type: DataTypes.STRING,
+        allowNull: true,
+    },
+    resetPasswordExpires: {
+        type: DataTypes.DATE,
+        allowNull: true,
     }
 }, {
     timestamps: true,

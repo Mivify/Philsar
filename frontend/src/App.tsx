@@ -216,7 +216,16 @@ export default function App() {
   const [authForm, setAuthForm] = useState({ name: '', email: '', password: '', role: 'Farmer', organization: '' });
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
-  const [isRegisterForm, setIsRegisterForm] = useState(false);
+  const [authView, setAuthView] = useState<'login' | 'register' | 'forgot' | 'reset'>(() =>
+    window.location.pathname === '/reset-password' && new URLSearchParams(window.location.search).get('token')
+      ? 'reset'
+      : 'login'
+  );
+  const [resetToken] = useState(() => new URLSearchParams(window.location.search).get('token') || '');
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotSubmitted, setForgotSubmitted] = useState(false);
+  const [resetPasswordForm, setResetPasswordForm] = useState({ password: '', confirmPassword: '' });
+  const [resetSuccess, setResetSuccess] = useState(false);
 
   // Profile Form State
   const [profileForm, setProfileForm] = useState({
@@ -390,8 +399,12 @@ export default function App() {
     logoImg.src = philsarLogo;
     logoImgRef.current = logoImg;
 
-    // Normalize the landing URL so it always reflects the active tab
-    window.history.replaceState({}, '', `/${tabFromPath(window.location.pathname)}`);
+    // Normalize the landing URL so it always reflects the active tab — but leave
+    // a reset-password link alone, since its token lives in the query string and
+    // tabFromPath would otherwise coerce it straight to /dashboard.
+    if (window.location.pathname !== '/reset-password') {
+      window.history.replaceState({}, '', `/${tabFromPath(window.location.pathname)}`);
+    }
   }, []);
 
   // Preload the admin-configured certificate background so it can be embedded
@@ -553,6 +566,41 @@ export default function App() {
       fetchGlobalData();
     } catch (error: any) {
       setAuthError(error.response?.data?.message || 'Registration failed. Email may already be in use.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleForgotPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError('');
+    setAuthLoading(true);
+    try {
+      await axios.post(`${API_BASE}/auth/forgot-password`, { email: forgotEmail });
+      setForgotSubmitted(true);
+    } catch (error: any) {
+      setAuthError(error.response?.data?.message || 'Something went wrong. Please try again.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleResetPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError('');
+    if (resetPasswordForm.password !== resetPasswordForm.confirmPassword) {
+      setAuthError('Passwords do not match.');
+      return;
+    }
+    setAuthLoading(true);
+    try {
+      await axios.post(`${API_BASE}/auth/reset-password`, {
+        token: resetToken,
+        newPassword: resetPasswordForm.password
+      });
+      setResetSuccess(true);
+    } catch (error: any) {
+      setAuthError(error.response?.data?.message || 'Invalid or expired reset link.');
     } finally {
       setAuthLoading(false);
     }
@@ -1422,7 +1470,7 @@ export default function App() {
           <div className="auth-right">
             <div className="auth-right-inner">
 
-              {!isRegisterForm ? (
+              {authView === 'login' ? (
                 <>
                   <div className="auth-form-header">
                     <h2 className="auth-form-title">Welcome back</h2>
@@ -1452,8 +1500,8 @@ export default function App() {
                     <div className="auth-field">
                       <div className="auth-label-row">
                         <label className="auth-label">Password</label>
-                        <span className="auth-forgot" title="Password resets aren't self-service yet — an admin can reset your password from the Admin Panel.">
-                          Forgot password? Contact an admin
+                        <span className="auth-forgot" onClick={() => { setAuthView('forgot'); setAuthError(''); setForgotSubmitted(false); }}>
+                          Forgot password?
                         </span>
                       </div>
                       <div className="auth-input-wrap">
@@ -1485,12 +1533,12 @@ export default function App() {
 
                   <p className="auth-switch-text">
                     Don't have an account?{' '}
-                    <a className="auth-switch-link" onClick={() => { setIsRegisterForm(true); setAuthError(''); }}>
+                    <a className="auth-switch-link" onClick={() => { setAuthView('register'); setAuthError(''); }}>
                       Create one here
                     </a>
                   </p>
                 </>
-              ) : (
+              ) : authView === 'register' ? (
                 <>
                   <div className="auth-form-header">
                     <h2 className="auth-form-title">Create Account</h2>
@@ -1594,8 +1642,138 @@ export default function App() {
 
                   <p className="auth-switch-text">
                     Already have an account?{' '}
-                    <a className="auth-switch-link" onClick={() => { setIsRegisterForm(false); setAuthError(''); }}>
+                    <a className="auth-switch-link" onClick={() => { setAuthView('login'); setAuthError(''); }}>
                       Sign in here
+                    </a>
+                  </p>
+                </>
+              ) : authView === 'forgot' ? (
+                <>
+                  <div className="auth-form-header">
+                    <h2 className="auth-form-title">Forgot password?</h2>
+                    <p className="auth-form-subtitle">Enter your email and we'll send you a reset link</p>
+                  </div>
+
+                  {authError && (
+                    <div className="auth-error-box">{authError}</div>
+                  )}
+
+                  {forgotSubmitted ? (
+                    <div className="auth-error-box" style={{ background: 'rgba(34,139,34,0.08)', borderColor: 'rgba(34,139,34,0.3)', color: '#2e7d32' }}>
+                      If an account exists for that email, we've sent a reset link. Check your inbox (and spam folder).
+                    </div>
+                  ) : (
+                    <form onSubmit={handleForgotPasswordSubmit} className="auth-form">
+                      <div className="auth-field">
+                        <label className="auth-label">Email Address</label>
+                        <div className="auth-input-wrap">
+                          <span className="auth-input-icon">✉️</span>
+                          <input
+                            className="auth-input"
+                            type="email"
+                            placeholder="juan@gmail.com"
+                            value={forgotEmail}
+                            onChange={e => setForgotEmail(e.target.value)}
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      <button className="auth-submit-btn" type="submit" disabled={authLoading}>
+                        <span>→</span>
+                        {authLoading ? 'Sending…' : 'Send Reset Link'}
+                      </button>
+                    </form>
+                  )}
+
+                  <p className="auth-switch-text">
+                    Remembered your password?{' '}
+                    <a className="auth-switch-link" onClick={() => { setAuthView('login'); setAuthError(''); }}>
+                      Sign in here
+                    </a>
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="auth-form-header">
+                    <h2 className="auth-form-title">Set a new password</h2>
+                    <p className="auth-form-subtitle">Choose a new password for your account</p>
+                  </div>
+
+                  {authError && (
+                    <div className="auth-error-box">{authError}</div>
+                  )}
+
+                  {resetSuccess ? (
+                    <>
+                      <div className="auth-error-box" style={{ background: 'rgba(34,139,34,0.08)', borderColor: 'rgba(34,139,34,0.3)', color: '#2e7d32' }}>
+                        Your password has been reset successfully.
+                      </div>
+                      <button
+                        className="auth-submit-btn"
+                        type="button"
+                        onClick={() => {
+                          window.history.replaceState({}, '', '/dashboard');
+                          setAuthView('login');
+                        }}
+                      >
+                        <span>→</span>
+                        Go to Sign In
+                      </button>
+                    </>
+                  ) : !resetToken ? (
+                    <div className="auth-error-box">This reset link is missing its token. Please request a new one.</div>
+                  ) : (
+                    <form onSubmit={handleResetPasswordSubmit} className="auth-form">
+                      <div className="auth-field">
+                        <label className="auth-label">New Password</label>
+                        <div className="auth-input-wrap">
+                          <span className="auth-input-icon">🔒</span>
+                          <input
+                            className="auth-input"
+                            type={showPassword ? 'text' : 'password'}
+                            placeholder="Create a strong password"
+                            value={resetPasswordForm.password}
+                            onChange={e => setResetPasswordForm({ ...resetPasswordForm, password: e.target.value })}
+                            required
+                          />
+                          <button
+                            type="button"
+                            className="auth-eye-btn"
+                            onClick={() => setShowPassword(p => !p)}
+                            tabIndex={-1}
+                          >
+                            {showPassword ? '🙈' : '👁️'}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="auth-field">
+                        <label className="auth-label">Confirm New Password</label>
+                        <div className="auth-input-wrap">
+                          <span className="auth-input-icon">🔒</span>
+                          <input
+                            className="auth-input"
+                            type={showPassword ? 'text' : 'password'}
+                            placeholder="Re-enter your new password"
+                            value={resetPasswordForm.confirmPassword}
+                            onChange={e => setResetPasswordForm({ ...resetPasswordForm, confirmPassword: e.target.value })}
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      <button className="auth-submit-btn" type="submit" disabled={authLoading}>
+                        <span>→</span>
+                        {authLoading ? 'Saving…' : 'Reset Password'}
+                      </button>
+                    </form>
+                  )}
+
+                  <p className="auth-switch-text">
+                    Need a new link?{' '}
+                    <a className="auth-switch-link" onClick={() => { setAuthView('forgot'); setAuthError(''); setForgotSubmitted(false); }}>
+                      Request another
                     </a>
                   </p>
                 </>

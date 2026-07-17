@@ -1416,7 +1416,7 @@ body {
 .auth-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text-primary); }
 .auth-label-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .auth-label-row .auth-label { margin-bottom: 0; }
-.auth-forgot { font-size: 12px; color: var(--text-muted); font-weight: 600; cursor: default; }
+.auth-forgot { font-size: 12px; color: var(--amber); font-weight: 600; cursor: pointer; }
 
 .auth-input-wrap { position: relative; display: flex; align-items: center; }
 .auth-input-icon { position: absolute; left: 14px; font-size: 14px; opacity: 0.6; pointer-events: none; }

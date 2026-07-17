@@ -1,6 +1,8 @@
 const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
+const { sendPasswordResetEmail } = require('../utils/email');
 
 // Roles a user can grant themselves via public self-registration. Admin accounts can
 // only be created by an existing Admin (see the role-handling logic in `register`).
@@ -219,4 +221,53 @@ const deleteUser = async (req, res) => {
     }
 };
 
-module.exports = { register, login, updateProfile, getUserById, getUsers, deleteUser };
+const forgotPassword = async (req, res) => {
+    try {
+        const { email } = req.body;
+        const user = await User.findOne({ where: { email } });
+
+        // Only do the real work if the email matched an account, but always
+        // respond identically either way — otherwise the response itself
+        // would leak which emails are registered.
+        if (user) {
+            const rawToken = crypto.randomBytes(32).toString('hex');
+            user.resetPasswordTokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+            user.resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000);
+            await user.save();
+
+            const link = `${process.env.BACKEND_URL}/reset-password?token=${rawToken}`;
+            await sendPasswordResetEmail(user.email, link);
+        }
+
+        res.status(200).json({ message: 'If an account exists for that email, a reset link has been sent.' });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
+const resetPassword = async (req, res) => {
+    try {
+        const { token, newPassword } = req.body;
+        if (!token || !newPassword) {
+            return res.status(400).json({ message: 'Missing token or new password' });
+        }
+
+        const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+        const user = await User.findOne({ where: { resetPasswordTokenHash: tokenHash } });
+
+        if (!user || !user.resetPasswordExpires || user.resetPasswordExpires < new Date()) {
+            return res.status(400).json({ message: 'Invalid or expired reset link' });
+        }
+
+        user.password = await bcrypt.hash(newPassword, 10);
+        user.resetPasswordTokenHash = null;
+        user.resetPasswordExpires = null;
+        await user.save();
+
+        res.status(200).json({ message: 'Password reset successfully' });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
+module.exports = { register, login, updateProfile, getUserById, getUsers, deleteUser, forgotPassword, resetPassword };
