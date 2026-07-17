@@ -251,11 +251,16 @@ export default function App() {
     healthStatus: 'Healthy — no issues'
   });
   const [dssResult, setDssResult] = useState<Assessment | null>(null);
+  const [dssLoading, setDssLoading] = useState(false);
 
   // Admin Operations State
   const [newUserForm, setNewUserForm] = useState({ name: '', email: '', password: '', role: 'Farmer', organization: '' });
   const [newModuleForm, setNewModuleForm] = useState({ title: '', description: '', content: '', imageUrl: '' });
   const [newMeetingForm, setNewMeetingForm] = useState({ title: '', host: '', dateTime: '', status: 'Upcoming' as any, videoLink: '' });
+  const [savingUser, setSavingUser] = useState(false);
+  const [savingModule, setSavingModule] = useState(false);
+  const [savingMeeting, setSavingMeeting] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
 
   // Image Uploading States for Admin Panel Modules
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -678,6 +683,7 @@ export default function App() {
       alert('Please fill out all required cattle data fields.');
       return;
     }
+    setDssLoading(true);
     try {
       const response = await axios.post(`${API_BASE}/assessments`, {
         cattleId: dssForm.cattleId,
@@ -706,6 +712,8 @@ export default function App() {
     } catch (error) {
       console.error(error);
       alert('Error running DSS assessment.');
+    } finally {
+      setDssLoading(false);
     }
   };
 
@@ -953,6 +961,7 @@ export default function App() {
   // Admin Dashboard CRUD Operations
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSavingUser(true);
     try {
       await axios.post(`${API_BASE}/auth/register`, newUserForm);
       alert('User added successfully!');
@@ -960,6 +969,8 @@ export default function App() {
       fetchUsersList();
     } catch (error: any) {
       alert(error.response?.data?.message || 'Error adding user.');
+    } finally {
+      setSavingUser(false);
     }
   };
 
@@ -1119,6 +1130,7 @@ export default function App() {
 
   const handleAddModule = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSavingModule(true);
     try {
       if (editingModule) {
         await axios.put(`${API_BASE}/modules/${editingModule.id}`, newModuleForm);
@@ -1133,6 +1145,8 @@ export default function App() {
     } catch (error) {
       console.error(error);
       alert('Error saving module.');
+    } finally {
+      setSavingModule(false);
     }
   };
 
@@ -1150,6 +1164,7 @@ export default function App() {
 
   const handleAddMeeting = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSavingMeeting(true);
     try {
       await axios.post(`${API_BASE}/meetings`, newMeetingForm);
       alert('Seminar scheduled successfully!');
@@ -1158,6 +1173,8 @@ export default function App() {
     } catch (error) {
       console.error(error);
       alert('Error scheduling meeting.');
+    } finally {
+      setSavingMeeting(false);
     }
   };
 
@@ -1174,6 +1191,7 @@ export default function App() {
 
   const handleUpdateSettings = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSavingSettings(true);
     try {
       const response = await axios.post(`${API_BASE}/settings`, settings);
       setSettings(response.data.settings);
@@ -1181,6 +1199,8 @@ export default function App() {
     } catch (error) {
       console.error(error);
       alert('Error saving system settings.');
+    } finally {
+      setSavingSettings(false);
     }
   };
 
@@ -2141,13 +2161,28 @@ export default function App() {
                           <option>Ongoing medical condition — untreated</option>
                         </select>
                       </div>
-                      <button className="submit-btn" type="submit">🧬 Evaluate Breeding Readiness</button>
+                      <button className="submit-btn" type="submit" disabled={dssLoading} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                        {dssLoading ? (
+                          <>
+                            <Loader2 size={16} className="animate-spin" /> Analyzing…
+                          </>
+                        ) : (
+                          <>🧬 Evaluate Breeding Readiness</>
+                        )}
+                      </button>
                     </form>
                   </div>
                 </div>
 
                 <div className="result-panel">
-                  {!dssResult ? (
+                  {dssLoading ? (
+                    <div className="result-empty">
+                      <Loader2 size={40} className="animate-spin" style={{ color: 'var(--amber)' }} />
+                      <div className="result-empty-text" style={{ marginTop: '16px' }}>
+                        Analyzing cattle data and generating breeding guidance…
+                      </div>
+                    </div>
+                  ) : !dssResult ? (
                     <div id="resultEmpty" className="result-empty">
                       <div className="result-empty-icon">🔬</div>
                       <div className="result-empty-text">
@@ -2616,7 +2651,9 @@ export default function App() {
                               onChange={e => setNewUserForm({ ...newUserForm, organization: e.target.value })}
                             />
                           </div>
-                          <button className="submit-btn" type="submit">+ Save Account</button>
+                          <button className="submit-btn" type="submit" disabled={savingUser} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                            {savingUser ? <><Loader2 size={16} className="animate-spin" /> Saving…</> : '+ Save Account'}
+                          </button>
                         </form>
                       </div>
                     </div>
@@ -2848,8 +2885,8 @@ export default function App() {
                             ></textarea>
                           </div>
                           <div style={{ display: 'flex', gap: '10px' }}>
-                            <button className="submit-btn" style={{ flex: 1 }} type="submit">
-                              {editingModule ? 'Save Changes' : '+ Create Module'}
+                            <button className="submit-btn" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }} type="submit" disabled={savingModule}>
+                              {savingModule ? <><Loader2 size={16} className="animate-spin" /> Saving…</> : (editingModule ? 'Save Changes' : '+ Create Module')}
                             </button>
                             {editingModule && (
                               <button
@@ -2968,7 +3005,9 @@ export default function App() {
                               onChange={e => setNewMeetingForm({ ...newMeetingForm, videoLink: e.target.value })}
                             />
                           </div>
-                          <button className="submit-btn" type="submit">+ Schedule Seminar</button>
+                          <button className="submit-btn" type="submit" disabled={savingMeeting} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                            {savingMeeting ? <><Loader2 size={16} className="animate-spin" /> Scheduling…</> : '+ Schedule Seminar'}
+                          </button>
                         </form>
                       </div>
                     </div>
@@ -3150,7 +3189,9 @@ export default function App() {
                           </div>
                         </div>
                         <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
-                          <button type="submit" className="btn btn-primary">Save Settings</button>
+                          <button type="submit" className="btn btn-primary" disabled={savingSettings} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                            {savingSettings ? <><Loader2 size={16} className="animate-spin" /> Saving…</> : 'Save Settings'}
+                          </button>
                           <button
                             type="button"
                             className="btn"
