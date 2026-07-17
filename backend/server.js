@@ -38,8 +38,22 @@ app.use('/api/settings', settingRoutes);
 app.use('/api/progress', progressRoutes);
 app.use('/api/cattle', cattleRoutes);
 
-app.get('/', (req, res) => {
+app.get('/api', (req, res) => {
     res.send('PHILSAR API is running.');
+});
+
+// Serve the frontend's production build (when it exists — e.g. built as part of a
+// combined Railway deploy). Falls through harmlessly in local dev, where the API
+// and the Vite dev server run as two separate processes on different ports.
+const frontendDist = path.join(__dirname, '../frontend/dist');
+app.use(express.static(frontendDist));
+// Path-less middleware (not a route pattern) — Express 5's router no longer accepts
+// a bare '*' wildcard string, so this runs for any request that reached this point.
+app.use((req, res, next) => {
+    if (req.method !== 'GET' || req.path.startsWith('/api') || req.path.startsWith('/uploads')) return next();
+    res.sendFile(path.join(frontendDist, 'index.html'), (err) => {
+        if (err) next();
+    });
 });
 
 // Sync database and start server

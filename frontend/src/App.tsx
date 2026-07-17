@@ -270,7 +270,11 @@ export default function App() {
   // Loaders
   const [dataLoading, setDataLoading] = useState(false);
 
-  const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:5000/api';
+  // VITE_API_BASE overrides when set (e.g. a separately-hosted frontend). Otherwise:
+  // local dev talks to the backend on its own port; a production build defaults to a
+  // relative path, which is correct when the backend serves this same build (combined
+  // Railway deploy) since everything is then same-origin.
+  const API_BASE = import.meta.env.VITE_API_BASE || (import.meta.env.DEV ? 'http://localhost:5000/api' : '/api');
 
   // Core Hooks & Effects
   useEffect(() => {
