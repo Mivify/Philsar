@@ -27,7 +27,6 @@ import {
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import axios from 'axios';
-import { jsPDF } from 'jspdf';
 import philsarLogo from './assets/logo-transparent.png';
 
 // Interfaces mapping database entities
@@ -365,6 +364,14 @@ export default function App() {
       axios.get(`${API_BASE}/progress/${parsedUser.id}`)
         .then(res => setCompletedLessonsMap(res.data))
         .catch(err => console.error('Error loading lesson progress:', err));
+      // Refresh from the server rather than trusting a possibly-stale cached snapshot
+      // (e.g. modulesCompleted/dssAssessmentsRun changed via some other path/device since login)
+      axios.get(`${API_BASE}/auth/profile/${parsedUser.id}`)
+        .then(res => {
+          setCurrentUser(res.data);
+          localStorage.setItem('philsar_user', JSON.stringify(res.data));
+        })
+        .catch(err => console.error('Error refreshing user data:', err));
     }
     fetchGlobalData();
 
@@ -751,7 +758,7 @@ export default function App() {
     setMeetingModalOpen(true);
   };
 
-  const handleDownloadCertificate = (meeting: Meeting, userName?: string, styleOverride?: SystemSettings) => {
+  const handleDownloadCertificate = async (meeting: Meeting, userName?: string, styleOverride?: SystemSettings) => {
     const recipientName = userName || currentUser?.name;
     if (!recipientName) return;
 
@@ -759,6 +766,9 @@ export default function App() {
     const [pr, pg, pb] = hexToRgb(style.certPrimaryColor || '#8B5E3C');
     const [ar, ag, ab] = hexToRgb(style.certAccentColor || '#D4A574');
 
+    // Loaded on demand — jsPDF (plus its html2canvas dependency) is only needed here,
+    // so keeping it out of the main bundle noticeably shrinks everyone's initial load.
+    const { jsPDF } = await import('jspdf');
     const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
     const w = doc.internal.pageSize.getWidth();
     const h = doc.internal.pageSize.getHeight();
@@ -1204,23 +1214,6 @@ export default function App() {
     }
   };
 
-  const handleMarkModuleComplete = async (mod: LearningModule) => {
-    if (!currentUser) return;
-    try {
-      const updatedStats = currentUser.modulesCompleted + 1;
-      const response = await axios.put(`${API_BASE}/auth/profile/${currentUser.id}`, {
-        modulesCompleted: updatedStats
-      });
-      const updated = response.data.user;
-      localStorage.setItem('philsar_user', JSON.stringify(updated));
-      setCurrentUser(updated);
-      alert(`Congratulations! You've marked "${mod.title}" as complete.`);
-    } catch (error) {
-      console.error(error);
-      alert('Error updating completion progress.');
-    }
-  };
-
   const handleMarkLessonComplete = async (mod: LearningModule) => {
     if (!mod || !currentUser) return;
     const currentCompleted = completedLessonsMap[mod.id] || [];
@@ -1373,7 +1366,9 @@ export default function App() {
                     <div className="auth-field">
                       <div className="auth-label-row">
                         <label className="auth-label">Password</label>
-                        <span className="auth-forgot">Forgot password?</span>
+                        <span className="auth-forgot" title="Password resets aren't self-service yet — an admin can reset your password from the Admin Panel.">
+                          Forgot password? Contact an admin
+                        </span>
                       </div>
                       <div className="auth-input-wrap">
                         <span className="auth-input-icon">🔒</span>

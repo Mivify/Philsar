@@ -60,10 +60,15 @@ app.use((req, res, next) => {
 const startServer = async () => {
     await connectDB();
 
-    // Sync Sequelize models
+    // Sync Sequelize models. `alter: true` auto-migrates the schema on every boot —
+    // convenient while the schema is still actively changing, but a real risk once
+    // this stabilizes (auto-altering a live production table on every deploy can lock
+    // it or behave unexpectedly as the schema grows). Set DB_SYNC_ALTER=false once
+    // schema changes become rare; sync() without alter just creates missing tables.
+    const shouldAlter = process.env.DB_SYNC_ALTER !== 'false';
     try {
-        await sequelize.sync({ alter: true }); // Automatically creates/modifies tables if they don't exist
-        console.log('Database synchronized.');
+        await sequelize.sync({ alter: shouldAlter });
+        console.log(`Database synchronized${shouldAlter ? ' (with schema auto-alter)' : ''}.`);
     } catch (error) {
         console.error('Failed to sync database:', error);
     }

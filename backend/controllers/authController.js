@@ -120,6 +120,34 @@ const updateProfile = async (req, res) => {
     }
 };
 
+// Lets the client refresh a logged-in user's data on load instead of trusting a
+// possibly-stale localStorage snapshot indefinitely (e.g. modulesCompleted/dssAssessmentsRun
+// changing via some other path since the last login).
+const getUserById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const user = await User.findByPk(id);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        res.status(200).json({
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            organization: user.organization,
+            status: user.status,
+            profilePicture: user.profilePicture,
+            modulesCompleted: user.modulesCompleted,
+            seminarsAttended: user.seminarsAttended,
+            dssAssessmentsRun: user.dssAssessmentsRun
+        });
+    } catch (error) {
+        res.status(500).json({ message: 'Error fetching user', error: error.message });
+    }
+};
+
 const getUsers = async (req, res) => {
     try {
         const users = await User.findAll({
@@ -146,4 +174,4 @@ const deleteUser = async (req, res) => {
     }
 };
 
-module.exports = { register, login, updateProfile, getUsers, deleteUser };
+module.exports = { register, login, updateProfile, getUserById, getUsers, deleteUser };
