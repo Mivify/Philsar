@@ -14,7 +14,10 @@ const sendPasswordResetEmail = async (to, link) => {
         return;
     }
 
-    await resend.emails.send({
+    // The Resend SDK returns { data, error } instead of throwing on API-level
+    // failures (bad sender domain, recipient blocked in test mode, etc.) — has
+    // to be checked explicitly or a failed send silently looks like a success.
+    const { data, error } = await resend.emails.send({
         from: 'PHILSAR Portal <onboarding@resend.dev>',
         to,
         subject: 'Reset your PHILSAR password',
@@ -24,6 +27,12 @@ const sendPasswordResetEmail = async (to, link) => {
             <p>This link expires in 1 hour. If you didn't request this, you can safely ignore this email.</p>
         `,
     });
+
+    if (error) {
+        console.error('Resend send failed:', error);
+        throw new Error(error.message || 'Failed to send reset email');
+    }
+    console.log(`Reset email sent to ${to}, Resend id: ${data?.id}`);
 };
 
 module.exports = { sendPasswordResetEmail };
