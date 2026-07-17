@@ -246,7 +246,7 @@ export default function App() {
     age: '',
     bcs: '5 — Moderate',
     daysSinceCalving: '',
-    estrusIndicators: 'Standing Heat',
+    estrusIndicators: ['Standing Heat'] as string[],
     history: 'Successful Previous Calving',
     healthStatus: 'Healthy — no issues'
   });
@@ -698,6 +698,10 @@ export default function App() {
       alert('Please fill out all required cattle data fields.');
       return;
     }
+    if (dssForm.estrusIndicators.length === 0) {
+      alert('Please select at least one estrus indicator (or "None Observed").');
+      return;
+    }
     setDssLoading(true);
     try {
       const response = await axios.post(`${API_BASE}/assessments`, {
@@ -705,7 +709,7 @@ export default function App() {
         age: dssForm.age,
         bcs: dssForm.bcs.split(' ')[0], // Parse first character (number)
         daysSinceCalving: dssForm.daysSinceCalving,
-        estrusIndicators: dssForm.estrusIndicators,
+        estrusIndicators: dssForm.estrusIndicators.join(', '),
         history: dssForm.history,
         healthStatus: dssForm.healthStatus,
         userId: currentUser?.id
@@ -2124,13 +2128,26 @@ export default function App() {
                         />
                       </div>
                       <div className="form-group">
-                        <label className="form-label">Estrus Indicators <span>*</span></label>
+                        <label className="form-label">Estrus Indicators <span>*</span> <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(select all that apply)</span></label>
                         <div className="radio-group">
                           {['Standing Heat', 'Mounting Others', 'Clear Discharge', 'Swollen Vulva', 'None Observed'].map(indicator => (
                             <div
                               key={indicator}
-                              className={`radio-btn ${dssForm.estrusIndicators === indicator ? 'selected' : ''}`}
-                              onClick={() => setDssForm({ ...dssForm, estrusIndicators: indicator })}
+                              className={`radio-btn ${dssForm.estrusIndicators.includes(indicator) ? 'selected' : ''}`}
+                              onClick={() => {
+                                if (indicator === 'None Observed') {
+                                  setDssForm({ ...dssForm, estrusIndicators: ['None Observed'] });
+                                  return;
+                                }
+                                const withoutNone = dssForm.estrusIndicators.filter(i => i !== 'None Observed');
+                                const isSelected = withoutNone.includes(indicator);
+                                setDssForm({
+                                  ...dssForm,
+                                  estrusIndicators: isSelected
+                                    ? withoutNone.filter(i => i !== indicator)
+                                    : [...withoutNone, indicator]
+                                });
+                              }}
                             >
                               {indicator}
                             </div>
@@ -2220,7 +2237,7 @@ export default function App() {
                             Body condition score (BCS) indicates reproductive readiness (BCS 4-7)
                           </li>
                           <li className="criteria-item">
-                            <div className="criteria-icon">{dssForm.estrusIndicators !== 'None Observed' ? '✅' : '❌'}</div>
+                            <div className="criteria-icon">{dssForm.estrusIndicators.length > 0 && !dssForm.estrusIndicators.includes('None Observed') ? '✅' : '❌'}</div>
                             Estrus / heat signs successfully observed
                           </li>
                           <li className="criteria-item">

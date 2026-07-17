@@ -49,13 +49,16 @@ const createAssessment = async (req, res) => {
         const daysNum = daysSinceCalving ? parseInt(daysSinceCalving) : 60;
 
         // DSS Evaluation Logic
+        const indicatorList = estrusIndicators.split(',').map(s => s.trim()).filter(Boolean);
+        const hasEstrusSign = indicatorList.length > 0 && !indicatorList.includes('None Observed');
+
         const isReady = ageNum >= 2 && ageNum <= 8 &&
                         bcsNum >= 4 && bcsNum <= 7 &&
                         !healthStatus.toLowerCase().includes('ongoing') &&
                         daysNum >= 45 &&
-                        estrusIndicators !== 'None Observed';
+                        hasEstrusSign;
 
-        const useAI = isReady && (estrusIndicators === 'Standing Heat' || estrusIndicators === 'Clear Discharge');
+        const useAI = isReady && (indicatorList.includes('Standing Heat') || indicatorList.includes('Clear Discharge'));
 
         const recommendation = isReady
             ? (useAI ? 'Artificial Insemination (AI)' : 'Natural Mating')
