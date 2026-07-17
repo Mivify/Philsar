@@ -60,6 +60,7 @@ interface Meeting {
   status: 'Live' | 'Upcoming' | 'Ended';
   registrants: number;
   videoLink: string;
+  minutes: string;
 }
 
 interface CattleRecord {
@@ -171,6 +172,8 @@ export default function App() {
   const [completedLessonsMap, setCompletedLessonsMap] = useState<Record<number, number[]>>({});
   const [meetingModalOpen, setMeetingModalOpen] = useState(false);
   const [activeMeeting, setActiveMeeting] = useState<Meeting | null>(null);
+  const [minutesDraft, setMinutesDraft] = useState('');
+  const [savingMinutes, setSavingMinutes] = useState(false);
 
   // Authentication State
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -767,7 +770,70 @@ export default function App() {
 
   const handleJoinMeeting = (meeting: Meeting) => {
     setActiveMeeting(meeting);
+    setMinutesDraft(meeting.minutes || '');
     setMeetingModalOpen(true);
+  };
+
+  const handleSaveMinutes = async () => {
+    if (!activeMeeting) return;
+    setSavingMinutes(true);
+    try {
+      const res = await axios.put(`${API_BASE}/meetings/${activeMeeting.id}`, { minutes: minutesDraft });
+      setActiveMeeting(res.data.meeting);
+      setMinutesDraft(res.data.meeting.minutes || '');
+      fetchGlobalData();
+    } catch (error) {
+      alert('Error saving minutes.');
+    } finally {
+      setSavingMinutes(false);
+    }
+  };
+
+  const handleDownloadMinutes = async (meeting: Meeting) => {
+    if (!meeting.minutes) return;
+
+    // Loaded on demand, same as the certificate PDF — keeps jsPDF out of the main bundle.
+    const { jsPDF } = await import('jspdf');
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+    const w = doc.internal.pageSize.getWidth();
+    const h = doc.internal.pageSize.getHeight();
+    const margin = 50;
+    const usableWidth = w - margin * 2;
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.text('Meeting Minutes', margin, 60);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    doc.text(meeting.title, margin, 88);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(11);
+    doc.setTextColor(90, 90, 90);
+    doc.text(`Hosted by ${meeting.host}  ·  ${meeting.dateTime}`, margin, 106);
+
+    doc.setDrawColor(200, 200, 200);
+    doc.setLineWidth(0.5);
+    doc.line(margin, 118, w - margin, 118);
+
+    doc.setTextColor(20, 20, 20);
+    doc.setFontSize(11);
+    const lines = doc.splitTextToSize(meeting.minutes, usableWidth);
+    let y = 140;
+    const lineHeight = 16;
+    const bottomLimit = h - margin;
+
+    for (const line of lines) {
+      if (y > bottomLimit) {
+        doc.addPage();
+        y = margin;
+      }
+      doc.text(line, margin, y);
+      y += lineHeight;
+    }
+
+    doc.save(`Minutes - ${meeting.title}.pdf`);
   };
 
   const handleDownloadCertificate = async (meeting: Meeting, userName?: string, styleOverride?: SystemSettings) => {
@@ -3216,7 +3282,7 @@ export default function App() {
                             type="button"
                             className="btn"
                             onClick={() => {
-                              const sampleMeeting: Meeting = { id: 0, title: 'Sample Seminar', host: 'Dr. Jane Doe', dateTime: '', status: 'Ended', registrants: 0, videoLink: '' };
+                              const sampleMeeting: Meeting = { id: 0, title: 'Sample Seminar', host: 'Dr. Jane Doe', dateTime: '', status: 'Ended', registrants: 0, videoLink: '', minutes: '' };
                               handleDownloadCertificate(sampleMeeting, currentUser?.name || 'Preview User', settings);
                             }}
                           >
@@ -3328,6 +3394,49 @@ export default function App() {
                 <div id="jaas-container" style={{ width: '100%', height: '100%' }}></div>
               )}
             </div>
+            {activeMeeting.status === 'Ended' && (
+              <div style={{ padding: '18px 24px', borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.08)', maxHeight: '260px', overflowY: 'auto' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <div style={{ color: 'var(--cream, #f5f0e8)', fontWeight: 700, fontSize: '14px' }}>📝 Meeting Minutes</div>
+                  {activeMeeting.minutes && (
+                    <button
+                      onClick={() => handleDownloadMinutes(activeMeeting)}
+                      style={{ padding: '6px 14px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', color: 'var(--cream)', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}
+                    >
+                      Download PDF
+                    </button>
+                  )}
+                </div>
+                {currentUser?.role === 'Admin' ? (
+                  <>
+                    <textarea
+                      className="form-control"
+                      style={{ minHeight: '120px', background: 'rgba(255,255,255,0.05)', color: 'var(--cream)', border: '1px solid rgba(255,255,255,0.15)' }}
+                      placeholder="Write the minutes for this session (Markdown supported — e.g. **bold**, - bullet points)…"
+                      value={minutesDraft}
+                      onChange={e => setMinutesDraft(e.target.value)}
+                    ></textarea>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
+                      <button
+                        onClick={handleSaveMinutes}
+                        disabled={savingMinutes}
+                        style={{ padding: '8px 20px', background: 'var(--amber)', border: 'none', borderRadius: '8px', color: 'var(--brown-dark)', cursor: savingMinutes ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                      >
+                        {savingMinutes ? <><Loader2 size={14} className="animate-spin" /> Saving…</> : 'Save Minutes'}
+                      </button>
+                    </div>
+                  </>
+                ) : activeMeeting.minutes ? (
+                  <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: '13px', lineHeight: 1.6 }}>
+                    <ReactMarkdown>{activeMeeting.minutes}</ReactMarkdown>
+                  </div>
+                ) : (
+                  <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px', fontStyle: 'italic' }}>
+                    No minutes have been posted for this session yet.
+                  </div>
+                )}
+              </div>
+            )}
             {activeMeeting.status !== 'Ended' && (
               <div style={{ padding: '16px 24px', display: 'flex', gap: '12px', justifyContent: 'center', borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.1)' }}>
                 <button

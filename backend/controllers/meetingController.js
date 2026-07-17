@@ -68,7 +68,7 @@ const createMeeting = async (req, res) => {
 const updateMeeting = async (req, res) => {
     try {
         const { id } = req.params;
-        const { title, host, dateTime, status, videoLink, registrants } = req.body;
+        const { title, host, dateTime, status, videoLink, registrants, minutes } = req.body;
 
         const meeting = await Meeting.findByPk(id);
         if (!meeting) {
@@ -81,6 +81,7 @@ const updateMeeting = async (req, res) => {
         if (status) meeting.status = status;
         if (videoLink) meeting.videoLink = videoLink;
         if (registrants !== undefined) meeting.registrants = parseInt(registrants);
+        if (minutes !== undefined) meeting.minutes = minutes;
 
         await meeting.save();
         res.status(200).json({ message: 'Meeting updated successfully', meeting });

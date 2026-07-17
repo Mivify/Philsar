@@ -30,6 +30,10 @@ const Meeting = sequelize.define('Meeting', {
     videoLink: {
         type: DataTypes.STRING,
         defaultValue: 'https://meet.jit.si/philsar-session',
+    },
+    minutes: {
+        type: DataTypes.TEXT,
+        defaultValue: '',
     }
 }, {
     timestamps: true,
