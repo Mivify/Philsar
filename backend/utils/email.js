@@ -1,20 +1,12 @@
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
-// Gmail SMTP needs a Google Account "App Password", not the regular account
-// password. Falls back to logging the link when unset, so local dev/testing
-// works without real Gmail credentials configured — same spirit as the
-// Cloudinary-vs-local-disk fallback in moduleController.js.
-const emailEnabled = !!(process.env.EMAIL_USER && process.env.EMAIL_APP_PASSWORD);
+// Resend sends over HTTPS rather than raw SMTP, so it isn't blocked by Railway's
+// outbound-SMTP restriction on lower plan tiers (Gmail SMTP was — 465/587 are
+// blocked below the Pro plan). Falls back to logging the link when unset, so
+// local dev/testing works without a Resend account configured.
+const emailEnabled = !!process.env.RESEND_API_KEY;
 
-const transporter = emailEnabled
-    ? nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-            user: process.env.EMAIL_USER,
-            pass: process.env.EMAIL_APP_PASSWORD,
-        },
-    })
-    : null;
+const resend = emailEnabled ? new Resend(process.env.RESEND_API_KEY) : null;
 
 const sendPasswordResetEmail = async (to, link) => {
     if (!emailEnabled) {
@@ -22,8 +14,8 @@ const sendPasswordResetEmail = async (to, link) => {
         return;
     }
 
-    await transporter.sendMail({
-        from: `"PHILSAR Portal" <${process.env.EMAIL_USER}>`,
+    await resend.emails.send({
+        from: 'PHILSAR Portal <onboarding@resend.dev>',
         to,
         subject: 'Reset your PHILSAR password',
         html: `
