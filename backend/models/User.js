@@ -14,15 +14,39 @@ const User = sequelize.define('User', {
     email: {
         type: DataTypes.STRING,
         allowNull: false,
-        unique: true,
+        unique: 'users_email_unique',
     },
     password: {
         type: DataTypes.STRING,
         allowNull: false,
     },
     role: {
-        type: DataTypes.ENUM('student', 'admin'),
-        defaultValue: 'student',
+        type: DataTypes.ENUM('Livestock Manager', 'Farmer', 'Veterinarian', 'Extension Worker', 'Admin'),
+        defaultValue: 'Farmer',
+    },
+    organization: {
+        type: DataTypes.STRING,
+        allowNull: true,
+    },
+    profilePicture: {
+        type: DataTypes.STRING,
+        allowNull: true,
+    },
+    status: {
+        type: DataTypes.ENUM('Active', 'Inactive'),
+        defaultValue: 'Active',
+    },
+    modulesCompleted: {
+        type: DataTypes.INTEGER,
+        defaultValue: 0,
+    },
+    seminarsAttended: {
+        type: DataTypes.INTEGER,
+        defaultValue: 0,
+    },
+    dssAssessmentsRun: {
+        type: DataTypes.INTEGER,
+        defaultValue: 0,
     }
 }, {
     timestamps: true,
