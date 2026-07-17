@@ -1,6 +1,16 @@
 const Module = require('../models/Module');
 const fs = require('fs');
 const path = require('path');
+const cloudinary = require('cloudinary').v2;
+
+const useCloudinary = !!(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET);
+if (useCloudinary) {
+    cloudinary.config({
+        cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+        api_key: process.env.CLOUDINARY_API_KEY,
+        api_secret: process.env.CLOUDINARY_API_SECRET,
+    });
+}
 
 // Get all modules
 const getModules = async (req, res) => {
@@ -73,7 +83,10 @@ const deleteModule = async (req, res) => {
     }
 };
 
-// Upload Cover Image (Base64 handler)
+// Upload Cover Image (Base64 handler). Uses Cloudinary when configured — required for
+// deployments on platforms with an ephemeral filesystem (e.g. Railway), where anything
+// written to local disk is lost on every redeploy. Falls back to local disk otherwise,
+// so local dev keeps working without needing a Cloudinary account.
 const uploadImage = async (req, res) => {
     try {
         const { base64Data, fileName } = req.body;
@@ -88,8 +101,16 @@ const uploadImage = async (req, res) => {
             return res.status(400).json({ message: 'Invalid base64 image data' });
         }
 
+        if (useCloudinary) {
+            const result = await cloudinary.uploader.upload(base64Data, {
+                folder: 'philsar',
+                resource_type: 'image',
+            });
+            return res.status(200).json({ url: result.secure_url });
+        }
+
         const buffer = Buffer.from(matches[2], 'base64');
-        
+
         // Ensure uploads directory exists
         const uploadDir = path.join(__dirname, '../public/uploads');
         if (!fs.existsSync(uploadDir)) {
