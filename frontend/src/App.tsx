@@ -260,6 +260,7 @@ export default function App() {
   const [newUserForm, setNewUserForm] = useState({ name: '', email: '', password: '', role: 'Farmer', organization: '' });
   const [newModuleForm, setNewModuleForm] = useState({ title: '', description: '', content: '', imageUrl: '' });
   const [newMeetingForm, setNewMeetingForm] = useState({ title: '', host: '', dateTime: '', status: 'Upcoming' as any, videoLink: '' });
+  const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
   const [savingUser, setSavingUser] = useState(false);
   const [savingModule, setSavingModule] = useState(false);
   const [savingMeeting, setSavingMeeting] = useState(false);
@@ -1254,13 +1255,19 @@ export default function App() {
     e.preventDefault();
     setSavingMeeting(true);
     try {
-      await axios.post(`${API_BASE}/meetings`, newMeetingForm);
-      alert('Seminar scheduled successfully!');
+      if (editingMeeting) {
+        await axios.put(`${API_BASE}/meetings/${editingMeeting.id}`, newMeetingForm);
+        alert('Seminar updated successfully!');
+        setEditingMeeting(null);
+      } else {
+        await axios.post(`${API_BASE}/meetings`, newMeetingForm);
+        alert('Seminar scheduled successfully!');
+      }
       setNewMeetingForm({ title: '', host: '', dateTime: '', status: 'Upcoming', videoLink: '' });
       fetchGlobalData();
     } catch (error) {
       console.error(error);
-      alert('Error scheduling meeting.');
+      alert(editingMeeting ? 'Error updating meeting.' : 'Error scheduling meeting.');
     } finally {
       setSavingMeeting(false);
     }
@@ -3046,7 +3053,7 @@ export default function App() {
                 <div id="admin-meetings">
                   <div className="grid-2">
                     <div className="card" style={{ height: 'fit-content' }}>
-                      <div className="card-header"><div className="card-title">Schedule Virtual Seminar</div></div>
+                      <div className="card-header"><div className="card-title">{editingMeeting ? `Edit Seminar: ${editingMeeting.title}` : 'Schedule Virtual Seminar'}</div></div>
                       <div className="card-body">
                         <form onSubmit={handleAddMeeting}>
                           <div className="form-group">
@@ -3091,9 +3098,38 @@ export default function App() {
                               onChange={e => setNewMeetingForm({ ...newMeetingForm, videoLink: e.target.value })}
                             />
                           </div>
-                          <button className="submit-btn" type="submit" disabled={savingMeeting} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                            {savingMeeting ? <><Loader2 size={16} className="animate-spin" /> Scheduling…</> : '+ Schedule Seminar'}
-                          </button>
+                          {editingMeeting && (
+                            <div className="form-group">
+                              <label className="form-label">Status</label>
+                              <select
+                                className="form-control"
+                                value={newMeetingForm.status}
+                                onChange={e => setNewMeetingForm({ ...newMeetingForm, status: e.target.value as any })}
+                              >
+                                <option value="Upcoming">Upcoming</option>
+                                <option value="Live">Live</option>
+                                <option value="Ended">Ended</option>
+                              </select>
+                            </div>
+                          )}
+                          <div style={{ display: 'flex', gap: '10px' }}>
+                            <button className="submit-btn" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }} type="submit" disabled={savingMeeting}>
+                              {savingMeeting ? <><Loader2 size={16} className="animate-spin" /> {editingMeeting ? 'Saving…' : 'Scheduling…'}</> : (editingMeeting ? 'Save Changes' : '+ Schedule Seminar')}
+                            </button>
+                            {editingMeeting && (
+                              <button
+                                className="submit-btn"
+                                style={{ flex: 1, background: 'var(--text-muted)' }}
+                                type="button"
+                                onClick={() => {
+                                  setEditingMeeting(null);
+                                  setNewMeetingForm({ title: '', host: '', dateTime: '', status: 'Upcoming', videoLink: '' });
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            )}
+                          </div>
                         </form>
                       </div>
                     </div>
@@ -3123,6 +3159,22 @@ export default function App() {
                                 </td>
                                 <td>
                                   <div style={{ display: 'flex', gap: '8px' }}>
+                                    <button
+                                      className="table-action"
+                                      title="Edit meeting"
+                                      onClick={() => {
+                                        setEditingMeeting(m);
+                                        setNewMeetingForm({
+                                          title: m.title,
+                                          host: m.host,
+                                          dateTime: m.dateTime,
+                                          status: m.status,
+                                          videoLink: m.videoLink || ''
+                                        });
+                                      }}
+                                    >
+                                      <Pencil size={14} />
+                                    </button>
                                     <button className="table-action" onClick={() => openCertModal(m)} title="Manage certificates">
                                       <Award size={14} style={{ color: 'var(--amber)' }} />
                                     </button>
