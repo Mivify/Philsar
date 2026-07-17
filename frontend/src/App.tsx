@@ -41,6 +41,7 @@ interface User {
   modulesCompleted: number;
   seminarsAttended: number;
   dssAssessmentsRun: number;
+  token?: string;
 }
 
 interface LearningModule {
@@ -350,6 +351,9 @@ export default function App() {
     const storedUser = localStorage.getItem('philsar_user');
     if (storedUser) {
       const parsedUser = JSON.parse(storedUser);
+      if (parsedUser.token) {
+        axios.defaults.headers.common['Authorization'] = `Bearer ${parsedUser.token}`;
+      }
       setCurrentUser(parsedUser);
       setIsAuthenticated(true);
       setProfileForm({
@@ -368,8 +372,9 @@ export default function App() {
       // (e.g. modulesCompleted/dssAssessmentsRun changed via some other path/device since login)
       axios.get(`${API_BASE}/auth/profile/${parsedUser.id}`)
         .then(res => {
-          setCurrentUser(res.data);
-          localStorage.setItem('philsar_user', JSON.stringify(res.data));
+          const refreshed = { ...res.data, token: parsedUser.token };
+          setCurrentUser(refreshed);
+          localStorage.setItem('philsar_user', JSON.stringify(refreshed));
         })
         .catch(err => console.error('Error refreshing user data:', err));
     }
@@ -485,7 +490,8 @@ export default function App() {
         email: authForm.email,
         password: authForm.password
       });
-      const user = response.data.user;
+      const user = { ...response.data.user, token: response.data.token };
+      axios.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
       localStorage.setItem('philsar_user', JSON.stringify(user));
       setCurrentUser(user);
       setIsAuthenticated(true);
@@ -522,7 +528,8 @@ export default function App() {
         role: authForm.role,
         organization: authForm.organization
       });
-      const user = response.data.user;
+      const user = { ...response.data.user, token: response.data.token };
+      axios.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
       localStorage.setItem('philsar_user', JSON.stringify(user));
       setCurrentUser(user);
       setIsAuthenticated(true);
@@ -548,6 +555,7 @@ export default function App() {
 
   const handleLogout = () => {
     localStorage.removeItem('philsar_user');
+    delete axios.defaults.headers.common['Authorization'];
     setIsAuthenticated(false);
     setCurrentUser(null);
     setCompletedLessonsMap({});
@@ -572,7 +580,7 @@ export default function App() {
         password: profileForm.password || undefined,
         currentPassword: profileForm.password ? profileForm.currentPassword : undefined
       });
-      const updated = response.data.user;
+      const updated = { ...response.data.user, token: currentUser.token };
       localStorage.setItem('philsar_user', JSON.stringify(updated));
       setCurrentUser(updated);
       alert('Profile updated successfully!');
@@ -609,7 +617,7 @@ export default function App() {
           const profileRes = await axios.put(`${API_BASE}/auth/profile/${currentUser.id}`, {
             profilePicture: uploadRes.data.url
           });
-          const updated = profileRes.data.user;
+          const updated = { ...profileRes.data.user, token: currentUser.token };
           localStorage.setItem('philsar_user', JSON.stringify(updated));
           setCurrentUser(updated);
           alert('Profile picture updated!');
@@ -645,7 +653,7 @@ export default function App() {
       const response = await axios.put(`${API_BASE}/auth/profile/${currentUser.id}`, {
         profilePicture: ''
       });
-      const updated = response.data.user;
+      const updated = { ...response.data.user, token: currentUser.token };
       localStorage.setItem('philsar_user', JSON.stringify(updated));
       setCurrentUser(updated);
       alert('Profile picture removed.');
