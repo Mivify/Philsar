@@ -61,6 +61,7 @@ interface Meeting {
   registrants: number;
   videoLink: string;
   minutes: string;
+  recordingUrl: string;
 }
 
 interface CattleRecord {
@@ -259,7 +260,7 @@ export default function App() {
   // Admin Operations State
   const [newUserForm, setNewUserForm] = useState({ name: '', email: '', password: '', role: 'Farmer', organization: '' });
   const [newModuleForm, setNewModuleForm] = useState({ title: '', description: '', content: '', imageUrl: '' });
-  const [newMeetingForm, setNewMeetingForm] = useState({ title: '', host: '', dateTime: '', status: 'Upcoming' as any, videoLink: '' });
+  const [newMeetingForm, setNewMeetingForm] = useState({ title: '', host: '', dateTime: '', status: 'Upcoming' as any, videoLink: '', recordingUrl: '' });
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
   const [savingUser, setSavingUser] = useState(false);
   const [savingModule, setSavingModule] = useState(false);
@@ -1263,7 +1264,7 @@ export default function App() {
         await axios.post(`${API_BASE}/meetings`, newMeetingForm);
         alert('Seminar scheduled successfully!');
       }
-      setNewMeetingForm({ title: '', host: '', dateTime: '', status: 'Upcoming', videoLink: '' });
+      setNewMeetingForm({ title: '', host: '', dateTime: '', status: 'Upcoming', videoLink: '', recordingUrl: '' });
       fetchGlobalData();
     } catch (error) {
       console.error(error);
@@ -3112,6 +3113,18 @@ export default function App() {
                               </select>
                             </div>
                           )}
+                          {editingMeeting && (
+                            <div className="form-group">
+                              <label className="form-label">Recording Link <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(optional)</span></label>
+                              <input
+                                className="form-control"
+                                type="text"
+                                placeholder="YouTube, Google Drive, or Dropbox link…"
+                                value={newMeetingForm.recordingUrl}
+                                onChange={e => setNewMeetingForm({ ...newMeetingForm, recordingUrl: e.target.value })}
+                              />
+                            </div>
+                          )}
                           <div style={{ display: 'flex', gap: '10px' }}>
                             <button className="submit-btn" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }} type="submit" disabled={savingMeeting}>
                               {savingMeeting ? <><Loader2 size={16} className="animate-spin" /> {editingMeeting ? 'Saving…' : 'Scheduling…'}</> : (editingMeeting ? 'Save Changes' : '+ Schedule Seminar')}
@@ -3123,7 +3136,7 @@ export default function App() {
                                 type="button"
                                 onClick={() => {
                                   setEditingMeeting(null);
-                                  setNewMeetingForm({ title: '', host: '', dateTime: '', status: 'Upcoming', videoLink: '' });
+                                  setNewMeetingForm({ title: '', host: '', dateTime: '', status: 'Upcoming', videoLink: '', recordingUrl: '' });
                                 }}
                               >
                                 Cancel
@@ -3169,7 +3182,8 @@ export default function App() {
                                           host: m.host,
                                           dateTime: m.dateTime,
                                           status: m.status,
-                                          videoLink: m.videoLink || ''
+                                          videoLink: m.videoLink || '',
+                                          recordingUrl: m.recordingUrl || ''
                                         });
                                       }}
                                     >
@@ -3334,7 +3348,7 @@ export default function App() {
                             type="button"
                             className="btn"
                             onClick={() => {
-                              const sampleMeeting: Meeting = { id: 0, title: 'Sample Seminar', host: 'Dr. Jane Doe', dateTime: '', status: 'Ended', registrants: 0, videoLink: '', minutes: '' };
+                              const sampleMeeting: Meeting = { id: 0, title: 'Sample Seminar', host: 'Dr. Jane Doe', dateTime: '', status: 'Ended', registrants: 0, videoLink: '', minutes: '', recordingUrl: '' };
                               handleDownloadCertificate(sampleMeeting, currentUser?.name || 'Preview User', settings);
                             }}
                           >
@@ -3420,27 +3434,50 @@ export default function App() {
             <div style={{ background: '#111', height: '480px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '16px', position: 'relative' }}>
               {activeMeeting.status === 'Ended' ? (
                 <>
-                  <div style={{ fontSize: '60px' }}>📼</div>
+                  <div style={{ fontSize: '60px' }}>{activeMeeting.recordingUrl ? '🎬' : '📼'}</div>
                   <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '14px', fontWeight: 500, textAlign: 'center', maxWidth: '380px' }}>
-                    No recording file is stored for this session yet.
+                    {activeMeeting.recordingUrl
+                      ? 'A recording of this session is available.'
+                      : 'No recording has been uploaded for this session yet.'}
                     <br />You can reopen the session room to review it — camera &amp; mic start muted.
                   </div>
-                  <a
-                    href={`${activeMeeting.videoLink}#config.startWithAudioMuted=true&config.startWithVideoMuted=true`}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{
-                      padding: '10px 24px',
-                      background: 'var(--amber)',
-                      borderRadius: '8px',
-                      color: 'var(--brown-dark)',
-                      textDecoration: 'none',
-                      fontWeight: 700,
-                      fontSize: '14px'
-                    }}
-                  >
-                    Reopen Session Room (Muted)
-                  </a>
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    {activeMeeting.recordingUrl && (
+                      <a
+                        href={activeMeeting.recordingUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{
+                          padding: '10px 24px',
+                          background: 'var(--amber)',
+                          borderRadius: '8px',
+                          color: 'var(--brown-dark)',
+                          textDecoration: 'none',
+                          fontWeight: 700,
+                          fontSize: '14px'
+                        }}
+                      >
+                        ▶ Watch Recording
+                      </a>
+                    )}
+                    <a
+                      href={`${activeMeeting.videoLink}#config.startWithAudioMuted=true&config.startWithVideoMuted=true`}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        padding: '10px 24px',
+                        background: activeMeeting.recordingUrl ? 'rgba(255,255,255,0.08)' : 'var(--amber)',
+                        border: activeMeeting.recordingUrl ? '1px solid rgba(255,255,255,0.15)' : 'none',
+                        borderRadius: '8px',
+                        color: activeMeeting.recordingUrl ? 'var(--cream)' : 'var(--brown-dark)',
+                        textDecoration: 'none',
+                        fontWeight: 700,
+                        fontSize: '14px'
+                      }}
+                    >
+                      Reopen Session Room (Muted)
+                    </a>
+                  </div>
                 </>
               ) : (
                 <div id="jaas-container" style={{ width: '100%', height: '100%' }}></div>

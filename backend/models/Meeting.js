@@ -34,6 +34,10 @@ const Meeting = sequelize.define('Meeting', {
     minutes: {
         type: DataTypes.TEXT,
         defaultValue: '',
+    },
+    recordingUrl: {
+        type: DataTypes.STRING,
+        defaultValue: '',
     }
 }, {
     timestamps: true,

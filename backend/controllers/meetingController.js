@@ -47,7 +47,7 @@ const rsvpMeeting = async (req, res) => {
 
 const createMeeting = async (req, res) => {
     try {
-        const { title, host, dateTime, status, videoLink } = req.body;
+        const { title, host, dateTime, status, videoLink, recordingUrl } = req.body;
         if (!title || !host || !dateTime) {
             return res.status(400).json({ message: 'Missing required meeting details' });
         }
@@ -57,7 +57,8 @@ const createMeeting = async (req, res) => {
             host,
             dateTime,
             status,
-            videoLink: videoLink && videoLink.trim() ? videoLink.trim() : undefined
+            videoLink: videoLink && videoLink.trim() ? videoLink.trim() : undefined,
+            recordingUrl: recordingUrl && recordingUrl.trim() ? recordingUrl.trim() : undefined
         });
         res.status(201).json({ message: 'Meeting created successfully', meeting });
     } catch (error) {
@@ -68,7 +69,7 @@ const createMeeting = async (req, res) => {
 const updateMeeting = async (req, res) => {
     try {
         const { id } = req.params;
-        const { title, host, dateTime, status, videoLink, registrants, minutes } = req.body;
+        const { title, host, dateTime, status, videoLink, registrants, minutes, recordingUrl } = req.body;
 
         const meeting = await Meeting.findByPk(id);
         if (!meeting) {
@@ -82,6 +83,7 @@ const updateMeeting = async (req, res) => {
         if (videoLink) meeting.videoLink = videoLink;
         if (registrants !== undefined) meeting.registrants = parseInt(registrants);
         if (minutes !== undefined) meeting.minutes = minutes;
+        if (recordingUrl !== undefined) meeting.recordingUrl = recordingUrl;
 
         await meeting.save();
         res.status(200).json({ message: 'Meeting updated successfully', meeting });
