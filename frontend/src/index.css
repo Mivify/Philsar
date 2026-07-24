@@ -611,6 +611,13 @@ body {
 .stat-change.up { color: var(--green-mid); }
 .stat-change.neutral { color: var(--text-muted); }
 
+.stat-card-hint {
+  font-size: 11px;
+  color: var(--amber);
+  font-weight: 600;
+  margin-top: 8px;
+}
+
 .grid-2 {
   display: grid;
   grid-template-columns: 2fr 1fr;

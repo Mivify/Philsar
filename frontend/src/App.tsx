@@ -2505,6 +2505,7 @@ export default function App() {
                   ) : (
                     <div className="stat-change neutral">No new cattle this month</div>
                   )}
+                  <div className="stat-card-hint">Click to view cattle →</div>
                 </div>
                 <div className="stat-card green">
                   <div className="stat-icon">🌿</div>
