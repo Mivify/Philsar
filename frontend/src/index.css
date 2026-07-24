@@ -1969,6 +1969,13 @@ body {
 }
 
 /* ─── SWEETALERT2 THEME OVERRIDES ─── */
+/* SweetAlert2's default container z-index (1060) sits below this app's own
+   modal overlays (.confirm-overlay is 10001), so it renders behind whatever
+   app modal is already open unless pushed above the highest one in use. */
+.swal2-container {
+  z-index: 10100 !important;
+}
+
 .swal-philsar-popup {
   font-family: 'DM Sans', sans-serif;
   border-radius: var(--radius-lg);
