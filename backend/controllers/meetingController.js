@@ -3,6 +3,7 @@ const User = require('../models/User');
 const MeetingAttendance = require('../models/MeetingAttendance');
 
 const HEARTBEAT_SECONDS = 30;
+const MAX_ELAPSED_PER_PING_SECONDS = 5 * 60;
 const CERTIFICATE_THRESHOLD_SECONDS = 30 * 60;
 
 const isEligible = (record) => record.secondsAttended >= CERTIFICATE_THRESHOLD_SECONDS || record.granted;
@@ -124,17 +125,30 @@ const pingAttendance = async (req, res) => {
     try {
         const { id } = req.params;
         const userId = req.user.id;
+        const { elapsedSeconds } = req.body;
 
         const meeting = await Meeting.findByPk(id);
         if (!meeting) {
             return res.status(404).json({ message: 'Meeting not found' });
         }
 
+        // The client reports real wall-clock time since its last successful ping
+        // (self-correcting for dropped pings, throttled timers, brief reconnects)
+        // rather than us just assuming a fixed 30s always elapsed. Clamped so a
+        // single ping can't claim an unreasonable amount of attendance.
+        // (`|| HEARTBEAT_SECONDS` would silently treat a legitimate 0 — e.g. the
+        // very first ping right after joining — as "missing" and fall back to 30,
+        // so missing/invalid is detected explicitly instead.)
+        const parsedElapsed = Number(elapsedSeconds);
+        const safeElapsed = Number.isFinite(parsedElapsed)
+            ? Math.min(Math.max(parsedElapsed, 1), MAX_ELAPSED_PER_PING_SECONDS)
+            : HEARTBEAT_SECONDS;
+
         const [record] = await MeetingAttendance.findOrCreate({
             where: { userId, meetingId: id },
             defaults: { secondsAttended: 0 }
         });
-        record.secondsAttended += HEARTBEAT_SECONDS;
+        record.secondsAttended += safeElapsed;
         await record.save();
 
         res.status(200).json({

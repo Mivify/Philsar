@@ -356,16 +356,27 @@ export default function App() {
             }
           });
 
-          // Track cumulative seminar attendance so a 30-minute certificate can be issued
+          // Track cumulative seminar attendance so a 30-minute certificate can be issued.
+          // Reports real elapsed wall-clock time since the last *successful* ping rather
+          // than assuming exactly 30s always passed — a dropped ping, delayed timer tick,
+          // or brief reconnect no longer permanently undercounts, since the next
+          // successful ping just reports the full real gap and catches up.
           const meetingId = activeMeeting.id;
           const userId = currentUser?.id;
+          let lastPingAt = Date.now();
           const sendHeartbeat = () => {
             if (!userId) return;
-            axios.post(`${API_BASE}/meetings/${meetingId}/attendance/ping`, { userId })
-              .then(res => setMyAttendance(prev => ({ ...prev, [meetingId]: res.data })))
+            const now = Date.now();
+            const elapsedSeconds = Math.round((now - lastPingAt) / 1000);
+            axios.post(`${API_BASE}/meetings/${meetingId}/attendance/ping`, { userId, elapsedSeconds })
+              .then(res => {
+                lastPingAt = now;
+                setMyAttendance(prev => ({ ...prev, [meetingId]: res.data }));
+              })
               .catch(err => console.error('Attendance ping failed:', err));
           };
           jitsiApiRef.current.addEventListener('videoConferenceJoined', () => {
+            lastPingAt = Date.now();
             sendHeartbeat();
             attendanceIntervalRef.current = window.setInterval(sendHeartbeat, 30000);
           });
@@ -3788,6 +3799,7 @@ export default function App() {
                               <th>Host</th>
                               <th>Scheduled</th>
                               <th>Status</th>
+                              <th>Registrants</th>
                               <th>Actions</th>
                             </tr>
                           </thead>
@@ -3802,6 +3814,7 @@ export default function App() {
                                     {m.status}
                                   </span>
                                 </td>
+                                <td>{m.registrants}</td>
                                 <td>
                                   <div style={{ display: 'flex', gap: '8px' }}>
                                     <button
