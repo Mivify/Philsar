@@ -15,6 +15,7 @@ const settingRoutes = require('./routes/settingRoutes');
 const progressRoutes = require('./routes/progressRoutes');
 const cattleRoutes = require('./routes/cattleRoutes');
 const landingRoutes = require('./routes/landingRoutes');
+const announcementRoutes = require('./routes/announcementRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -45,6 +46,7 @@ app.use('/api/settings', settingRoutes);
 app.use('/api/progress', progressRoutes);
 app.use('/api/cattle', cattleRoutes);
 app.use('/api/landing-images', landingRoutes);
+app.use('/api/announcements', announcementRoutes);
 
 app.get('/api', (req, res) => {
     res.send('PHILSAR API is running.');

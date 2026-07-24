@@ -69,6 +69,13 @@ interface LandingImage {
   imageUrl: string;
 }
 
+interface Announcement {
+  id: number;
+  title: string;
+  body: string;
+  imageUrl: string | null;
+}
+
 interface CattleRecord {
   id: number;
   tagId: string;
@@ -192,6 +199,7 @@ export default function App() {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [landingImages, setLandingImages] = useState<LandingImage[]>([]);
   const [heroIndex, setHeroIndex] = useState(0);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [myAttendance, setMyAttendance] = useState<Record<number, { secondsAttended: number; eligible: boolean }>>({});
   const attendanceIntervalRef = useRef<number | null>(null);
   const logoImgRef = useRef<HTMLImageElement | null>(null);
@@ -296,6 +304,13 @@ export default function App() {
   // Landing Page Background Image Upload State
   const [uploadingLandingImage, setUploadingLandingImage] = useState(false);
   const landingFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Announcement Form + Image Upload State
+  const [newAnnouncementForm, setNewAnnouncementForm] = useState({ title: '', body: '', imageUrl: '' });
+  const [editingAnnouncementId, setEditingAnnouncementId] = useState<number | null>(null);
+  const [savingAnnouncement, setSavingAnnouncement] = useState(false);
+  const [uploadingAnnouncementImage, setUploadingAnnouncementImage] = useState(false);
+  const announcementFileInputRef = useRef<HTMLInputElement>(null);
 
   // Loaders
   const [dataLoading, setDataLoading] = useState(false);
@@ -483,17 +498,19 @@ export default function App() {
       const storedUser = localStorage.getItem('philsar_user');
       const userId = storedUser ? JSON.parse(storedUser).id : null;
 
-      const [modulesRes, meetingsRes, settingsRes, landingImagesRes] = await Promise.all([
+      const [modulesRes, meetingsRes, settingsRes, landingImagesRes, announcementsRes] = await Promise.all([
         axios.get(`${API_BASE}/modules`),
         axios.get(`${API_BASE}/meetings`),
         axios.get(`${API_BASE}/settings`),
-        axios.get(`${API_BASE}/landing-images`)
+        axios.get(`${API_BASE}/landing-images`),
+        axios.get(`${API_BASE}/announcements`)
       ]);
 
       setModules(modulesRes.data);
       setMeetings(meetingsRes.data);
       setSettings(settingsRes.data);
       setLandingImages(landingImagesRes.data);
+      setAnnouncements(announcementsRes.data);
 
       if (userId) {
         const [assessmentsRes, herdStatsRes, attendanceRes] = await Promise.all([
@@ -1404,6 +1421,100 @@ export default function App() {
     }
   };
 
+  const handleAnnouncementImageUpload = async (file: File) => {
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file (PNG, JPG, JPEG, WEBP, GIF).');
+      return;
+    }
+
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) {
+      alert('Image size exceeds 5MB limit. Please choose a smaller image.');
+      return;
+    }
+
+    setUploadingAnnouncementImage(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64Data = reader.result as string;
+        try {
+          const uploadRes = await axios.post(`${API_BASE}/modules/upload`, {
+            base64Data,
+            fileName: file.name
+          });
+          setNewAnnouncementForm(prev => ({ ...prev, imageUrl: uploadRes.data.url }));
+        } catch (uploadError: any) {
+          console.error('Announcement image upload error:', uploadError);
+          alert(uploadError.response?.data?.message || 'Failed to upload image.');
+        } finally {
+          setUploadingAnnouncementImage(false);
+        }
+      };
+      reader.onerror = () => {
+        alert('Error reading the image file.');
+        setUploadingAnnouncementImage(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      console.error('Announcement image FileReader error:', error);
+      alert('Error processing the file.');
+      setUploadingAnnouncementImage(false);
+    }
+  };
+
+  const handleAnnouncementFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handleAnnouncementImageUpload(e.target.files[0]);
+      e.target.value = '';
+    }
+  };
+
+  const resetAnnouncementForm = () => {
+    setNewAnnouncementForm({ title: '', body: '', imageUrl: '' });
+    setEditingAnnouncementId(null);
+  };
+
+  const handleEditAnnouncementClick = (a: Announcement) => {
+    setEditingAnnouncementId(a.id);
+    setNewAnnouncementForm({ title: a.title, body: a.body, imageUrl: a.imageUrl || '' });
+  };
+
+  const handleSaveAnnouncement = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAnnouncementForm.title.trim() || !newAnnouncementForm.body.trim()) return;
+    setSavingAnnouncement(true);
+    try {
+      if (editingAnnouncementId) {
+        const res = await axios.put(`${API_BASE}/announcements/${editingAnnouncementId}`, newAnnouncementForm);
+        setAnnouncements(prev => prev.map(a => a.id === editingAnnouncementId ? res.data.announcement : a));
+      } else {
+        const res = await axios.post(`${API_BASE}/announcements`, newAnnouncementForm);
+        setAnnouncements(prev => [res.data.announcement, ...prev]);
+      }
+      resetAnnouncementForm();
+    } catch (error) {
+      console.error('Error saving announcement:', error);
+      alert('Error saving announcement.');
+    } finally {
+      setSavingAnnouncement(false);
+    }
+  };
+
+  const handleDeleteAnnouncement = async (id: number) => {
+    if (!confirm('Delete this announcement from the Home page?')) return;
+    try {
+      await axios.delete(`${API_BASE}/announcements/${id}`);
+      setAnnouncements(prev => prev.filter(a => a.id !== id));
+      if (editingAnnouncementId === id) resetAnnouncementForm();
+    } catch (error) {
+      console.error('Error deleting announcement:', error);
+      alert('Error deleting announcement.');
+    }
+  };
+
   const handleAddModule = async (e: React.FormEvent) => {
     e.preventDefault();
     setSavingModule(true);
@@ -2116,6 +2227,27 @@ export default function App() {
                   </div>
                 )}
               </div>
+
+              {announcements.length > 0 && (
+                <div className="home-section">
+                  <div className="page-header" style={{ marginBottom: '16px' }}>
+                    <div className="page-title" style={{ fontSize: '20px' }}>Announcements</div>
+                  </div>
+                  <div className="announcement-grid">
+                    {announcements.map(a => (
+                      <div key={a.id} className="announcement-card">
+                        {isValidImageUrl(a.imageUrl || undefined) && (
+                          <div className="announcement-card-img" style={{ backgroundImage: `url(${a.imageUrl})` }} />
+                        )}
+                        <div className="announcement-card-body">
+                          <div className="announcement-card-title">{a.title}</div>
+                          <div className="announcement-card-text">{a.body}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="home-section">
                 <div className="card">
@@ -3710,6 +3842,101 @@ export default function App() {
                                 }}
                               >
                                 <Trash size={13} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="card" style={{ marginTop: '20px' }}>
+                    <div className="card-header">
+                      <div className="card-title">{editingAnnouncementId ? 'Edit Announcement' : 'New Announcement'}</div>
+                    </div>
+                    <div className="card-body">
+                      <form onSubmit={handleSaveAnnouncement}>
+                        <div className="form-group">
+                          <label className="form-label">Title</label>
+                          <input
+                            className="form-control"
+                            type="text"
+                            placeholder="e.g., New Estrus Synchronization Protocol Released"
+                            value={newAnnouncementForm.title}
+                            onChange={e => setNewAnnouncementForm({ ...newAnnouncementForm, title: e.target.value })}
+                            required
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">Body</label>
+                          <textarea
+                            className="form-control"
+                            style={{ minHeight: '90px' }}
+                            placeholder="Write the announcement text…"
+                            value={newAnnouncementForm.body}
+                            onChange={e => setNewAnnouncementForm({ ...newAnnouncementForm, body: e.target.value })}
+                            required
+                          ></textarea>
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">Photo <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(optional)</span></label>
+                          <input
+                            ref={announcementFileInputRef}
+                            type="file"
+                            accept="image/*"
+                            style={{ display: 'none' }}
+                            onChange={handleAnnouncementFileChange}
+                          />
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <button
+                              type="button"
+                              className="submit-btn"
+                              style={{ width: 'auto', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+                              onClick={() => announcementFileInputRef.current?.click()}
+                              disabled={uploadingAnnouncementImage}
+                            >
+                              {uploadingAnnouncementImage ? <><Loader2 size={16} className="animate-spin" /> Uploading…</> : <><Upload size={16} /> {newAnnouncementForm.imageUrl ? 'Replace Photo' : 'Upload Photo'}</>}
+                            </button>
+                            {isValidImageUrl(newAnnouncementForm.imageUrl) && (
+                              <img src={newAnnouncementForm.imageUrl} alt="Preview" style={{ width: '48px', height: '48px', borderRadius: 'var(--radius-sm)', objectFit: 'cover', border: '1px solid var(--border)' }} />
+                            )}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                          <button className="submit-btn" style={{ flex: 1 }} type="submit" disabled={savingAnnouncement}>
+                            {savingAnnouncement ? <><Loader2 size={16} className="animate-spin" /> Saving…</> : (editingAnnouncementId ? 'Save Changes' : '+ Post Announcement')}
+                          </button>
+                          {editingAnnouncementId && (
+                            <button
+                              className="submit-btn"
+                              style={{ flex: 1, background: 'var(--text-muted)' }}
+                              type="button"
+                              onClick={resetAnnouncementForm}
+                            >
+                              Cancel
+                            </button>
+                          )}
+                        </div>
+                      </form>
+
+                      {announcements.length > 0 && (
+                        <div style={{ marginTop: '24px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          {announcements.map(a => (
+                            <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>
+                              {isValidImageUrl(a.imageUrl || undefined) ? (
+                                <img src={a.imageUrl || ''} alt={a.title} style={{ width: '44px', height: '44px', borderRadius: 'var(--radius-sm)', objectFit: 'cover', flexShrink: 0 }} />
+                              ) : (
+                                <div style={{ width: '44px', height: '44px', borderRadius: 'var(--radius-sm)', background: 'var(--cream)', flexShrink: 0 }} />
+                              )}
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.title}</div>
+                                <div style={{ fontSize: '12px', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.body}</div>
+                              </div>
+                              <button className="table-action" onClick={() => handleEditAnnouncementClick(a)} title="Edit">
+                                <Pencil size={14} />
+                              </button>
+                              <button className="table-action" onClick={() => handleDeleteAnnouncement(a.id)} title="Delete">
+                                <Trash size={14} style={{ color: '#cf1322' }} />
                               </button>
                             </div>
                           ))}
