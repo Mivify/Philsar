@@ -398,24 +398,7 @@ export default function App() {
         password: '',
         currentPassword: ''
       });
-      // Lesson completion is server-persisted so it survives cleared storage / device changes
-      axios.get(`${API_BASE}/progress/${parsedUser.id}`)
-        .then(res => setCompletedLessonsMap(res.data))
-        .catch(err => console.error('Error loading lesson progress:', err));
-      // Refresh from the server rather than trusting a possibly-stale cached snapshot
-      // (e.g. modulesCompleted/dssAssessmentsRun changed via some other path/device since login)
-      axios.get(`${API_BASE}/auth/profile/${parsedUser.id}`)
-        .then(res => {
-          const refreshed = { ...res.data, token: parsedUser.token };
-          setCurrentUser(refreshed);
-          localStorage.setItem('philsar_user', JSON.stringify(refreshed));
-        })
-        .catch(err => console.error('Error refreshing user data:', err));
-
-      // Modules/meetings/etc. are only ever rendered post-login, and several of
-      // the endpoints below now require auth — no reason to fetch them (or risk
-      // a 401) for a logged-out visitor.
-      fetchGlobalData();
+      refreshSessionData(parsedUser);
     }
 
     // Preload the logo so certificate PDFs can embed it synchronously on click
@@ -430,6 +413,19 @@ export default function App() {
       window.history.replaceState({}, '', `/${tabFromPath(window.location.pathname)}`);
     }
   }, []);
+
+  // A tab left open (or backgrounded) has no way to learn that data changed
+  // elsewhere — another tab, another device — short of a manual reload. Catch
+  // it up the same way a fresh mount would, whenever it regains focus.
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && isAuthenticated && currentUser) {
+        refreshSessionData(currentUser);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [isAuthenticated, currentUser?.id]);
 
   // Preload the admin-configured certificate background so it can be embedded
   // synchronously; crossOrigin is required since jsPDF reads pixels via canvas
@@ -495,6 +491,31 @@ export default function App() {
     } finally {
       setDataLoading(false);
     }
+  };
+
+  // Everything that can go stale in a tab left open while data changes elsewhere
+  // (another tab, another device, or just time passing) — called on mount and
+  // again whenever the tab regains focus, so a backgrounded tab catches up
+  // without the user needing to manually refresh.
+  const refreshSessionData = (user: User) => {
+    // Lesson completion is server-persisted so it survives cleared storage / device changes
+    axios.get(`${API_BASE}/progress/${user.id}`)
+      .then(res => setCompletedLessonsMap(res.data))
+      .catch(err => console.error('Error loading lesson progress:', err));
+    // Refresh from the server rather than trusting a possibly-stale cached snapshot
+    // (e.g. modulesCompleted/dssAssessmentsRun changed via some other path/device since login)
+    axios.get(`${API_BASE}/auth/profile/${user.id}`)
+      .then(res => {
+        const refreshed = { ...res.data, token: user.token };
+        setCurrentUser(refreshed);
+        localStorage.setItem('philsar_user', JSON.stringify(refreshed));
+      })
+      .catch(err => console.error('Error refreshing user data:', err));
+
+    // Modules/meetings/etc. are only ever rendered post-login, and several of
+    // the endpoints below require auth — no reason to fetch them (or risk a
+    // 401) for a logged-out visitor.
+    fetchGlobalData();
   };
 
   const fetchUsersList = async () => {
