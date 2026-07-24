@@ -2118,62 +2118,6 @@ export default function App() {
               </div>
 
               <div className="home-section">
-                <div className="page-header" style={{ marginBottom: '16px' }}>
-                  <div className="page-title" style={{ fontSize: '20px' }}>Your Herd at a Glance</div>
-                </div>
-                <div className="stats-grid">
-                  <div className="stat-card amber" style={{ cursor: 'pointer' }} onClick={openCattleModal}>
-                    <div className="stat-icon">🐄</div>
-                    <div className="stat-value">{herdStats.totalCattle}</div>
-                    <div className="stat-label">Total Cattle</div>
-                  </div>
-                  <div className="stat-card green">
-                    <div className="stat-icon">🌿</div>
-                    <div className="stat-value">{herdStats.readyForBreeding}</div>
-                    <div className="stat-label">Ready for Breeding</div>
-                  </div>
-                  <div className="stat-card brown">
-                    <div className="stat-icon">📖</div>
-                    <div className="stat-value">{currentUser?.modulesCompleted || 0}</div>
-                    <div className="stat-label">Modules Completed</div>
-                  </div>
-                  <div className="stat-card sage">
-                    <div className="stat-icon">🎓</div>
-                    <div className="stat-value">{currentUser?.seminarsAttended || 0}</div>
-                    <div className="stat-label">Seminars Attended</div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="home-section">
-                <div className="page-header" style={{ marginBottom: '16px' }}>
-                  <div className="page-title" style={{ fontSize: '20px' }}>Quick Access</div>
-                </div>
-                <div className="quick-access-grid">
-                  <div className="quick-access-card" onClick={() => handleTabNavigate('learning')}>
-                    <div className="quick-access-icon">📚</div>
-                    <div className="quick-access-title">Learning Center</div>
-                    <div className="quick-access-desc">Structured courses on cattle reproductive anatomy and breeding.</div>
-                  </div>
-                  <div className="quick-access-card" onClick={() => handleTabNavigate('dss')}>
-                    <div className="quick-access-icon">🧬</div>
-                    <div className="quick-access-title">Decision Support</div>
-                    <div className="quick-access-desc">AI-assisted breeding readiness assessment for your herd.</div>
-                  </div>
-                  <div className="quick-access-card" onClick={() => handleTabNavigate('chatbot')}>
-                    <div className="quick-access-icon">🤖</div>
-                    <div className="quick-access-title">AI Assistant</div>
-                    <div className="quick-access-desc">Ask PHILSARBot about estrus cycles, AI procedures, and more.</div>
-                  </div>
-                  <div className="quick-access-card" onClick={() => handleTabNavigate('meetings')}>
-                    <div className="quick-access-icon">🎥</div>
-                    <div className="quick-access-title">Virtual Meetings</div>
-                    <div className="quick-access-desc">Join live seminars and connect with extension workers.</div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="home-section">
                 <div className="card">
                   <div className="card-header">
                     <div className="card-title">Upcoming Seminars</div>
@@ -2211,6 +2155,34 @@ export default function App() {
                         </div>
                       ))
                     )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="home-section">
+                <div className="page-header" style={{ marginBottom: '16px' }}>
+                  <div className="page-title" style={{ fontSize: '20px' }}>Quick Access</div>
+                </div>
+                <div className="quick-access-grid">
+                  <div className="quick-access-card" onClick={() => handleTabNavigate('learning')}>
+                    <div className="quick-access-icon">📚</div>
+                    <div className="quick-access-title">Learning Center</div>
+                    <div className="quick-access-desc">Structured courses on cattle reproductive anatomy and breeding.</div>
+                  </div>
+                  <div className="quick-access-card" onClick={() => handleTabNavigate('dss')}>
+                    <div className="quick-access-icon">🧬</div>
+                    <div className="quick-access-title">Decision Support</div>
+                    <div className="quick-access-desc">AI-assisted breeding readiness assessment for your herd.</div>
+                  </div>
+                  <div className="quick-access-card" onClick={() => handleTabNavigate('chatbot')}>
+                    <div className="quick-access-icon">🤖</div>
+                    <div className="quick-access-title">AI Assistant</div>
+                    <div className="quick-access-desc">Ask PHILSARBot about estrus cycles, AI procedures, and more.</div>
+                  </div>
+                  <div className="quick-access-card" onClick={() => handleTabNavigate('meetings')}>
+                    <div className="quick-access-icon">🎥</div>
+                    <div className="quick-access-title">Virtual Meetings</div>
+                    <div className="quick-access-desc">Join live seminars and connect with extension workers.</div>
                   </div>
                 </div>
               </div>
