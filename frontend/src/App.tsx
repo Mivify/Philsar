@@ -4319,7 +4319,7 @@ export default function App() {
                 ×
               </button>
             </div>
-            <div style={{ background: '#111', height: '480px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '16px', position: 'relative' }}>
+            <div className="meeting-modal-video" style={{ background: '#111', height: '480px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '16px', position: 'relative' }}>
               {activeMeeting.status === 'Ended' ? (
                 <>
                   <div style={{ fontSize: '60px' }}>{activeMeeting.recordingUrl ? '🎬' : '📼'}</div>
@@ -4415,26 +4415,30 @@ export default function App() {
               </div>
             )}
             {activeMeeting.status !== 'Ended' && (
-              <div style={{ padding: '16px 24px', display: 'flex', gap: '12px', justifyContent: 'center', borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.1)' }}>
+              <div className="meeting-modal-footer" style={{ padding: '16px 24px', display: 'flex', gap: '12px', justifyContent: 'center', borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.1)' }}>
                 <button
+                  className="meeting-footer-btn"
                   onClick={() => jitsiApiRef.current?.executeCommand('toggleAudio')}
                   style={{ padding: '8px 20px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'var(--cream)', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}
                 >
                   🎙️ Toggle Mic
                 </button>
                 <button
+                  className="meeting-footer-btn"
                   onClick={() => jitsiApiRef.current?.executeCommand('toggleVideo')}
                   style={{ padding: '8px 20px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'var(--cream)', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}
                 >
                   📷 Toggle Camera
                 </button>
                 <button
+                  className="meeting-footer-btn"
                   onClick={() => jitsiApiRef.current?.executeCommand('toggleChat')}
                   style={{ padding: '8px 20px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'var(--cream)', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}
                 >
                   💬 Toggle Chat
                 </button>
                 <button
+                  className="meeting-footer-btn"
                   onClick={() => setMeetingModalOpen(false)}
                   style={{ padding: '8px 20px', background: '#cf1322', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', fontWeight: 700, fontSize: '13px' }}
                 >
