@@ -588,7 +588,13 @@ export default function App() {
     if (activeTab === 'admin' && currentUser?.role === 'Admin') {
       fetchUsersList();
     }
-  }, [activeTab]);
+    // currentUser?.role is deliberately included: on a hard refresh landing
+    // directly on /admin, activeTab is already 'admin' on the very first
+    // render but currentUser hasn't hydrated from localStorage yet, so the
+    // condition above is false. Without this dependency the effect would
+    // never re-fire once currentUser becomes available a moment later,
+    // leaving the Users table empty until logging out and back in.
+  }, [activeTab, currentUser?.role]);
 
   // Re-check certificate eligibility whenever the user opens Virtual Meetings —
   // covers certificates an admin granted manually since the last page load.
