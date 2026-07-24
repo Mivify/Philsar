@@ -15,7 +15,12 @@ const optionalAuth = async (req, res, next) => {
         try {
             const decoded = jwt.verify(header.slice(7), process.env.JWT_SECRET);
             const user = await User.findByPk(decoded.id, { attributes: ['id', 'role', 'passwordChangedAt'] });
-            const tokenIssuedBeforePasswordChange = user?.passwordChangedAt && decoded.iat * 1000 < Number(user.passwordChangedAt);
+            // JWT `iat` only has 1-second resolution, but passwordChangedAt is
+            // millisecond-precise — comparing them directly would spuriously
+            // invalidate a token generated in the very same second as the
+            // password change (e.g. updateProfile returns a fresh token in the
+            // same response that sets passwordChangedAt). Floor both to seconds.
+            const tokenIssuedBeforePasswordChange = user?.passwordChangedAt && decoded.iat < Math.floor(Number(user.passwordChangedAt) / 1000);
             if (user && !tokenIssuedBeforePasswordChange) {
                 req.user = { id: decoded.id, role: decoded.role };
             }
