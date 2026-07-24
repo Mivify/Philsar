@@ -18,6 +18,12 @@ const cattleRoutes = require('./routes/cattleRoutes');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Railway sits in front of the app as a single reverse proxy, so the real client
+// IP arrives via X-Forwarded-For. Trusting exactly one hop lets Express (and the
+// express-rate-limit middleware, which otherwise can't safely read that header)
+// resolve req.ip correctly instead of lumping every visitor into one bucket.
+app.set('trust proxy', 1);
+
 // Middleware
 // Falls back to allow-all in local dev; set FRONTEND_URL in production to lock this down.
 app.use(cors(process.env.FRONTEND_URL ? { origin: process.env.FRONTEND_URL } : {}));
