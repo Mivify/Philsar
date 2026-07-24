@@ -28,13 +28,28 @@ const rsvpMeeting = async (req, res) => {
             return res.status(404).json({ message: 'Meeting not found' });
         }
 
-        meeting.registrants += 1;
-        await meeting.save();
+        // Tracked per-user so re-calling this (double-click, revisit) doesn't keep
+        // inflating registrants/seminarsAttended, and so joinability can be gated
+        // on having actually RSVP'd (see requireAuth-gated Join Live flow).
+        const [record, created] = await MeetingAttendance.findOrCreate({
+            where: { userId, meetingId: id },
+            defaults: { secondsAttended: 0, rsvped: true }
+        });
+        const isNewRsvp = created || !record.rsvped;
+        if (!record.rsvped) {
+            record.rsvped = true;
+            await record.save();
+        }
 
-        const user = await User.findByPk(userId);
-        if (user) {
-            user.seminarsAttended += 1;
-            await user.save();
+        if (isNewRsvp) {
+            meeting.registrants += 1;
+            await meeting.save();
+
+            const user = await User.findByPk(userId);
+            if (user) {
+                user.seminarsAttended += 1;
+                await user.save();
+            }
         }
 
         res.status(200).json({ message: 'RSVP registered successfully', meeting });
@@ -142,7 +157,8 @@ const getMyAttendance = async (req, res) => {
         for (const row of rows) {
             map[row.meetingId] = {
                 secondsAttended: row.secondsAttended,
-                eligible: isEligible(row)
+                eligible: isEligible(row),
+                rsvped: row.rsvped
             };
         }
 

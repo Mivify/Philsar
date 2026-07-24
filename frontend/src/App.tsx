@@ -200,7 +200,7 @@ export default function App() {
   const [landingImages, setLandingImages] = useState<LandingImage[]>([]);
   const [heroIndex, setHeroIndex] = useState(0);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-  const [myAttendance, setMyAttendance] = useState<Record<number, { secondsAttended: number; eligible: boolean }>>({});
+  const [myAttendance, setMyAttendance] = useState<Record<number, { secondsAttended: number; eligible: boolean; rsvped: boolean }>>({});
   const attendanceIntervalRef = useRef<number | null>(null);
   const logoImgRef = useRef<HTMLImageElement | null>(null);
   const certBgImgRef = useRef<HTMLImageElement | null>(null);
@@ -346,7 +346,13 @@ export default function App() {
             },
             configOverwrite: {
               startWithAudioMuted: true,
-              startWithVideoMuted: true
+              startWithVideoMuted: true,
+              // JaaS's default embed toolbar omits fullscreen — spell it out explicitly
+              // alongside the rest of the standard toolbar to bring it back.
+              toolbarButtons: [
+                'microphone', 'camera', 'desktop', 'fullscreen', 'fodeviceselection',
+                'hangup', 'chat', 'raisehand', 'tileview', 'settings', 'videoquality'
+              ]
             }
           });
 
@@ -883,6 +889,7 @@ export default function App() {
 
   // Virtual Meetings RSVPs
   const handleRSVP = async (meetingId: number) => {
+    const alreadyRsvped = myAttendance[meetingId]?.rsvped;
     try {
       const response = await axios.post(`${API_BASE}/meetings/${meetingId}/rsvp`, {
         userId: currentUser?.id
@@ -891,9 +898,13 @@ export default function App() {
 
       // Update in state list
       setMeetings(prev => prev.map(m => m.id === updated.id ? updated : m));
+      setMyAttendance(prev => ({
+        ...prev,
+        [meetingId]: { secondsAttended: prev[meetingId]?.secondsAttended || 0, eligible: prev[meetingId]?.eligible || false, rsvped: true }
+      }));
 
-      // Refresh stats
-      if (currentUser) {
+      // The backend only counts seminarsAttended on a genuinely new RSVP — mirror that here
+      if (!alreadyRsvped && currentUser) {
         setCurrentUser({ ...currentUser, seminarsAttended: currentUser.seminarsAttended + 1 });
         const stored = localStorage.getItem('philsar_user');
         if (stored) {
@@ -903,7 +914,9 @@ export default function App() {
         }
       }
 
-      alert('RSVP registered successfully! We added this meeting to your schedule.');
+      if (!alreadyRsvped) {
+        alert('RSVP registered successfully! You can now join this seminar\'s video room. We added this meeting to your schedule.');
+      }
     } catch (error) {
       console.error(error);
       alert('Error registering RSVP.');
@@ -911,6 +924,14 @@ export default function App() {
   };
 
   const handleJoinMeeting = (meeting: Meeting) => {
+    // The video room only actually embeds for non-Ended meetings — gate those behind
+    // having RSVP'd, so the room isn't open to every logged-in account by default.
+    // Admins (who host/manage these) are exempt.
+    const needsRsvp = meeting.status !== 'Ended' && currentUser?.role !== 'Admin' && !myAttendance[meeting.id]?.rsvped;
+    if (needsRsvp) {
+      alert('Please RSVP to this seminar first — use the RSVP button, then Join Live will be available.');
+      return;
+    }
     setActiveMeeting(meeting);
     setMinutesDraft(meeting.minutes || '');
     setMeetingModalOpen(true);
@@ -2275,6 +2296,10 @@ export default function App() {
                           </div>
                           {session.status === 'Live' ? (
                             <div className="session-join">LIVE</div>
+                          ) : myAttendance[session.id]?.rsvped ? (
+                            <div className="session-join" style={{ color: 'var(--green-mid)', background: 'rgba(45,106,79,0.1)', border: '1px solid rgba(45,106,79,0.25)' }}>
+                              ✓ Registered
+                            </div>
                           ) : (
                             <button
                               className="session-join"
@@ -2421,6 +2446,10 @@ export default function App() {
                         </div>
                         {session.status === 'Live' ? (
                           <div className="session-join">LIVE</div>
+                        ) : myAttendance[session.id]?.rsvped ? (
+                          <div className="session-join" style={{ color: 'var(--green-mid)', background: 'rgba(45,106,79,0.1)', border: '1px solid rgba(45,106,79,0.25)' }}>
+                            ✓ Registered
+                          </div>
                         ) : (
                           <button
                             className="session-join"
@@ -2970,12 +2999,18 @@ export default function App() {
                       {session.status === 'Live' ? (
                         <button className="meeting-action live">Join Live</button>
                       ) : session.status === 'Upcoming' ? (
-                        <button
-                          className="meeting-action upcoming"
-                          onClick={(e) => { e.stopPropagation(); handleRSVP(session.id); }}
-                        >
-                          RSVP
-                        </button>
+                        myAttendance[session.id]?.rsvped ? (
+                          <button className="meeting-action" style={{ background: 'var(--green-pale)', color: 'var(--green-dark)', cursor: 'default' }} disabled>
+                            ✓ Registered
+                          </button>
+                        ) : (
+                          <button
+                            className="meeting-action upcoming"
+                            onClick={(e) => { e.stopPropagation(); handleRSVP(session.id); }}
+                          >
+                            RSVP
+                          </button>
+                        )
                       ) : (
                         <button className="meeting-action ended">Watch Replay</button>
                       )}

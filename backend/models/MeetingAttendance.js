@@ -22,6 +22,10 @@ const MeetingAttendance = sequelize.define('MeetingAttendance', {
     granted: {
         type: DataTypes.BOOLEAN,
         defaultValue: false,
+    },
+    rsvped: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
     }
 }, {
     timestamps: true,
