@@ -1,13 +1,24 @@
 const jwt = require('jsonwebtoken');
+const User = require('../models/User');
 
 // Populates req.user = { id, role } if a valid Bearer token is present. Never
 // rejects the request — used on routes that behave differently for an authenticated
 // caller but must still work for anonymous ones (e.g. public registration).
-const optionalAuth = (req, res, next) => {
+//
+// Also checks the token against the user's passwordChangedAt: a token issued
+// before the user's last password change is treated as invalid, so resetting
+// a (possibly compromised) password actually invalidates sessions instead of
+// leaving up-to-7-day-old tokens usable regardless.
+const optionalAuth = async (req, res, next) => {
     const header = req.headers.authorization;
     if (header && header.startsWith('Bearer ')) {
         try {
-            req.user = jwt.verify(header.slice(7), process.env.JWT_SECRET);
+            const decoded = jwt.verify(header.slice(7), process.env.JWT_SECRET);
+            const user = await User.findByPk(decoded.id, { attributes: ['id', 'role', 'passwordChangedAt'] });
+            const tokenIssuedBeforePasswordChange = user?.passwordChangedAt && decoded.iat * 1000 < Number(user.passwordChangedAt);
+            if (user && !tokenIssuedBeforePasswordChange) {
+                req.user = { id: decoded.id, role: decoded.role };
+            }
         } catch (error) {
             // Invalid/expired token — treat the same as no token rather than erroring.
         }

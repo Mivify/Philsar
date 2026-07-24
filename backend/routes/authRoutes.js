@@ -30,15 +30,24 @@ const forgotPasswordLimiter = rateLimit({
     legacyHeaders: false,
     message: { message: 'Too many reset requests. Please try again in a few minutes.' }
 });
+// Token entropy makes brute-forcing impractical, but every other sensitive
+// auth endpoint has a limiter — this one shouldn't be the exception.
+const resetPasswordLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: 'Too many attempts. Please try again in a few minutes.' }
+});
 
 router.post('/register', registerLimiter, optionalAuth, register);
 router.post('/login', loginLimiter, login);
 router.post('/forgot-password', forgotPasswordLimiter, forgotPassword);
-router.post('/reset-password', resetPassword);
+router.post('/reset-password', resetPasswordLimiter, resetPassword);
 router.get('/profile/:id', requireAuth, getUserById);
 router.put('/profile/:id', requireAuth, updateProfile);
 router.get('/users', requireAdmin, getUsers);
 router.delete('/users/:id', requireAdmin, deleteUser);
-router.post('/upload-avatar', uploadImage);
+router.post('/upload-avatar', requireAuth, uploadImage);
 
 module.exports = router;

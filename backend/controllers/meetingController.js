@@ -21,7 +21,7 @@ const getMeetings = async (req, res) => {
 const rsvpMeeting = async (req, res) => {
     try {
         const { id } = req.params;
-        const { userId } = req.body;
+        const userId = req.user.id;
 
         const meeting = await Meeting.findByPk(id);
         if (!meeting) {
@@ -31,12 +31,10 @@ const rsvpMeeting = async (req, res) => {
         meeting.registrants += 1;
         await meeting.save();
 
-        if (userId) {
-            const user = await User.findByPk(userId);
-            if (user) {
-                user.seminarsAttended += 1;
-                await user.save();
-            }
+        const user = await User.findByPk(userId);
+        if (user) {
+            user.seminarsAttended += 1;
+            await user.save();
         }
 
         res.status(200).json({ message: 'RSVP registered successfully', meeting });
@@ -110,10 +108,7 @@ const deleteMeeting = async (req, res) => {
 const pingAttendance = async (req, res) => {
     try {
         const { id } = req.params;
-        const { userId } = req.body;
-        if (!userId) {
-            return res.status(400).json({ message: 'Missing userId' });
-        }
+        const userId = req.user.id;
 
         const meeting = await Meeting.findByPk(id);
         if (!meeting) {
@@ -138,7 +133,9 @@ const pingAttendance = async (req, res) => {
 
 const getMyAttendance = async (req, res) => {
     try {
-        const { userId } = req.params;
+        // Route keeps a :userId param for URL-shape compatibility with existing
+        // frontend calls, but it's ignored — always scoped to the caller's own id.
+        const userId = req.user.id;
         const rows = await MeetingAttendance.findAll({ where: { userId } });
 
         const map = {};

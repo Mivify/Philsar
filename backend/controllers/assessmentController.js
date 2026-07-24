@@ -38,7 +38,8 @@ Write actionable guidance specific to this cattle's data above.`;
 
 const createAssessment = async (req, res) => {
     try {
-        const { cattleId, age, bcs, daysSinceCalving, estrusIndicators, history, healthStatus, userId } = req.body;
+        const userId = req.user.id;
+        const { cattleId, age, bcs, daysSinceCalving, estrusIndicators, history, healthStatus } = req.body;
 
         if (!cattleId || !age || !bcs || !estrusIndicators || !history || !healthStatus) {
             return res.status(400).json({ message: 'Missing required evaluation fields' });
@@ -77,8 +78,8 @@ const createAssessment = async (req, res) => {
 
         // Auto-register this cattle in the herd registry if it isn't already
         await Cattle.findOrCreate({
-            where: { tagId: cattleId, userId: userId || null },
-            defaults: { userId: userId || null }
+            where: { tagId: cattleId, userId },
+            defaults: { userId }
         });
 
         // Save assessment to database
@@ -93,16 +94,14 @@ const createAssessment = async (req, res) => {
             isReady,
             recommendation,
             guidance,
-            userId: userId || null
+            userId
         });
 
         // Increment user's DSS assessments counter
-        if (userId) {
-            const user = await User.findByPk(userId);
-            if (user) {
-                user.dssAssessmentsRun += 1;
-                await user.save();
-            }
+        const user = await User.findByPk(userId);
+        if (user) {
+            user.dssAssessmentsRun += 1;
+            await user.save();
         }
 
         res.status(201).json({
@@ -116,10 +115,9 @@ const createAssessment = async (req, res) => {
 
 const getAssessments = async (req, res) => {
     try {
-        const { userId } = req.query;
-        const where = userId ? { userId } : {};
+        const userId = req.user.id;
         const assessments = await BreedingAssessment.findAll({
-            where,
+            where: { userId },
             order: [['createdAt', 'DESC']],
             limit: 10
         });
@@ -134,10 +132,7 @@ const getAssessments = async (req, res) => {
 // assessment, since breeding eligibility is what the DSS actually evaluates.
 const getHerdStats = async (req, res) => {
     try {
-        const { userId } = req.query;
-        if (!userId) {
-            return res.status(400).json({ message: 'Missing userId' });
-        }
+        const userId = req.user.id;
 
         const [cattleRows, assessments] = await Promise.all([
             Cattle.findAll({ where: { userId }, attributes: ['tagId', 'createdAt'] }),

@@ -52,8 +52,16 @@ const User = sequelize.define('User', {
         type: DataTypes.STRING,
         allowNull: true,
     },
+    // Stored as epoch milliseconds (not DATETIME) to sidestep MySQL/Node timezone
+    // round-trip mismatches — these two fields are only ever compared against
+    // Date.now()/JWT iat in JS, never displayed, so a plain number is both
+    // simpler and immune to timezone drift.
     resetPasswordExpires: {
-        type: DataTypes.DATE,
+        type: DataTypes.BIGINT,
+        allowNull: true,
+    },
+    passwordChangedAt: {
+        type: DataTypes.BIGINT,
         allowNull: true,
     }
 }, {

@@ -1,12 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const { getModules, getModuleById, createModule, updateModule, deleteModule, uploadImage } = require('../controllers/moduleController');
+const { requireAuth, requireAdmin } = require('../middleware/auth');
 
-router.get('/', getModules);
-router.get('/:id', getModuleById);
-router.post('/', createModule);
-router.put('/:id', updateModule);
-router.delete('/:id', deleteModule);
-router.post('/upload', uploadImage);
+router.get('/', requireAuth, getModules);
+router.get('/:id', requireAuth, getModuleById);
+router.post('/', requireAdmin, createModule);
+router.put('/:id', requireAdmin, updateModule);
+router.delete('/:id', requireAdmin, deleteModule);
+router.post('/upload', requireAuth, uploadImage);
 
 module.exports = router;

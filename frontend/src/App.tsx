@@ -360,6 +360,26 @@ export default function App() {
     }
   }, [meetingModalOpen, activeMeeting]);
 
+  // A 401 means the session is no longer valid server-side (expired, or
+  // invalidated by a password change elsewhere) — nothing previously handled
+  // this globally, so a stale session would just fail silently call after
+  // call instead of cleanly dropping back to the login screen.
+  useEffect(() => {
+    const interceptorId = axios.interceptors.response.use(
+      response => response,
+      error => {
+        if (error.response?.status === 401) {
+          delete axios.defaults.headers.common['Authorization'];
+          localStorage.removeItem('philsar_user');
+          setIsAuthenticated(false);
+          setCurrentUser(null);
+        }
+        return Promise.reject(error);
+      }
+    );
+    return () => axios.interceptors.response.eject(interceptorId);
+  }, []);
+
   useEffect(() => {
     // Check locally stored user on mount
     const storedUser = localStorage.getItem('philsar_user');
@@ -391,8 +411,12 @@ export default function App() {
           localStorage.setItem('philsar_user', JSON.stringify(refreshed));
         })
         .catch(err => console.error('Error refreshing user data:', err));
+
+      // Modules/meetings/etc. are only ever rendered post-login, and several of
+      // the endpoints below now require auth — no reason to fetch them (or risk
+      // a 401) for a logged-out visitor.
+      fetchGlobalData();
     }
-    fetchGlobalData();
 
     // Preload the logo so certificate PDFs can embed it synchronously on click
     const logoImg = new Image();
@@ -633,7 +657,14 @@ export default function App() {
         password: profileForm.password || undefined,
         currentPassword: profileForm.password ? profileForm.currentPassword : undefined
       });
-      const updated = { ...response.data.user, token: currentUser.token };
+      // A password change invalidates the old token server-side, so the response
+      // includes a fresh one in that case — reusing the old token here would leave
+      // the session broken on its very next request.
+      const newToken = response.data.token || currentUser.token;
+      const updated = { ...response.data.user, token: newToken };
+      if (response.data.token) {
+        axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
+      }
       localStorage.setItem('philsar_user', JSON.stringify(updated));
       setCurrentUser(updated);
       alert('Profile updated successfully!');
@@ -1415,8 +1446,9 @@ export default function App() {
   // Password visibility toggle
   const [showPassword, setShowPassword] = useState(false);
 
-  // Render Auth Screen (Gatekeeper)
-  if (!isAuthenticated) {
+  // Render Auth Screen (Gatekeeper) — a reset-password link must show the reset
+  // screen even if this browser already has an active session.
+  if (!isAuthenticated || authView === 'reset') {
     return (
       <div className="auth-wrapper">
         <div className="auth-card">
@@ -1713,7 +1745,7 @@ export default function App() {
                         className="auth-submit-btn"
                         type="button"
                         onClick={() => {
-                          window.history.replaceState({}, '', '/dashboard');
+                          window.history.replaceState({}, '', '/');
                           setAuthView('login');
                         }}
                       >

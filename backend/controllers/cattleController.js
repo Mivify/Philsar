@@ -3,10 +3,7 @@ const BreedingAssessment = require('../models/BreedingAssessment');
 
 const getCattleList = async (req, res) => {
     try {
-        const { userId } = req.query;
-        if (!userId) {
-            return res.status(400).json({ message: 'Missing userId' });
-        }
+        const userId = req.user.id;
 
         const [cattle, assessments] = await Promise.all([
             Cattle.findAll({ where: { userId }, order: [['createdAt', 'ASC']] }),
@@ -39,10 +36,8 @@ const getCattleList = async (req, res) => {
 
 const createCattle = async (req, res) => {
     try {
-        const { tagId, breed, notes, userId } = req.body;
-        if (!userId) {
-            return res.status(400).json({ message: 'Missing userId' });
-        }
+        const userId = req.user.id;
+        const { tagId, breed, notes } = req.body;
         const trimmedTagId = tagId ? String(tagId).trim() : '';
         if (!trimmedTagId) {
             return res.status(400).json({ message: 'Cattle ID is required' });
@@ -69,10 +64,8 @@ const createCattle = async (req, res) => {
 const updateCattle = async (req, res) => {
     try {
         const { id } = req.params;
-        const { tagId, breed, notes, userId } = req.body;
-        if (!userId) {
-            return res.status(400).json({ message: 'Missing userId' });
-        }
+        const userId = req.user.id;
+        const { tagId, breed, notes } = req.body;
 
         const cattle = await Cattle.findOne({ where: { id, userId } });
         if (!cattle) {
@@ -110,10 +103,7 @@ const updateCattle = async (req, res) => {
 const deleteCattle = async (req, res) => {
     try {
         const { id } = req.params;
-        const { userId } = req.query;
-        if (!userId) {
-            return res.status(400).json({ message: 'Missing userId' });
-        }
+        const userId = req.user.id;
 
         const cattle = await Cattle.findOne({ where: { id, userId } });
         if (!cattle) {

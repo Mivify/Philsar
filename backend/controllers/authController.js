@@ -117,12 +117,15 @@ const updateProfile = async (req, res) => {
         }
 
         // Password change handling
+        let passwordChanged = false;
         if (password) {
             const currentMatches = await bcrypt.compare(currentPassword || '', user.password);
             if (!currentMatches) {
                 return res.status(401).json({ message: 'Incorrect current password' });
             }
             user.password = await bcrypt.hash(password, 10);
+            user.passwordChangedAt = Date.now();
+            passwordChanged = true;
         }
 
         if (name) user.name = name;
@@ -141,6 +144,11 @@ const updateProfile = async (req, res) => {
 
         res.status(200).json({
             message: 'Profile updated successfully',
+            // Changing the password invalidates every previously issued token
+            // (see optionalAuth's passwordChangedAt check) — including whichever
+            // one this very request used — so the caller needs a new one to stay
+            // logged in without an unexpected 401 on their next request.
+            ...(passwordChanged ? { token: generateToken(user) } : {}),
             user: {
                 id: user.id,
                 name: user.name,
@@ -232,7 +240,7 @@ const forgotPassword = async (req, res) => {
         if (user) {
             const rawToken = crypto.randomBytes(32).toString('hex');
             user.resetPasswordTokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-            user.resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000);
+            user.resetPasswordExpires = Date.now() + 60 * 60 * 1000;
             await user.save();
 
             // Falls back to the actual request host if BACKEND_URL isn't configured,
@@ -265,13 +273,14 @@ const resetPassword = async (req, res) => {
         const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
         const user = await User.findOne({ where: { resetPasswordTokenHash: tokenHash } });
 
-        if (!user || !user.resetPasswordExpires || user.resetPasswordExpires < new Date()) {
+        if (!user || !user.resetPasswordExpires || Number(user.resetPasswordExpires) < Date.now()) {
             return res.status(400).json({ message: 'Invalid or expired reset link' });
         }
 
         user.password = await bcrypt.hash(newPassword, 10);
         user.resetPasswordTokenHash = null;
         user.resetPasswordExpires = null;
+        user.passwordChangedAt = Date.now();
         await user.save();
 
         res.status(200).json({ message: 'Password reset successfully' });

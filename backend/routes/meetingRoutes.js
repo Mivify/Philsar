@@ -12,16 +12,20 @@ const {
     grantCertificate,
     revokeCertificate
 } = require('../controllers/meetingController');
+const { requireAuth, requireAdmin } = require('../middleware/auth');
 
-router.get('/', getMeetings);
-router.get('/attendance/:userId', getMyAttendance);
-router.get('/:id/attendance', getMeetingAttendance);
-router.post('/:id/rsvp', rsvpMeeting);
-router.post('/:id/attendance/ping', pingAttendance);
-router.post('/:id/attendance/grant', grantCertificate);
-router.post('/:id/attendance/revoke', revokeCertificate);
-router.post('/', createMeeting);
-router.put('/:id', updateMeeting);
-router.delete('/:id', deleteMeeting);
+// Any logged-in user acting on their own behalf
+router.get('/', requireAuth, getMeetings);
+router.get('/attendance/:userId', requireAuth, getMyAttendance);
+router.post('/:id/rsvp', requireAuth, rsvpMeeting);
+router.post('/:id/attendance/ping', requireAuth, pingAttendance);
+
+// Admin-only: global-resource writes, or acting on another user's data
+router.get('/:id/attendance', requireAdmin, getMeetingAttendance);
+router.post('/:id/attendance/grant', requireAdmin, grantCertificate);
+router.post('/:id/attendance/revoke', requireAdmin, revokeCertificate);
+router.post('/', requireAdmin, createMeeting);
+router.put('/:id', requireAdmin, updateMeeting);
+router.delete('/:id', requireAdmin, deleteMeeting);
 
 module.exports = router;
