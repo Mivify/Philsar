@@ -572,6 +572,13 @@ export default function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
+  // Every tab is a sibling view toggled via display:none/block (not
+  // mounted/unmounted), so the browser scroll position otherwise carries
+  // over from whatever page was open before — reset it on every navigation.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [activeTab]);
+
   // Fetch all necessary data from the backend APIs
   // Cattle/DSS data is private per user, so we read the userId fresh from localStorage
   // rather than the `currentUser` closure — several call sites invoke this in the same
