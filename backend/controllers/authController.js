@@ -78,6 +78,10 @@ const login = async (req, res) => {
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
+        if (user.status === 'Inactive') {
+            return res.status(403).json({ message: 'This account has been deactivated. Contact an administrator.' });
+        }
+
         // Return full user details for profile state
         res.status(200).json({
             message: 'Login successful',

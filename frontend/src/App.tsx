@@ -23,7 +23,9 @@ import {
   Check,
   Upload,
   Award,
-  Pencil
+  Pencil,
+  Ban,
+  UserCheck
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import axios from 'axios';
@@ -1341,6 +1343,22 @@ export default function App() {
       showToast(error.response?.data?.message || 'Error adding user.', 'error');
     } finally {
       setSavingUser(false);
+    }
+  };
+
+  const handleToggleUserStatus = async (user: User) => {
+    const activating = user.status === 'Inactive';
+    if (!activating && !(await confirmDelete(
+      `Deactivate ${user.name}? They won't be able to log in until reactivated.`,
+      'Deactivate this account?'
+    ))) return;
+    try {
+      const newStatus = activating ? 'Active' : 'Inactive';
+      await axios.put(`${API_BASE}/auth/profile/${user.id}`, { status: newStatus });
+      setAllUsers(prev => prev.map(u => u.id === user.id ? { ...u, status: newStatus } : u));
+      showToast(`${user.name} is now ${newStatus.toLowerCase()}.`, 'success');
+    } catch (error: any) {
+      showToast(error.response?.data?.message || 'Error updating account status.', 'error');
     }
   };
 
@@ -3528,6 +3546,11 @@ export default function App() {
                                   </span>
                                 </td>
                                 <td>
+                                  <button className="table-action" onClick={() => handleToggleUserStatus(u)} title={u.status === 'Active' ? 'Deactivate' : 'Activate'}>
+                                    {u.status === 'Active'
+                                      ? <Ban size={14} style={{ color: '#d48806' }} />
+                                      : <UserCheck size={14} style={{ color: '#2D6A4F' }} />}
+                                  </button>
                                   <button className="table-action" onClick={() => handleDeleteUser(u.id)}>
                                     <Trash size={14} style={{ color: '#cf1322' }} />
                                   </button>
