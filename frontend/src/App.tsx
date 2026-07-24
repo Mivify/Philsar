@@ -64,6 +64,11 @@ interface Meeting {
   recordingUrl: string;
 }
 
+interface LandingImage {
+  id: number;
+  imageUrl: string;
+}
+
 interface CattleRecord {
   id: number;
   tagId: string;
@@ -156,18 +161,18 @@ function parseLessons(content: string): { title: string; content: string }[] {
   return lessons;
 }
 
-type Tab = 'dashboard' | 'learning' | 'chatbot' | 'dss' | 'meetings' | 'profile' | 'admin';
-const VALID_TABS: Tab[] = ['dashboard', 'learning', 'chatbot', 'dss', 'meetings', 'profile', 'admin'];
+type Tab = 'home' | 'dashboard' | 'learning' | 'chatbot' | 'dss' | 'meetings' | 'profile' | 'admin';
+const VALID_TABS: Tab[] = ['home', 'dashboard', 'learning', 'chatbot', 'dss', 'meetings', 'profile', 'admin'];
 
 function tabFromPath(pathname: string): Tab {
   const path = pathname.replace(/^\//, '');
-  return (VALID_TABS as string[]).includes(path) ? (path as Tab) : 'dashboard';
+  return (VALID_TABS as string[]).includes(path) ? (path as Tab) : 'home';
 }
 
 export default function App() {
   // Navigation & UI States
   const [activeTab, setActiveTab] = useState<Tab>(() => tabFromPath(window.location.pathname));
-  const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'modules' | 'meetings' | 'settings'>('users');
+  const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'modules' | 'meetings' | 'home' | 'settings'>('users');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedLessonIndex, setSelectedLessonIndex] = useState<number>(0);
   const [completedLessonsMap, setCompletedLessonsMap] = useState<Record<number, number[]>>({});
@@ -185,6 +190,8 @@ export default function App() {
   const [selectedModule, setSelectedModule] = useState<LearningModule | null>(null);
   const [editingModule, setEditingModule] = useState<LearningModule | null>(null);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [landingImages, setLandingImages] = useState<LandingImage[]>([]);
+  const [heroIndex, setHeroIndex] = useState(0);
   const [myAttendance, setMyAttendance] = useState<Record<number, { secondsAttended: number; eligible: boolean }>>({});
   const attendanceIntervalRef = useRef<number | null>(null);
   const logoImgRef = useRef<HTMLImageElement | null>(null);
@@ -285,6 +292,10 @@ export default function App() {
   const [uploadingContentImage, setUploadingContentImage] = useState(false);
   const contentFileInputRef = useRef<HTMLInputElement>(null);
   const contentTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Landing Page Background Image Upload State
+  const [uploadingLandingImage, setUploadingLandingImage] = useState(false);
+  const landingFileInputRef = useRef<HTMLInputElement>(null);
 
   // Loaders
   const [dataLoading, setDataLoading] = useState(false);
@@ -441,6 +452,16 @@ export default function App() {
     }
   }, [settings.certBackgroundImage]);
 
+  // Auto-advance the Home page hero background through whatever images the
+  // admin has uploaded — a no-op while there are 0-1 images.
+  useEffect(() => {
+    if (landingImages.length < 2) return;
+    const interval = setInterval(() => {
+      setHeroIndex(i => (i + 1) % landingImages.length);
+    }, 6000);
+    return () => clearInterval(interval);
+  }, [landingImages.length]);
+
   // Keep activeTab in sync with browser back/forward navigation
   useEffect(() => {
     const handlePopState = () => {
@@ -462,15 +483,17 @@ export default function App() {
       const storedUser = localStorage.getItem('philsar_user');
       const userId = storedUser ? JSON.parse(storedUser).id : null;
 
-      const [modulesRes, meetingsRes, settingsRes] = await Promise.all([
+      const [modulesRes, meetingsRes, settingsRes, landingImagesRes] = await Promise.all([
         axios.get(`${API_BASE}/modules`),
         axios.get(`${API_BASE}/meetings`),
-        axios.get(`${API_BASE}/settings`)
+        axios.get(`${API_BASE}/settings`),
+        axios.get(`${API_BASE}/landing-images`)
       ]);
 
       setModules(modulesRes.data);
       setMeetings(meetingsRes.data);
       setSettings(settingsRes.data);
+      setLandingImages(landingImagesRes.data);
 
       if (userId) {
         const [assessmentsRes, herdStatsRes, attendanceRes] = await Promise.all([
@@ -657,7 +680,7 @@ export default function App() {
     setIsAuthenticated(false);
     setCurrentUser(null);
     setCompletedLessonsMap({});
-    setActiveTab('dashboard');
+    setActiveTab('home');
     // Client-only state with no per-user backend fetch — must be reset explicitly
     // so the next account to log in in this tab doesn't inherit it.
     setChatMessages([{ role: 'assistant', content: 'Hello! I am **PHILSARBot**, your AI assistant for cattle reproductive management. I can help you understand estrus cycles, AI procedures, breeding techniques, and more. What would you like to know today?' }]);
@@ -1318,6 +1341,69 @@ export default function App() {
     }
   };
 
+  const handleLandingImageUpload = async (file: File) => {
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file (PNG, JPG, JPEG, WEBP, GIF).');
+      return;
+    }
+
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) {
+      alert('Image size exceeds 5MB limit. Please choose a smaller image.');
+      return;
+    }
+
+    setUploadingLandingImage(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64Data = reader.result as string;
+        try {
+          const uploadRes = await axios.post(`${API_BASE}/modules/upload`, {
+            base64Data,
+            fileName: file.name
+          });
+          const addRes = await axios.post(`${API_BASE}/landing-images`, { imageUrl: uploadRes.data.url });
+          setLandingImages(prev => [...prev, addRes.data.image]);
+        } catch (uploadError: any) {
+          console.error('Landing image upload error:', uploadError);
+          alert(uploadError.response?.data?.message || 'Failed to upload image.');
+        } finally {
+          setUploadingLandingImage(false);
+        }
+      };
+      reader.onerror = () => {
+        alert('Error reading the image file.');
+        setUploadingLandingImage(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      console.error('Landing image FileReader error:', error);
+      alert('Error processing the file.');
+      setUploadingLandingImage(false);
+    }
+  };
+
+  const handleLandingFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handleLandingImageUpload(e.target.files[0]);
+      e.target.value = '';
+    }
+  };
+
+  const handleDeleteLandingImage = async (id: number) => {
+    if (!confirm('Remove this background photo from the Home page rotation?')) return;
+    try {
+      await axios.delete(`${API_BASE}/landing-images/${id}`);
+      setLandingImages(prev => prev.filter(img => img.id !== id));
+    } catch (error) {
+      console.error('Error deleting landing image:', error);
+      alert('Error removing image.');
+    }
+  };
+
   const handleAddModule = async (e: React.FormEvent) => {
     e.preventDefault();
     setSavingModule(true);
@@ -1874,6 +1960,14 @@ export default function App() {
           <div className="nav-section-label">Main</div>
 
           <button
+            className={`nav-item ${activeTab === 'home' ? 'active' : ''}`}
+            onClick={() => handleTabNavigate('home')}
+          >
+            <div className="nav-icon">🏠</div>
+            Home
+          </button>
+
+          <button
             className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
             onClick={() => handleTabNavigate('dashboard')}
           >
@@ -1973,6 +2067,155 @@ export default function App() {
 
         {/* VIEW CONDITIONAL RENDERING */}
         <div className="page-content">
+
+          {/* ── VIEW: HOME ── */}
+          {activeTab === 'home' && (
+            <div className="view active">
+              <div className="home-hero">
+                {landingImages.length > 0 ? (
+                  landingImages.map((img, i) => (
+                    <div
+                      key={img.id}
+                      className="home-hero-bg"
+                      style={{
+                        backgroundImage: `url(${img.imageUrl})`,
+                        opacity: (heroIndex % landingImages.length) === i ? 1 : 0
+                      }}
+                    />
+                  ))
+                ) : (
+                  <div className="home-hero-bg home-hero-bg-fallback" style={{ opacity: 1 }} />
+                )}
+                <div className="home-hero-overlay" />
+                <div className="home-hero-content">
+                  <div className="home-hero-eyebrow">PHILSAR Cattle Reproductive Portal</div>
+                  <h1 className="home-hero-title">Smarter Breeding Decisions, Healthier Herds</h1>
+                  <p className="home-hero-subtitle">
+                    Data-driven decision support, structured e-learning, and virtual seminars — built for
+                    Filipino cattle farmers, livestock managers, and veterinary extension workers.
+                  </p>
+                  <div className="home-hero-actions">
+                    <button className="home-hero-btn primary" onClick={() => handleTabNavigate('dss')}>
+                      🧬 Run Breeding Assessment
+                    </button>
+                    <button className="home-hero-btn" onClick={() => handleTabNavigate('learning')}>
+                      📚 Explore Learning Modules
+                    </button>
+                  </div>
+                </div>
+                {landingImages.length > 1 && (
+                  <div className="home-hero-dots">
+                    {landingImages.map((img, i) => (
+                      <button
+                        key={img.id}
+                        className={`home-hero-dot ${(heroIndex % landingImages.length) === i ? 'active' : ''}`}
+                        onClick={() => setHeroIndex(i)}
+                        aria-label={`Show background ${i + 1}`}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="home-section">
+                <div className="page-header" style={{ marginBottom: '16px' }}>
+                  <div className="page-title" style={{ fontSize: '20px' }}>Your Herd at a Glance</div>
+                </div>
+                <div className="stats-grid">
+                  <div className="stat-card amber" style={{ cursor: 'pointer' }} onClick={openCattleModal}>
+                    <div className="stat-icon">🐄</div>
+                    <div className="stat-value">{herdStats.totalCattle}</div>
+                    <div className="stat-label">Total Cattle</div>
+                  </div>
+                  <div className="stat-card green">
+                    <div className="stat-icon">🌿</div>
+                    <div className="stat-value">{herdStats.readyForBreeding}</div>
+                    <div className="stat-label">Ready for Breeding</div>
+                  </div>
+                  <div className="stat-card brown">
+                    <div className="stat-icon">📖</div>
+                    <div className="stat-value">{currentUser?.modulesCompleted || 0}</div>
+                    <div className="stat-label">Modules Completed</div>
+                  </div>
+                  <div className="stat-card sage">
+                    <div className="stat-icon">🎓</div>
+                    <div className="stat-value">{currentUser?.seminarsAttended || 0}</div>
+                    <div className="stat-label">Seminars Attended</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="home-section">
+                <div className="page-header" style={{ marginBottom: '16px' }}>
+                  <div className="page-title" style={{ fontSize: '20px' }}>Quick Access</div>
+                </div>
+                <div className="quick-access-grid">
+                  <div className="quick-access-card" onClick={() => handleTabNavigate('learning')}>
+                    <div className="quick-access-icon">📚</div>
+                    <div className="quick-access-title">Learning Center</div>
+                    <div className="quick-access-desc">Structured courses on cattle reproductive anatomy and breeding.</div>
+                  </div>
+                  <div className="quick-access-card" onClick={() => handleTabNavigate('dss')}>
+                    <div className="quick-access-icon">🧬</div>
+                    <div className="quick-access-title">Decision Support</div>
+                    <div className="quick-access-desc">AI-assisted breeding readiness assessment for your herd.</div>
+                  </div>
+                  <div className="quick-access-card" onClick={() => handleTabNavigate('chatbot')}>
+                    <div className="quick-access-icon">🤖</div>
+                    <div className="quick-access-title">AI Assistant</div>
+                    <div className="quick-access-desc">Ask PHILSARBot about estrus cycles, AI procedures, and more.</div>
+                  </div>
+                  <div className="quick-access-card" onClick={() => handleTabNavigate('meetings')}>
+                    <div className="quick-access-icon">🎥</div>
+                    <div className="quick-access-title">Virtual Meetings</div>
+                    <div className="quick-access-desc">Join live seminars and connect with extension workers.</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="home-section">
+                <div className="card">
+                  <div className="card-header">
+                    <div className="card-title">Upcoming Seminars</div>
+                    <button className="card-action" onClick={() => handleTabNavigate('meetings')}>See all</button>
+                  </div>
+                  <div className="card-body">
+                    {meetings.filter(m => m.status !== 'Ended').length === 0 ? (
+                      <div style={{ padding: '20px 4px', color: 'var(--text-muted)', fontSize: '13px' }}>
+                        No upcoming seminars scheduled right now.
+                      </div>
+                    ) : (
+                      meetings.filter(m => m.status !== 'Ended').slice(0, 3).map(session => (
+                        <div key={session.id} className="session-item" onClick={() => handleJoinMeeting(session)}>
+                          <div className="session-time-block">
+                            <div className="session-time">{session.dateTime.split(', ')[1] || '10:00'}</div>
+                            <div className="session-date" style={{ textTransform: 'uppercase' }}>
+                              {session.dateTime.split(', ')[0] || 'TODAY'}
+                            </div>
+                          </div>
+                          <div className="session-info">
+                            <div className="session-title">{session.title}</div>
+                            <div className="session-host">{session.host}</div>
+                          </div>
+                          {session.status === 'Live' ? (
+                            <div className="session-join">LIVE</div>
+                          ) : (
+                            <button
+                              className="session-join"
+                              style={{ color: 'var(--amber)', background: 'rgba(48,92,222,0.08)', border: '1px solid rgba(48,92,222,0.2)' }}
+                              onClick={(e) => { e.stopPropagation(); handleRSVP(session.id); }}
+                            >
+                              RSVP
+                            </button>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* ── VIEW: DASHBOARD ── */}
           {activeTab === 'dashboard' && (
@@ -2077,7 +2320,7 @@ export default function App() {
                         ) : (
                           <button
                             className="session-join"
-                            style={{ color: 'var(--amber)', background: 'rgba(200,131,42,0.08)', border: '1px solid rgba(200,131,42,0.2)' }}
+                            style={{ color: 'var(--amber)', background: 'rgba(48,92,222,0.08)', border: '1px solid rgba(48,92,222,0.2)' }}
                             onClick={(e) => { e.stopPropagation(); handleRSVP(session.id); }}
                           >
                             RSVP
@@ -2231,7 +2474,7 @@ export default function App() {
                         </div>
                         <div className="lesson-content-area">
                           <div className="lesson-main">
-                            <div className="lesson-tag" style={{ background: 'rgba(200,131,42,0.1)', color: 'var(--amber)' }}>
+                            <div className="lesson-tag" style={{ background: 'rgba(48,92,222,0.1)', color: 'var(--amber)' }}>
                               {selectedModule.title} · Lesson {selectedLessonIndex + 1} of {parsedLessons.length}
                             </div>
                             <div className="lesson-title">{parsedLessons[selectedLessonIndex]?.title}</div>
@@ -2556,7 +2799,7 @@ export default function App() {
                         </ul>
                       </div>
 
-                      <div style={{ background: 'rgba(200,131,42,0.07)', border: '1px solid rgba(200,131,42,0.2)', borderRadius: '8px', padding: '14px' }}>
+                      <div style={{ background: 'rgba(48,92,222,0.07)', border: '1px solid rgba(48,92,222,0.2)', borderRadius: '8px', padding: '14px' }}>
                         <div className="toc-title" style={{ marginBottom: '8px' }}>AI-Generated Breeding Guidance</div>
                         <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.6' }}>
                           {dssResult.guidance}
@@ -2903,6 +3146,12 @@ export default function App() {
                   onClick={() => setActiveAdminTab('meetings')}
                 >
                   🎥 Meetings
+                </button>
+                <button
+                  className={`admin-tab ${activeAdminTab === 'home' ? 'active' : ''}`}
+                  onClick={() => setActiveAdminTab('home')}
+                >
+                  🏠 Home Page
                 </button>
                 <button
                   className={`admin-tab ${activeAdminTab === 'settings' ? 'active' : ''}`}
@@ -3433,6 +3682,67 @@ export default function App() {
                           </tbody>
                         </table>
                       </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB CONTENT: HOME PAGE BACKGROUNDS */}
+              {activeAdminTab === 'home' && (
+                <div id="admin-home">
+                  <div className="card">
+                    <div className="card-header">
+                      <div className="card-title">Home Page Background Photos</div>
+                    </div>
+                    <div className="card-body">
+                      <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '18px' }}>
+                        These photos rotate through the background of the Home page hero banner. Upload as many
+                        as you like — with 2 or more, they'll crossfade automatically every few seconds.
+                      </p>
+
+                      <input
+                        ref={landingFileInputRef}
+                        type="file"
+                        accept="image/*"
+                        style={{ display: 'none' }}
+                        onChange={handleLandingFileChange}
+                      />
+                      <button
+                        type="button"
+                        className="submit-btn"
+                        style={{ width: 'auto', display: 'inline-flex', alignItems: 'center', gap: '8px', marginBottom: '20px' }}
+                        onClick={() => landingFileInputRef.current?.click()}
+                        disabled={uploadingLandingImage}
+                      >
+                        {uploadingLandingImage ? <><Loader2 size={16} className="animate-spin" /> Uploading…</> : <><Upload size={16} /> Upload Background Photo</>}
+                      </button>
+
+                      {landingImages.length === 0 ? (
+                        <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px', background: 'var(--cream)', borderRadius: 'var(--radius-sm)' }}>
+                          No background photos yet — the Home page will show a plain gradient until you upload some.
+                        </div>
+                      ) : (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '14px' }}>
+                          {landingImages.map(img => (
+                            <div key={img.id} style={{ position: 'relative', borderRadius: 'var(--radius-sm)', overflow: 'hidden', border: '1px solid var(--border)', aspectRatio: '16 / 10' }}>
+                              <img src={img.imageUrl} alt="Home background" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteLandingImage(img.id)}
+                                title="Remove"
+                                style={{
+                                  position: 'absolute', top: '8px', right: '8px',
+                                  width: '28px', height: '28px', borderRadius: '50%',
+                                  background: 'rgba(0,0,0,0.6)', color: 'white', border: 'none',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
+                                }}
+                              >
+                                <Trash size={13} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
