@@ -428,6 +428,14 @@ export default function App() {
               .then(res => {
                 lastPingAt = now;
                 setMyAttendance(prev => ({ ...prev, [meetingId]: res.data }));
+                // The host ending the seminar doesn't push to already-connected
+                // participants — this heartbeat is the only channel checking back in,
+                // so it doubles as the signal to disconnect everyone still in the call.
+                if (res.data.status === 'Ended') {
+                  showToast('This seminar has been ended by the host.', 'info');
+                  setMeetings(prev => prev.map(m => m.id === meetingId ? { ...m, status: 'Ended' } : m));
+                  setActiveMeeting(prev => (prev && prev.id === meetingId) ? { ...prev, status: 'Ended' } : prev);
+                }
               })
               .catch(err => console.error('Attendance ping failed:', err));
           };
