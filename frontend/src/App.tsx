@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import axios from 'axios';
+import Swal from 'sweetalert2';
 import philsarLogo from './assets/logo-transparent.png';
 
 // Interfaces mapping database entities
@@ -179,6 +180,27 @@ function tabFromPath(pathname: string): Tab {
 const CHAT_GREETING: { role: 'assistant'; content: string } = {
   role: 'assistant',
   content: 'Hello! I am **PHILSARBot**, your AI assistant for cattle reproductive management. I can help you understand estrus cycles, AI procedures, breeding techniques, and more. What would you like to know today?'
+};
+
+// Themed replacement for window.confirm() on destructive actions — styled to match
+// the portal's Royal Blue theme instead of the browser's default confirm dialog.
+const confirmDelete = (text: string, title = 'Are you sure?'): Promise<boolean> => {
+  return Swal.fire({
+    title,
+    text,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: 'Yes, delete it',
+    cancelButtonText: 'Cancel',
+    confirmButtonColor: '#305CDE',
+    cancelButtonColor: '#6B7590',
+    reverseButtons: true,
+    customClass: {
+      popup: 'swal-philsar-popup',
+      title: 'swal-philsar-title',
+      htmlContainer: 'swal-philsar-text'
+    }
+  }).then(result => result.isConfirmed);
 };
 
 export default function App() {
@@ -1207,7 +1229,7 @@ export default function App() {
   };
 
   const handleDeleteCattle = async (id: number, tagId: string) => {
-    if (!confirm(`Remove ${tagId} from the herd registry? Past DSS assessments for this cattle are kept.`)) return;
+    if (!(await confirmDelete(`Remove ${tagId} from the herd registry? Past DSS assessments for this cattle are kept.`))) return;
     try {
       await axios.delete(`${API_BASE}/cattle/${id}`, { params: { userId: currentUser?.id } });
       setCattleList(prev => prev.filter(c => c.id !== id));
@@ -1290,7 +1312,7 @@ export default function App() {
   };
 
   const handleDeleteUser = async (userId: number) => {
-    if (!confirm('Are you sure you want to remove this user?')) return;
+    if (!(await confirmDelete('Are you sure you want to remove this user?'))) return;
     try {
       await axios.delete(`${API_BASE}/auth/users/${userId}`);
       setAllUsers(prev => prev.filter(u => u.id !== userId));
@@ -1496,7 +1518,7 @@ export default function App() {
   };
 
   const handleDeleteLandingImage = async (id: number) => {
-    if (!confirm('Remove this background photo from the Home page rotation?')) return;
+    if (!(await confirmDelete('Remove this background photo from the Home page rotation?'))) return;
     try {
       await axios.delete(`${API_BASE}/landing-images/${id}`);
       setLandingImages(prev => prev.filter(img => img.id !== id));
@@ -1589,7 +1611,7 @@ export default function App() {
   };
 
   const handleDeleteAnnouncement = async (id: number) => {
-    if (!confirm('Delete this announcement from the Home page?')) return;
+    if (!(await confirmDelete('Delete this announcement from the Home page?'))) return;
     try {
       await axios.delete(`${API_BASE}/announcements/${id}`);
       setAnnouncements(prev => prev.filter(a => a.id !== id));
@@ -1623,7 +1645,7 @@ export default function App() {
   };
 
   const handleDeleteModule = async (moduleId: number) => {
-    if (!confirm('Are you sure you want to delete this module? This will remove all its lessons.')) return;
+    if (!(await confirmDelete('Are you sure you want to delete this module? This will remove all its lessons.'))) return;
     try {
       await axios.delete(`${API_BASE}/modules/${moduleId}`);
       alert('Module deleted successfully!');
@@ -1657,7 +1679,7 @@ export default function App() {
   };
 
   const handleDeleteMeeting = async (meetingId: number) => {
-    if (!confirm('Are you sure you want to cancel this meeting?')) return;
+    if (!(await confirmDelete('Are you sure you want to cancel this meeting?'))) return;
     try {
       await axios.delete(`${API_BASE}/meetings/${meetingId}`);
       setMeetings(prev => prev.filter(m => m.id !== meetingId));

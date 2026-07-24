@@ -1968,4 +1968,25 @@ body {
   to { transform: rotate(360deg); }
 }
 
+/* ─── SWEETALERT2 THEME OVERRIDES ─── */
+.swal-philsar-popup {
+  font-family: 'DM Sans', sans-serif;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+.swal-philsar-title {
+  font-family: 'Playfair Display', serif;
+  color: var(--text-primary);
+}
+
+.swal-philsar-text {
+  color: var(--text-muted);
+}
+
+.swal2-popup .swal2-styled.swal2-confirm:focus,
+.swal2-popup .swal2-styled.swal2-cancel:focus {
+  box-shadow: 0 0 0 3px rgba(48,92,222,0.25);
+}
+
 
