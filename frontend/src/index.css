@@ -1,26 +1,26 @@
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
 
 :root {
-  --cream: #F5F0E8;
-  --warm-white: #FDFAF4;
-  --brown-dark: #2C1A0E;
-  --brown-mid: #5C3D1E;
-  --brown-light: #8B5E3C;
-  --amber: #C8832A;
-  --amber-light: #E8A84A;
-  --amber-pale: #F2D499;
+  --cream: #EEF2FC;
+  --warm-white: #FAFBFF;
+  --brown-dark: #16213E;
+  --brown-mid: #2A3F73;
+  --brown-light: #5C74B8;
+  --amber: #305CDE;
+  --amber-light: #5B7FE8;
+  --amber-pale: #D6E0FA;
   --green-dark: #1A3A2A;
   --green-mid: #2D6A4F;
   --green-light: #52B788;
   --green-pale: #B7E4C7;
   --sage: #74A57F;
-  --text-primary: #2C1A0E;
-  --text-secondary: #5C3D1E;
-  --text-muted: #8B7355;
-  --border: rgba(44,26,14,0.12);
-  --shadow-sm: 0 2px 12px rgba(44,26,14,0.08);
-  --shadow-md: 0 8px 32px rgba(44,26,14,0.12);
-  --shadow-lg: 0 24px 64px rgba(44,26,14,0.16);
+  --text-primary: #16213E;
+  --text-secondary: #3D4A6B;
+  --text-muted: #6B7590;
+  --border: rgba(22,33,62,0.12);
+  --shadow-sm: 0 2px 12px rgba(22,33,62,0.08);
+  --shadow-md: 0 8px 32px rgba(22,33,62,0.12);
+  --shadow-lg: 0 24px 64px rgba(22,33,62,0.16);
   --radius: 16px;
   --radius-sm: 8px;
   --radius-lg: 24px;
@@ -1334,7 +1334,7 @@ body {
 /* Left branding panel — same brown-dark family as the page background */
 .auth-left {
   flex: 1 1 46%;
-  background: linear-gradient(160deg, var(--brown-dark) 0%, #190E07 100%);
+  background: linear-gradient(160deg, var(--brown-dark) 0%, #0A1226 100%);
   color: var(--cream);
   padding: 48px 44px;
   display: flex;

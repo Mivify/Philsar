@@ -207,8 +207,8 @@ export default function App() {
     certTitleText: 'Certificate of Attendance',
     certBodyText: 'has successfully attended the virtual seminar',
     certClosingText: 'PHILSAR Cattle Reproductive Portal',
-    certPrimaryColor: '#8B5E3C',
-    certAccentColor: '#D4A574',
+    certPrimaryColor: '#305CDE',
+    certAccentColor: '#7B93E0',
     certBackgroundImage: ''
   });
 
@@ -943,8 +943,8 @@ export default function App() {
     if (!recipientName) return;
 
     const style = styleOverride || settings;
-    const [pr, pg, pb] = hexToRgb(style.certPrimaryColor || '#8B5E3C');
-    const [ar, ag, ab] = hexToRgb(style.certAccentColor || '#D4A574');
+    const [pr, pg, pb] = hexToRgb(style.certPrimaryColor || '#305CDE');
+    const [ar, ag, ab] = hexToRgb(style.certAccentColor || '#7B93E0');
 
     // Loaded on demand — jsPDF (plus its html2canvas dependency) is only needed here,
     // so keeping it out of the main bundle noticeably shrinks everyone's initial load.
@@ -3617,7 +3617,7 @@ export default function App() {
         >
           <div
             style={{
-              background: 'var(--brown-dark, #2b1d16)',
+              background: 'var(--brown-dark, #16213e)',
               width: '900px',
               maxWidth: '95vw',
               maxHeight: '90vh',
@@ -3631,7 +3631,7 @@ export default function App() {
             onClick={e => e.stopPropagation()}
           >
             <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.15)' }}>
-              <div style={{ color: 'var(--cream, #f5f0e8)', fontWeight: 600, fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ color: 'var(--cream, #eef2fc)', fontWeight: 600, fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span style={{ color: '#ff4d4f', fontSize: '12px' }}>🔴</span> {activeMeeting.title}
               </div>
               <button
@@ -3717,7 +3717,7 @@ export default function App() {
             {activeMeeting.status === 'Ended' && (
               <div style={{ padding: '18px 24px', borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.08)', maxHeight: '260px', overflowY: 'auto' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                  <div style={{ color: 'var(--cream, #f5f0e8)', fontWeight: 700, fontSize: '14px' }}>📝 Meeting Minutes</div>
+                  <div style={{ color: 'var(--cream, #eef2fc)', fontWeight: 700, fontSize: '14px' }}>📝 Meeting Minutes</div>
                   {activeMeeting.minutes && (
                     <button
                       onClick={() => handleDownloadMinutes(activeMeeting)}
