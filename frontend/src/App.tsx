@@ -3569,7 +3569,7 @@ export default function App() {
               {/* TAB CONTENT: MODULES */}
               {activeAdminTab === 'modules' && (
                 <div id="admin-modules">
-                  <div className="grid-2 admin-form-grid">
+                  <div className="grid-2">
                     <div className="card" style={{ height: 'fit-content' }}>
                       <div className="card-header">
                         <div className="card-title">
