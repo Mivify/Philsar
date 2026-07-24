@@ -1314,7 +1314,7 @@ body {
 /* ─── AUTH VIEW ─── */
 .auth-wrapper {
   min-height: 100vh;
-  background: var(--brown-dark);
+  background: radial-gradient(ellipse at center, #F4F7FD 0%, #DCE4F5 100%);
   display: flex;
   align-items: center;
   justify-content: center;
