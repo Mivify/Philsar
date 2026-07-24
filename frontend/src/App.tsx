@@ -203,6 +203,24 @@ const confirmDelete = (text: string, title = 'Are you sure?'): Promise<boolean> 
   }).then(result => result.isConfirmed);
 };
 
+// Themed replacement for window.alert() — a non-blocking toast instead of a
+// dialog the user must click OK to dismiss, styled to match the portal's theme.
+type ToastType = 'success' | 'error' | 'warning' | 'info';
+const showToast = (text: string, icon: ToastType = 'info') => {
+  Swal.fire({
+    toast: true,
+    position: 'top-end',
+    icon,
+    title: text,
+    showConfirmButton: false,
+    timer: 4000,
+    timerProgressBar: true,
+    customClass: {
+      popup: 'swal-philsar-toast'
+    }
+  });
+};
+
 export default function App() {
   // Navigation & UI States
   const [activeTab, setActiveTab] = useState<Tab>(() => tabFromPath(window.location.pathname));
@@ -807,10 +825,10 @@ export default function App() {
       }
       localStorage.setItem('philsar_user', JSON.stringify(updated));
       setCurrentUser(updated);
-      alert('Profile updated successfully!');
+      showToast('Profile updated successfully!', 'success');
       setProfileForm(prev => ({ ...prev, password: '', currentPassword: '' }));
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to update profile.');
+      showToast(error.response?.data?.message || 'Failed to update profile.', 'error');
     }
   };
 
@@ -818,13 +836,13 @@ export default function App() {
     if (!file || !currentUser) return;
 
     if (!file.type.startsWith('image/')) {
-      alert('Please select an image file (PNG, JPG, JPEG, WEBP, GIF).');
+      showToast('Please select an image file (PNG, JPG, JPEG, WEBP, GIF).', 'warning');
       return;
     }
 
     const maxSize = 5 * 1024 * 1024; // 5MB
     if (file.size > maxSize) {
-      alert('Image size exceeds 5MB limit. Please choose a smaller image.');
+      showToast('Image size exceeds 5MB limit. Please choose a smaller image.', 'warning');
       return;
     }
 
@@ -844,22 +862,22 @@ export default function App() {
           const updated = { ...profileRes.data.user, token: currentUser.token };
           localStorage.setItem('philsar_user', JSON.stringify(updated));
           setCurrentUser(updated);
-          alert('Profile picture updated!');
+          showToast('Profile picture updated!', 'success');
         } catch (uploadError: any) {
           console.error('Avatar upload error:', uploadError);
-          alert(uploadError.response?.data?.message || 'Failed to upload profile picture.');
+          showToast(uploadError.response?.data?.message || 'Failed to upload profile picture.', 'error');
         } finally {
           setUploadingAvatar(false);
         }
       };
       reader.onerror = () => {
-        alert('Error reading the image file.');
+        showToast('Error reading the image file.', 'error');
         setUploadingAvatar(false);
       };
       reader.readAsDataURL(file);
     } catch (error) {
       console.error('FileReader error:', error);
-      alert('Error processing the file.');
+      showToast('Error processing the file.', 'error');
       setUploadingAvatar(false);
     }
   };
@@ -880,10 +898,10 @@ export default function App() {
       const updated = { ...response.data.user, token: currentUser.token };
       localStorage.setItem('philsar_user', JSON.stringify(updated));
       setCurrentUser(updated);
-      alert('Profile picture removed.');
+      showToast('Profile picture removed.', 'success');
     } catch (error) {
       console.error(error);
-      alert('Error removing profile picture.');
+      showToast('Error removing profile picture.', 'error');
     }
   };
 
@@ -919,11 +937,11 @@ export default function App() {
   const handleDSSSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!dssForm.cattleId || !dssForm.age || !dssForm.daysSinceCalving) {
-      alert('Please fill out all required cattle data fields.');
+      showToast('Please fill out all required cattle data fields.', 'warning');
       return;
     }
     if (dssForm.estrusIndicators.length === 0) {
-      alert('Please select at least one estrus indicator (or "None Observed").');
+      showToast('Please select at least one estrus indicator (or "None Observed").', 'warning');
       return;
     }
     setDssLoading(true);
@@ -954,7 +972,7 @@ export default function App() {
       }
     } catch (error) {
       console.error(error);
-      alert('Error running DSS assessment.');
+      showToast('Error running DSS assessment.', 'error');
     } finally {
       setDssLoading(false);
     }
@@ -988,11 +1006,11 @@ export default function App() {
       }
 
       if (!alreadyRsvped) {
-        alert('RSVP registered successfully! You can now join this seminar\'s video room. We added this meeting to your schedule.');
+        showToast('RSVP registered successfully! You can now join this seminar\'s video room. We added this meeting to your schedule.', 'success');
       }
     } catch (error) {
       console.error(error);
-      alert('Error registering RSVP.');
+      showToast('Error registering RSVP.', 'error');
     }
   };
 
@@ -1002,7 +1020,7 @@ export default function App() {
     // Admins (who host/manage these) are exempt.
     const needsRsvp = meeting.status !== 'Ended' && currentUser?.role !== 'Admin' && !myAttendance[meeting.id]?.rsvped;
     if (needsRsvp) {
-      alert('Please RSVP to this seminar first — use the RSVP button, then Join Live will be available.');
+      showToast('Please RSVP to this seminar first — use the RSVP button, then Join Live will be available.', 'warning');
       return;
     }
     setActiveMeeting(meeting);
@@ -1019,7 +1037,7 @@ export default function App() {
       setMinutesDraft(res.data.meeting.minutes || '');
       fetchGlobalData();
     } catch (error) {
-      alert('Error saving minutes.');
+      showToast('Error saving minutes.', 'error');
     } finally {
       setSavingMinutes(false);
     }
@@ -1176,7 +1194,7 @@ export default function App() {
       const res = await axios.post(`${API_BASE}/meetings/${certModalMeeting.id}/attendance/${endpoint}`, { userId });
       setCertAttendanceRows(prev => ({ ...prev, [userId]: res.data }));
     } catch (error) {
-      alert('Error updating certificate.');
+      showToast('Error updating certificate.', 'error');
     }
   };
 
@@ -1224,7 +1242,7 @@ export default function App() {
       setCattleList(res.data);
       fetchGlobalData();
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Error saving cattle.');
+      showToast(error.response?.data?.message || 'Error saving cattle.', 'error');
     }
   };
 
@@ -1236,7 +1254,7 @@ export default function App() {
       if (editingCattleId === id) resetCattleForm();
       fetchGlobalData();
     } catch (error) {
-      alert('Error removing cattle.');
+      showToast('Error removing cattle.', 'error');
     }
   };
 
@@ -1244,13 +1262,13 @@ export default function App() {
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      alert('Please select an image file (PNG, JPG, JPEG, WEBP, GIF).');
+      showToast('Please select an image file (PNG, JPG, JPEG, WEBP, GIF).', 'warning');
       return;
     }
 
     const maxSize = 5 * 1024 * 1024; // 5MB
     if (file.size > maxSize) {
-      alert('Image size exceeds 5MB limit. Please choose a smaller image.');
+      showToast('Image size exceeds 5MB limit. Please choose a smaller image.', 'warning');
       return;
     }
 
@@ -1267,19 +1285,19 @@ export default function App() {
           setSettings(prev => ({ ...prev, certBackgroundImage: uploadRes.data.url }));
         } catch (uploadError: any) {
           console.error('Certificate background upload error:', uploadError);
-          alert(uploadError.response?.data?.message || 'Failed to upload background image.');
+          showToast(uploadError.response?.data?.message || 'Failed to upload background image.', 'error');
         } finally {
           setUploadingCertBg(false);
         }
       };
       reader.onerror = () => {
-        alert('Error reading the image file.');
+        showToast('Error reading the image file.', 'error');
         setUploadingCertBg(false);
       };
       reader.readAsDataURL(file);
     } catch (error) {
       console.error('FileReader error:', error);
-      alert('Error processing the file.');
+      showToast('Error processing the file.', 'error');
       setUploadingCertBg(false);
     }
   };
@@ -1301,11 +1319,11 @@ export default function App() {
     setSavingUser(true);
     try {
       await axios.post(`${API_BASE}/auth/register`, newUserForm);
-      alert('User added successfully!');
+      showToast('User added successfully!', 'success');
       setNewUserForm({ name: '', email: '', password: '', role: 'Farmer', organization: '' });
       fetchUsersList();
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Error adding user.');
+      showToast(error.response?.data?.message || 'Error adding user.', 'error');
     } finally {
       setSavingUser(false);
     }
@@ -1318,7 +1336,7 @@ export default function App() {
       setAllUsers(prev => prev.filter(u => u.id !== userId));
     } catch (error) {
       console.error(error);
-      alert('Error deleting user.');
+      showToast('Error deleting user.', 'error');
     }
   };
 
@@ -1326,13 +1344,13 @@ export default function App() {
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      alert('Please select an image file (PNG, JPG, JPEG, WEBP, GIF).');
+      showToast('Please select an image file (PNG, JPG, JPEG, WEBP, GIF).', 'warning');
       return;
     }
 
     const maxSize = 5 * 1024 * 1024; // 5MB
     if (file.size > maxSize) {
-      alert('Image size exceeds 5MB limit. Please choose a smaller image.');
+      showToast('Image size exceeds 5MB limit. Please choose a smaller image.', 'warning');
       return;
     }
 
@@ -1350,19 +1368,19 @@ export default function App() {
           setNewModuleForm(prev => ({ ...prev, imageUrl: uploadedUrl }));
         } catch (uploadError: any) {
           console.error('Upload error:', uploadError);
-          alert(uploadError.response?.data?.message || 'Failed to upload image to the server.');
+          showToast(uploadError.response?.data?.message || 'Failed to upload image to the server.', 'error');
         } finally {
           setUploadingImage(false);
         }
       };
       reader.onerror = () => {
-        alert('Error reading the image file.');
+        showToast('Error reading the image file.', 'error');
         setUploadingImage(false);
       };
       reader.readAsDataURL(file);
     } catch (error) {
       console.error('FileReader error:', error);
-      alert('Error processing the file.');
+      showToast('Error processing the file.', 'error');
       setUploadingImage(false);
     }
   };
@@ -1395,13 +1413,13 @@ export default function App() {
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      alert('Please select an image file (PNG, JPG, JPEG, WEBP, GIF).');
+      showToast('Please select an image file (PNG, JPG, JPEG, WEBP, GIF).', 'warning');
       return;
     }
 
     const maxSize = 5 * 1024 * 1024; // 5MB
     if (file.size > maxSize) {
-      alert('Image size exceeds 5MB limit. Please choose a smaller image.');
+      showToast('Image size exceeds 5MB limit. Please choose a smaller image.', 'warning');
       return;
     }
 
@@ -1441,19 +1459,19 @@ export default function App() {
           }
         } catch (uploadError: any) {
           console.error('Content image upload error:', uploadError);
-          alert(uploadError.response?.data?.message || 'Failed to upload image.');
+          showToast(uploadError.response?.data?.message || 'Failed to upload image.', 'error');
         } finally {
           setUploadingContentImage(false);
         }
       };
       reader.onerror = () => {
-        alert('Error reading the image file.');
+        showToast('Error reading the image file.', 'error');
         setUploadingContentImage(false);
       };
       reader.readAsDataURL(file);
     } catch (error) {
       console.error('Content FileReader error:', error);
-      alert('Error processing the file.');
+      showToast('Error processing the file.', 'error');
       setUploadingContentImage(false);
     }
   };
@@ -1469,13 +1487,13 @@ export default function App() {
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      alert('Please select an image file (PNG, JPG, JPEG, WEBP, GIF).');
+      showToast('Please select an image file (PNG, JPG, JPEG, WEBP, GIF).', 'warning');
       return;
     }
 
     const maxSize = 5 * 1024 * 1024; // 5MB
     if (file.size > maxSize) {
-      alert('Image size exceeds 5MB limit. Please choose a smaller image.');
+      showToast('Image size exceeds 5MB limit. Please choose a smaller image.', 'warning');
       return;
     }
 
@@ -1493,19 +1511,19 @@ export default function App() {
           setLandingImages(prev => [...prev, addRes.data.image]);
         } catch (uploadError: any) {
           console.error('Landing image upload error:', uploadError);
-          alert(uploadError.response?.data?.message || 'Failed to upload image.');
+          showToast(uploadError.response?.data?.message || 'Failed to upload image.', 'error');
         } finally {
           setUploadingLandingImage(false);
         }
       };
       reader.onerror = () => {
-        alert('Error reading the image file.');
+        showToast('Error reading the image file.', 'error');
         setUploadingLandingImage(false);
       };
       reader.readAsDataURL(file);
     } catch (error) {
       console.error('Landing image FileReader error:', error);
-      alert('Error processing the file.');
+      showToast('Error processing the file.', 'error');
       setUploadingLandingImage(false);
     }
   };
@@ -1524,7 +1542,7 @@ export default function App() {
       setLandingImages(prev => prev.filter(img => img.id !== id));
     } catch (error) {
       console.error('Error deleting landing image:', error);
-      alert('Error removing image.');
+      showToast('Error removing image.', 'error');
     }
   };
 
@@ -1532,13 +1550,13 @@ export default function App() {
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      alert('Please select an image file (PNG, JPG, JPEG, WEBP, GIF).');
+      showToast('Please select an image file (PNG, JPG, JPEG, WEBP, GIF).', 'warning');
       return;
     }
 
     const maxSize = 5 * 1024 * 1024; // 5MB
     if (file.size > maxSize) {
-      alert('Image size exceeds 5MB limit. Please choose a smaller image.');
+      showToast('Image size exceeds 5MB limit. Please choose a smaller image.', 'warning');
       return;
     }
 
@@ -1555,19 +1573,19 @@ export default function App() {
           setNewAnnouncementForm(prev => ({ ...prev, imageUrl: uploadRes.data.url }));
         } catch (uploadError: any) {
           console.error('Announcement image upload error:', uploadError);
-          alert(uploadError.response?.data?.message || 'Failed to upload image.');
+          showToast(uploadError.response?.data?.message || 'Failed to upload image.', 'error');
         } finally {
           setUploadingAnnouncementImage(false);
         }
       };
       reader.onerror = () => {
-        alert('Error reading the image file.');
+        showToast('Error reading the image file.', 'error');
         setUploadingAnnouncementImage(false);
       };
       reader.readAsDataURL(file);
     } catch (error) {
       console.error('Announcement image FileReader error:', error);
-      alert('Error processing the file.');
+      showToast('Error processing the file.', 'error');
       setUploadingAnnouncementImage(false);
     }
   };
@@ -1604,7 +1622,7 @@ export default function App() {
       resetAnnouncementForm();
     } catch (error) {
       console.error('Error saving announcement:', error);
-      alert('Error saving announcement.');
+      showToast('Error saving announcement.', 'error');
     } finally {
       setSavingAnnouncement(false);
     }
@@ -1618,7 +1636,7 @@ export default function App() {
       if (editingAnnouncementId === id) resetAnnouncementForm();
     } catch (error) {
       console.error('Error deleting announcement:', error);
-      alert('Error deleting announcement.');
+      showToast('Error deleting announcement.', 'error');
     }
   };
 
@@ -1628,17 +1646,17 @@ export default function App() {
     try {
       if (editingModule) {
         await axios.put(`${API_BASE}/modules/${editingModule.id}`, newModuleForm);
-        alert('Module updated successfully!');
+        showToast('Module updated successfully!', 'success');
         setEditingModule(null);
       } else {
         await axios.post(`${API_BASE}/modules`, newModuleForm);
-        alert('Module created successfully!');
+        showToast('Module created successfully!', 'success');
       }
       setNewModuleForm({ title: '', description: '', content: '', imageUrl: '' });
       fetchGlobalData();
     } catch (error) {
       console.error(error);
-      alert('Error saving module.');
+      showToast('Error saving module.', 'error');
     } finally {
       setSavingModule(false);
     }
@@ -1648,11 +1666,11 @@ export default function App() {
     if (!(await confirmDelete('Are you sure you want to delete this module? This will remove all its lessons.'))) return;
     try {
       await axios.delete(`${API_BASE}/modules/${moduleId}`);
-      alert('Module deleted successfully!');
+      showToast('Module deleted successfully!', 'success');
       fetchGlobalData();
     } catch (error) {
       console.error(error);
-      alert('Error deleting module.');
+      showToast('Error deleting module.', 'error');
     }
   };
 
@@ -1662,17 +1680,17 @@ export default function App() {
     try {
       if (editingMeeting) {
         await axios.put(`${API_BASE}/meetings/${editingMeeting.id}`, newMeetingForm);
-        alert('Seminar updated successfully!');
+        showToast('Seminar updated successfully!', 'success');
         setEditingMeeting(null);
       } else {
         await axios.post(`${API_BASE}/meetings`, newMeetingForm);
-        alert('Seminar scheduled successfully!');
+        showToast('Seminar scheduled successfully!', 'success');
       }
       setNewMeetingForm({ title: '', host: '', dateTime: '', status: 'Upcoming', videoLink: '', recordingUrl: '' });
       fetchGlobalData();
     } catch (error) {
       console.error(error);
-      alert(editingMeeting ? 'Error updating meeting.' : 'Error scheduling meeting.');
+      showToast(editingMeeting ? 'Error updating meeting.' : 'Error scheduling meeting.', 'error');
     } finally {
       setSavingMeeting(false);
     }
@@ -1685,7 +1703,7 @@ export default function App() {
       setMeetings(prev => prev.filter(m => m.id !== meetingId));
     } catch (error) {
       console.error(error);
-      alert('Error deleting meeting.');
+      showToast('Error deleting meeting.', 'error');
     }
   };
 
@@ -1695,10 +1713,10 @@ export default function App() {
     try {
       const response = await axios.post(`${API_BASE}/settings`, settings);
       setSettings(response.data.settings);
-      alert('System configurations saved successfully!');
+      showToast('System configurations saved successfully!', 'success');
     } catch (error) {
       console.error(error);
-      alert('Error saving system settings.');
+      showToast('Error saving system settings.', 'error');
     } finally {
       setSavingSettings(false);
     }
@@ -1708,7 +1726,7 @@ export default function App() {
     if (!mod || !currentUser) return;
     const currentCompleted = completedLessonsMap[mod.id] || [];
     if (currentCompleted.includes(selectedLessonIndex)) {
-      alert('This lesson is already marked complete!');
+      showToast('This lesson is already marked complete!', 'info');
       return;
     }
 
@@ -1725,13 +1743,13 @@ export default function App() {
       setCurrentUser(prev => prev ? { ...prev, ...updatedUser } : prev);
 
       if (response.data.justCompletedModule) {
-        alert(`Congratulations! You've fully completed the "${mod.title}" module!`);
+        showToast(`Congratulations! You've fully completed the "${mod.title}" module!`, 'success');
       } else {
-        alert(`Lesson "${parsedLessons[selectedLessonIndex]?.title}" marked as complete!`);
+        showToast(`Lesson "${parsedLessons[selectedLessonIndex]?.title}" marked as complete!`, 'success');
       }
     } catch (error) {
       console.error(error);
-      alert('Error updating completion progress.');
+      showToast('Error updating completion progress.', 'error');
     }
   };
 
@@ -1756,7 +1774,7 @@ export default function App() {
     } catch (error) {
       console.error('Error decrementing completed modules:', error);
     }
-    alert(`Lesson "${parsedLessons[selectedLessonIndex]?.title}" unmarked.`);
+    showToast(`Lesson "${parsedLessons[selectedLessonIndex]?.title}" unmarked.`, 'info');
   };
 
   // Navigations
