@@ -3014,7 +3014,7 @@ export default function App() {
                       ) : (
                         <button className="meeting-action ended">Watch Replay</button>
                       )}
-                      {myAttendance[session.id]?.eligible && (
+                      {myAttendance[session.id]?.eligible && session.status === 'Ended' && (
                         <button
                           className="meeting-action live"
                           style={{ background: 'var(--amber)', marginLeft: '8px' }}
