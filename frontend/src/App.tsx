@@ -1067,12 +1067,9 @@ export default function App() {
     doc.save(`Certificate - ${meeting.title} - ${recipientName}.pdf`);
   };
 
-  const openCertModal = async (meeting: Meeting) => {
-    setCertModalMeeting(meeting);
-    setCertModalOpen(true);
-    setCertAttendanceRows({});
+  const fetchCertAttendance = async (meetingId: number) => {
     try {
-      const res = await axios.get(`${API_BASE}/meetings/${meeting.id}/attendance`);
+      const res = await axios.get(`${API_BASE}/meetings/${meetingId}/attendance`);
       const map: Record<number, { secondsAttended: number; eligible: boolean; granted: boolean }> = {};
       for (const row of res.data) {
         map[row.userId] = { secondsAttended: row.secondsAttended, eligible: row.eligible, granted: row.granted };
@@ -1082,6 +1079,22 @@ export default function App() {
       console.error('Error loading meeting attendance:', error);
     }
   };
+
+  const openCertModal = async (meeting: Meeting) => {
+    setCertModalMeeting(meeting);
+    setCertModalOpen(true);
+    setCertAttendanceRows({});
+    await fetchCertAttendance(meeting.id);
+  };
+
+  // The roster otherwise only reflects whatever attendance looked like at the
+  // moment the modal was opened — an admin watching a live seminar would see a
+  // frozen snapshot instead of climbing attendance times.
+  useEffect(() => {
+    if (!certModalOpen || !certModalMeeting) return;
+    const interval = setInterval(() => fetchCertAttendance(certModalMeeting.id), 20000);
+    return () => clearInterval(interval);
+  }, [certModalOpen, certModalMeeting]);
 
   const handleToggleCertificate = async (userId: number, currentlyGranted: boolean) => {
     if (!certModalMeeting) return;
