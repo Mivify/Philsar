@@ -176,6 +176,11 @@ function tabFromPath(pathname: string): Tab {
   return (VALID_TABS as string[]).includes(path) ? (path as Tab) : 'home';
 }
 
+const CHAT_GREETING: { role: 'assistant'; content: string } = {
+  role: 'assistant',
+  content: 'Hello! I am **PHILSARBot**, your AI assistant for cattle reproductive management. I can help you understand estrus cycles, AI procedures, breeding techniques, and more. What would you like to know today?'
+};
+
 export default function App() {
   // Navigation & UI States
   const [activeTab, setActiveTab] = useState<Tab>(() => tabFromPath(window.location.pathname));
@@ -261,9 +266,7 @@ export default function App() {
   const certBgFileInputRef = useRef<HTMLInputElement>(null);
 
   // Chat State
-  const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([
-    { role: 'assistant', content: 'Hello! I am **PHILSARBot**, your AI assistant for cattle reproductive management. I can help you understand estrus cycles, AI procedures, breeding techniques, and more. What would you like to know today?' }
-  ]);
+  const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([CHAT_GREETING]);
   const [inputMessage, setInputMessage] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -325,6 +328,15 @@ export default function App() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages, isChatLoading]);
+
+  // Persist the chatbot conversation per-user so it survives page refreshes and
+  // tab navigation — cleared explicitly on logout (see handleLogout) rather than
+  // here, so it doesn't get wiped just because currentUser hasn't hydrated yet
+  // on a fresh page load.
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    localStorage.setItem(`philsar_chat_${currentUser.id}`, JSON.stringify(chatMessages));
+  }, [chatMessages, currentUser?.id]);
 
   // Jitsi Meet External API reference
   const jitsiApiRef = useRef<any>(null);
@@ -442,6 +454,17 @@ export default function App() {
         currentPassword: ''
       });
       refreshSessionData(parsedUser);
+
+      // Restore the chatbot conversation for this user if one was saved from
+      // an earlier page load in this browser (see the persistence effect below).
+      const storedChat = localStorage.getItem(`philsar_chat_${parsedUser.id}`);
+      if (storedChat) {
+        try {
+          setChatMessages(JSON.parse(storedChat));
+        } catch (err) {
+          console.error('Error restoring chat history:', err);
+        }
+      }
     }
 
     // Preload the logo so certificate PDFs can embed it synchronously on click
@@ -715,6 +738,13 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    // Chat is persisted to localStorage per-user (see the chatMessages effect below) —
+    // remove it here so logging out actually restarts the conversation, rather than
+    // just resetting the in-memory copy while a stale one lingers in storage for the
+    // next fresh login to pick back up.
+    if (currentUser) {
+      localStorage.removeItem(`philsar_chat_${currentUser.id}`);
+    }
     localStorage.removeItem('philsar_user');
     delete axios.defaults.headers.common['Authorization'];
     setIsAuthenticated(false);
@@ -723,7 +753,7 @@ export default function App() {
     setActiveTab('home');
     // Client-only state with no per-user backend fetch — must be reset explicitly
     // so the next account to log in in this tab doesn't inherit it.
-    setChatMessages([{ role: 'assistant', content: 'Hello! I am **PHILSARBot**, your AI assistant for cattle reproductive management. I can help you understand estrus cycles, AI procedures, breeding techniques, and more. What would you like to know today?' }]);
+    setChatMessages([CHAT_GREETING]);
     setInputMessage('');
     setDssResult(null);
   };
