@@ -360,10 +360,14 @@ export default function App() {
               startWithAudioMuted: true,
               startWithVideoMuted: true,
               // JaaS's default embed toolbar omits fullscreen — spell it out explicitly
-              // alongside the rest of the standard toolbar to bring it back.
+              // alongside the rest of the standard toolbar to bring it back. 'recording'
+              // is JaaS-native (unlike the free public meet.jit.si server); whether it
+              // actually works depends on the 8x8 account's plan. Recording rights
+              // default to the meeting's moderator (usually whoever joins first).
               toolbarButtons: [
                 'microphone', 'camera', 'desktop', 'fullscreen', 'fodeviceselection',
-                'hangup', 'chat', 'raisehand', 'tileview', 'settings', 'videoquality'
+                'hangup', 'chat', 'raisehand', 'tileview', 'settings', 'videoquality',
+                'recording'
               ]
             }
           });
