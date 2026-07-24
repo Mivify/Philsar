@@ -624,6 +624,19 @@ body {
   }
 }
 
+/* Admin Panel form+table rows (Users/Modules/Meetings) need the opposite
+   ratio from .grid-2's default 2fr:1fr — the table has several columns and
+   was getting squeezed into a narrow 1fr column, forcing horizontal scroll. */
+.grid-2.admin-form-grid {
+  grid-template-columns: 380px 1fr;
+}
+
+@media (max-width: 900px) {
+  .grid-2.admin-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .grid-3 {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

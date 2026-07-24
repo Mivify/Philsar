@@ -186,13 +186,13 @@ const CHAT_GREETING: { role: 'assistant'; content: string } = {
 
 // Themed replacement for window.confirm() on destructive actions — styled to match
 // the portal's Royal Blue theme instead of the browser's default confirm dialog.
-const confirmDelete = (text: string, title = 'Are you sure?'): Promise<boolean> => {
+const confirmDelete = (text: string, title = 'Are you sure?', confirmButtonText = 'Yes, delete it'): Promise<boolean> => {
   return Swal.fire({
     title,
     text,
     icon: 'warning',
     showCancelButton: true,
-    confirmButtonText: 'Yes, delete it',
+    confirmButtonText,
     cancelButtonText: 'Cancel',
     confirmButtonColor: '#305CDE',
     cancelButtonColor: '#6B7590',
@@ -1350,7 +1350,8 @@ export default function App() {
     const activating = user.status === 'Inactive';
     if (!activating && !(await confirmDelete(
       `Deactivate ${user.name}? They won't be able to log in until reactivated.`,
-      'Deactivate this account?'
+      'Deactivate this account?',
+      'Yes, deactivate'
     ))) return;
     try {
       const newStatus = activating ? 'Active' : 'Inactive';
@@ -3443,7 +3444,7 @@ export default function App() {
                   <div className="admin-header-row">
                     <div className="card-title">Registered Portal Accounts</div>
                   </div>
-                  <div className="grid-2">
+                  <div className="grid-2 admin-form-grid">
                     <div className="card" style={{ height: 'fit-content' }}>
                       <div className="card-header"><div className="card-title">Add New User Account</div></div>
                       <div className="card-body">
@@ -3568,7 +3569,7 @@ export default function App() {
               {/* TAB CONTENT: MODULES */}
               {activeAdminTab === 'modules' && (
                 <div id="admin-modules">
-                  <div className="grid-2">
+                  <div className="grid-2 admin-form-grid">
                     <div className="card" style={{ height: 'fit-content' }}>
                       <div className="card-header">
                         <div className="card-title">
@@ -3813,7 +3814,7 @@ export default function App() {
               {/* TAB CONTENT: MEETINGS */}
               {activeAdminTab === 'meetings' && (
                 <div id="admin-meetings">
-                  <div className="grid-2">
+                  <div className="grid-2 admin-form-grid">
                     <div className="card" style={{ height: 'fit-content' }}>
                       <div className="card-header"><div className="card-title">{editingMeeting ? `Edit Seminar: ${editingMeeting.title}` : 'Schedule Virtual Seminar'}</div></div>
                       <div className="card-body">
