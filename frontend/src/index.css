@@ -1334,10 +1334,22 @@ body {
   background: var(--warm-white);
 }
 
-.radio-btn.selected, .radio-btn:hover {
+.radio-btn:hover {
   border-color: var(--amber);
   color: var(--amber);
   background: rgba(48,92,222,0.08);
+}
+
+.radio-btn.selected {
+  border-color: var(--amber);
+  background: var(--amber);
+  color: #fff;
+  font-weight: 700;
+}
+
+.radio-btn.selected:hover {
+  background: var(--amber-light);
+  border-color: var(--amber-light);
 }
 
 .submit-btn {
