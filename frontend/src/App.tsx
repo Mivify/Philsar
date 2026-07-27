@@ -2310,7 +2310,7 @@ export default function App() {
           </button>
           {aboutMenuOpen && (
             <div className="nav-dropdown-panel">
-              <button className="nav-dropdown-subitem" onClick={() => handleAboutJump('about-mission-vision')}>
+              <button className="nav-dropdown-subitem" onClick={() => handleTabNavigate('about')}>
                 Mission &amp; Vision
               </button>
               <button className="nav-dropdown-subitem" onClick={() => handleAboutJump('about-kisspa')}>
