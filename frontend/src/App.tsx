@@ -269,6 +269,7 @@ export default function App() {
   const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'modules' | 'meetings' | 'home' | 'settings'>('users');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [aboutMenuOpen, setAboutMenuOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [selectedLessonIndex, setSelectedLessonIndex] = useState<number>(0);
   const [completedLessonsMap, setCompletedLessonsMap] = useState<Record<number, number[]>>({});
   const [meetingModalOpen, setMeetingModalOpen] = useState(false);
@@ -1858,7 +1859,24 @@ export default function App() {
     setSelectedModule(null);
     setSelectedLessonIndex(0);
     setSidebarOpen(false);
+    setSearchQuery('');
     window.history.pushState({}, '', `/${tab}`);
+  };
+
+  const searchResults = searchQuery.trim().length > 0
+    ? modules.filter(m => {
+        const q = searchQuery.toLowerCase();
+        return m.title.toLowerCase().includes(q) ||
+               m.description.toLowerCase().includes(q) ||
+               m.content.toLowerCase().includes(q);
+      }).slice(0, 6)
+    : [];
+
+  const handleSearchResultClick = (mod: LearningModule) => {
+    handleTabNavigate('learning');
+    setSelectedModule(mod);
+    setSelectedLessonIndex(0);
+    setSearchQuery('');
   };
 
   // Jumps to a section of the About Us page from the sidebar dropdown.
@@ -2412,9 +2430,31 @@ export default function App() {
             </div>
           </div>
           <div className="topbar-right">
-            <div className="search-bar">
-              <span>🔍</span>
-              <input type="text" placeholder="Search modules, topics…" />
+            <div className="search-bar-wrapper">
+              <div className="search-bar">
+                <span>🔍</span>
+                <input
+                  type="text"
+                  placeholder="Search modules, topics…"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Escape') setSearchQuery(''); }}
+                />
+              </div>
+              {searchQuery.trim().length > 0 && (
+                <div className="search-results-dropdown">
+                  {searchResults.length > 0 ? (
+                    searchResults.map(mod => (
+                      <div key={mod.id} className="search-result-item" onClick={() => handleSearchResultClick(mod)}>
+                        <div className="search-result-title">{mod.title}</div>
+                        <div className="search-result-desc">{mod.description}</div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="search-result-empty">No modules found.</div>
+                  )}
+                </div>
+              )}
             </div>
             <div className="topbar-btn" onClick={() => handleTabNavigate('profile')}>👤</div>
           </div>
