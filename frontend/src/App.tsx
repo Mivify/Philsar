@@ -223,6 +223,46 @@ const showToast = (text: string, icon: ToastType = 'info') => {
   });
 };
 
+// Static organizational content for the Home page's "About Us" section — sourced
+// from the PHILSAR Core Identity Framework (mission/vision/KISSPA values/strategic
+// objectives), not user-editable data, so it's a plain constant rather than fetched.
+const KISSPA_VALUES = [
+  { letter: 'K', title: 'Knowledge Sharing and Collaboration', desc: 'Fostering strong partnerships among SUCs, scientists, practitioners, institutions, and ASEAN counterparts to advance the field of animal reproduction collectively.' },
+  { letter: 'I', title: 'Innovation and Excellence', desc: 'Championing cutting-edge reproductive technologies and continuously elevating the quality of education, research, training, and practice.' },
+  { letter: 'S', title: 'Service to Society', desc: 'Advancing reproductive science to improve technical excellence, livestock productivity, farmer livelihoods, and national food security.' },
+  { letter: 'S', title: 'Scientific Integrity', desc: 'Upholding rigorous, evidence-based practices and ethical standards in all reproductive research and applications.' },
+  { letter: 'P', title: 'Professionalism and Accountability', desc: 'Demonstrating transparency, integrity, responsibility, and ethical conduct in academic and scientific communication, training, seminars, workshops, and public engagement.' },
+  { letter: 'A', title: 'Animal Welfare', desc: 'Ensuring humane, responsible, and compassionate treatment of animals in all reproductive interventions.' }
+];
+
+const STRATEGIC_OBJECTIVES = [
+  { title: 'Build Professional Capacity and Expertise', points: [
+    'Provide continuous training, seminar, workshop, certification, and skills development for practitioners, researchers, and students.',
+    'Organize scientific congresses, symposia, and workshops that elevate national competency in animal reproduction.'
+  ] },
+  { title: 'Strengthen Scientific Research and Innovation', points: [
+    'Support high-quality, ethical research in reproductive biotechnology.',
+    'Promote publication and dissemination of locally relevant scientific findings.',
+    'Encourage interdisciplinary and translational research that addresses industry needs.'
+  ] },
+  { title: 'Promote Ethical and Responsible Reproductive Practices', points: [
+    'Uphold and advocate for humane, science-based reproductive interventions.',
+    'Support compliance with national and institutional animal care and use standards.'
+  ] },
+  { title: 'Strengthen National and ASEAN Collaboration', points: [
+    'Build partnerships with universities, research institutions, government agencies, and industry stakeholders.',
+    'Lead and participate in regional initiatives that advance reproductive biotechnology and livestock development.'
+  ] },
+  { title: 'Support Policy Development and Public Awareness', points: [
+    'Provide scientific expertise to inform national policies on animal reproduction and biotechnology.',
+    'Promote public understanding of reproductive technologies and their role in sustainable agriculture.'
+  ] },
+  { title: 'Enhance Organizational Sustainability and Impact', points: [
+    'Develop strong governance, financial sustainability, and membership engagement.',
+    "Implement programs that ensure PHILSAR's long-term relevance and leadership."
+  ] }
+];
+
 export default function App() {
   // Navigation & UI States
   const [activeTab, setActiveTab] = useState<Tab>(() => tabFromPath(window.location.pathname));
@@ -2479,6 +2519,76 @@ export default function App() {
                     <div className="quick-access-title">Virtual Meetings</div>
                     <div className="quick-access-desc">Join live seminars and connect with extension workers.</div>
                   </div>
+                </div>
+              </div>
+
+              {/* ABOUT US */}
+              <div className="home-section">
+                <div className="page-header" style={{ marginBottom: '16px' }}>
+                  <div className="page-title" style={{ fontSize: '20px' }}>About PHILSAR</div>
+                  <div className="page-subtitle">
+                    The Philippine Society of Animal Reproduction — advancing the science and practice of
+                    animal reproduction in the Philippines.
+                  </div>
+                </div>
+
+                <div className="grid-2" style={{ marginBottom: '20px' }}>
+                  <div className="card">
+                    <div className="card-header"><div className="card-title">Our Mission</div></div>
+                    <div className="card-body">
+                      <p style={{ fontSize: '14px', lineHeight: 1.7, color: 'var(--text-secondary)' }}>
+                        To advance the science and practice of animal reproduction in the Philippines by
+                        fostering professional development and technical excellence, strengthening
+                        collaboration, promoting ethical research, and translating reproductive
+                        technologies into impactful solutions that enhance animal productivity, farmer
+                        welfare, and national food security.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="card">
+                    <div className="card-header"><div className="card-title">Our Vision</div></div>
+                    <div className="card-body">
+                      <p style={{ fontSize: '14px', lineHeight: 1.7, color: 'var(--text-secondary)' }}>
+                        A nationally and regionally recognized leader in animal reproductive science,
+                        driving innovation, shaping policy, and building a vibrant community of experts
+                        committed to sustainable livestock development and scientific excellence across
+                        ASEAN.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="page-header" style={{ marginBottom: '16px' }}>
+                  <div className="page-title" style={{ fontSize: '18px' }}>Core Values — KISSPA</div>
+                </div>
+                <div className="kisspa-grid">
+                  {KISSPA_VALUES.map((v, i) => (
+                    <div key={i} className="kisspa-card">
+                      <div className="kisspa-letter">{v.letter}</div>
+                      <div className="kisspa-title">{v.title}</div>
+                      <div className="kisspa-desc">{v.desc}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="page-header" style={{ marginBottom: '16px', marginTop: '28px' }}>
+                  <div className="page-title" style={{ fontSize: '18px' }}>Strategic Objectives</div>
+                </div>
+                <div className="objectives-grid">
+                  {STRATEGIC_OBJECTIVES.map((o, i) => (
+                    <div key={i} className="card">
+                      <div className="card-body">
+                        <div className="objective-title">{i + 1}. {o.title}</div>
+                        <ul className="objective-list">
+                          {o.points.map((p, j) => <li key={j}>{p}</li>)}
+                        </ul>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="about-founder">
+                  Founding President: <strong>Danilda Hufana-Duran, Ph.D., L.Arg.</strong>
                 </div>
               </div>
             </div>

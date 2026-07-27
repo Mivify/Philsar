@@ -463,6 +463,65 @@ body {
 .quick-access-title { font-size: 15px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
 .quick-access-desc { font-size: 12.5px; color: var(--text-muted); line-height: 1.5; }
 
+/* ─── ABOUT US (Home page) ─── */
+.kisspa-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 1024px) {
+  .kisspa-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 640px) {
+  .kisspa-grid { grid-template-columns: 1fr; }
+}
+
+.kisspa-card {
+  background: var(--warm-white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+
+.kisspa-letter {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: var(--amber);
+  color: var(--brown-dark);
+  font-family: 'Playfair Display', serif;
+  font-weight: 700;
+  font-size: 16px;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 12px;
+}
+
+.kisspa-title { font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
+.kisspa-desc { font-size: 12.5px; color: var(--text-muted); line-height: 1.6; }
+
+.objectives-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 900px) {
+  .objectives-grid { grid-template-columns: 1fr; }
+}
+
+.objective-title { font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 10px; }
+.objective-list { padding-left: 18px; margin: 0; }
+.objective-list li { font-size: 13px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 6px; }
+.objective-list li:last-child { margin-bottom: 0; }
+
+.about-founder {
+  margin-top: 20px;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
 .announcement-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
