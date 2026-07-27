@@ -268,6 +268,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>(() => tabFromPath(window.location.pathname));
   const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'modules' | 'meetings' | 'home' | 'settings'>('users');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [aboutMenuOpen, setAboutMenuOpen] = useState(false);
   const [selectedLessonIndex, setSelectedLessonIndex] = useState<number>(0);
   const [completedLessonsMap, setCompletedLessonsMap] = useState<Record<number, number[]>>({});
   const [meetingModalOpen, setMeetingModalOpen] = useState(false);
@@ -1860,6 +1861,19 @@ export default function App() {
     window.history.pushState({}, '', `/${tab}`);
   };
 
+  // Jumps to a section of the Home page's About Us block from the sidebar
+  // dropdown. Navigates to Home first (a no-op if already there), then waits
+  // a beat for that view's content to mount/the scroll-reset effect to run
+  // before scrolling to the target section — otherwise the scroll-to-top
+  // effect that fires on every tab change would immediately undo the jump.
+  const handleAboutJump = (sectionId: string) => {
+    handleTabNavigate('home');
+    setSidebarOpen(false);
+    setTimeout(() => {
+      document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+  };
+
   // Password visibility toggle
   const [showPassword, setShowPassword] = useState(false);
 
@@ -2278,6 +2292,28 @@ export default function App() {
           </button>
 
           <button
+            className="nav-item"
+            onClick={() => setAboutMenuOpen(!aboutMenuOpen)}
+          >
+            <div className="nav-icon">ℹ️</div>
+            About Us
+            <ChevronRight size={14} className={`nav-dropdown-chevron ${aboutMenuOpen ? 'open' : ''}`} />
+          </button>
+          {aboutMenuOpen && (
+            <div className="nav-dropdown-panel">
+              <button className="nav-dropdown-subitem" onClick={() => handleAboutJump('about-mission-vision')}>
+                Mission &amp; Vision
+              </button>
+              <button className="nav-dropdown-subitem" onClick={() => handleAboutJump('about-kisspa')}>
+                Core Values (KISSPA)
+              </button>
+              <button className="nav-dropdown-subitem" onClick={() => handleAboutJump('about-objectives')}>
+                Strategic Objectives
+              </button>
+            </div>
+          )}
+
+          <button
             className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
             onClick={() => handleTabNavigate('dashboard')}
           >
@@ -2532,7 +2568,7 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="grid-2" style={{ marginBottom: '20px' }}>
+                <div id="about-mission-vision" className="grid-2" style={{ marginBottom: '20px' }}>
                   <div className="card">
                     <div className="card-header"><div className="card-title">Our Mission</div></div>
                     <div className="card-body">
@@ -2558,7 +2594,7 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="page-header" style={{ marginBottom: '16px' }}>
+                <div id="about-kisspa" className="page-header" style={{ marginBottom: '16px' }}>
                   <div className="page-title" style={{ fontSize: '18px' }}>Core Values — KISSPA</div>
                 </div>
                 <div className="kisspa-grid">
@@ -2571,7 +2607,7 @@ export default function App() {
                   ))}
                 </div>
 
-                <div className="page-header" style={{ marginBottom: '16px', marginTop: '28px' }}>
+                <div id="about-objectives" className="page-header" style={{ marginBottom: '16px', marginTop: '28px' }}>
                   <div className="page-title" style={{ fontSize: '18px' }}>Strategic Objectives</div>
                 </div>
                 <div className="objectives-grid">
