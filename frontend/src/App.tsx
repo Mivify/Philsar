@@ -171,8 +171,8 @@ function parseLessons(content: string): { title: string; content: string }[] {
   return lessons;
 }
 
-type Tab = 'home' | 'dashboard' | 'learning' | 'chatbot' | 'dss' | 'meetings' | 'profile' | 'admin';
-const VALID_TABS: Tab[] = ['home', 'dashboard', 'learning', 'chatbot', 'dss', 'meetings', 'profile', 'admin'];
+type Tab = 'home' | 'about' | 'dashboard' | 'learning' | 'chatbot' | 'dss' | 'meetings' | 'profile' | 'admin';
+const VALID_TABS: Tab[] = ['home', 'about', 'dashboard', 'learning', 'chatbot', 'dss', 'meetings', 'profile', 'admin'];
 
 function tabFromPath(pathname: string): Tab {
   const path = pathname.replace(/^\//, '');
@@ -1861,13 +1861,13 @@ export default function App() {
     window.history.pushState({}, '', `/${tab}`);
   };
 
-  // Jumps to a section of the Home page's About Us block from the sidebar
-  // dropdown. Navigates to Home first (a no-op if already there), then waits
+  // Jumps to a section of the About Us page from the sidebar dropdown.
+  // Navigates to the About tab first (a no-op if already there), then waits
   // a beat for that view's content to mount/the scroll-reset effect to run
   // before scrolling to the target section — otherwise the scroll-to-top
   // effect that fires on every tab change would immediately undo the jump.
   const handleAboutJump = (sectionId: string) => {
-    handleTabNavigate('home');
+    handleTabNavigate('about');
     setSidebarOpen(false);
     setTimeout(() => {
       document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -2557,75 +2557,77 @@ export default function App() {
                   </div>
                 </div>
               </div>
+            </div>
+          )}
 
-              {/* ABOUT US */}
-              <div className="home-section">
-                <div className="page-header" style={{ marginBottom: '16px' }}>
-                  <div className="page-title" style={{ fontSize: '20px' }}>About PHILSAR</div>
-                  <div className="page-subtitle">
-                    The Philippine Society of Animal Reproduction — advancing the science and practice of
-                    animal reproduction in the Philippines.
+          {/* ── VIEW: ABOUT US ── */}
+          {activeTab === 'about' && (
+            <div className="view active">
+              <div className="page-header">
+                <div className="page-title">About PHILSAR</div>
+                <div className="page-subtitle">
+                  The Philippine Society of Animal Reproduction — advancing the science and practice of
+                  animal reproduction in the Philippines.
+                </div>
+              </div>
+
+              <div id="about-mission-vision" className="grid-2" style={{ marginBottom: '20px' }}>
+                <div className="card">
+                  <div className="card-header"><div className="card-title">Our Mission</div></div>
+                  <div className="card-body">
+                    <p style={{ fontSize: '14px', lineHeight: 1.7, color: 'var(--text-secondary)' }}>
+                      To advance the science and practice of animal reproduction in the Philippines by
+                      fostering professional development and technical excellence, strengthening
+                      collaboration, promoting ethical research, and translating reproductive
+                      technologies into impactful solutions that enhance animal productivity, farmer
+                      welfare, and national food security.
+                    </p>
                   </div>
                 </div>
+                <div className="card">
+                  <div className="card-header"><div className="card-title">Our Vision</div></div>
+                  <div className="card-body">
+                    <p style={{ fontSize: '14px', lineHeight: 1.7, color: 'var(--text-secondary)' }}>
+                      A nationally and regionally recognized leader in animal reproductive science,
+                      driving innovation, shaping policy, and building a vibrant community of experts
+                      committed to sustainable livestock development and scientific excellence across
+                      ASEAN.
+                    </p>
+                  </div>
+                </div>
+              </div>
 
-                <div id="about-mission-vision" className="grid-2" style={{ marginBottom: '20px' }}>
-                  <div className="card">
-                    <div className="card-header"><div className="card-title">Our Mission</div></div>
+              <div id="about-kisspa" className="page-header" style={{ marginBottom: '16px' }}>
+                <div className="page-title" style={{ fontSize: '18px' }}>Core Values — KISSPA</div>
+              </div>
+              <div className="kisspa-grid">
+                {KISSPA_VALUES.map((v, i) => (
+                  <div key={i} className="kisspa-card">
+                    <div className="kisspa-letter">{v.letter}</div>
+                    <div className="kisspa-title">{v.title}</div>
+                    <div className="kisspa-desc">{v.desc}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div id="about-objectives" className="page-header" style={{ marginBottom: '16px', marginTop: '28px' }}>
+                <div className="page-title" style={{ fontSize: '18px' }}>Strategic Objectives</div>
+              </div>
+              <div className="objectives-grid">
+                {STRATEGIC_OBJECTIVES.map((o, i) => (
+                  <div key={i} className="card">
                     <div className="card-body">
-                      <p style={{ fontSize: '14px', lineHeight: 1.7, color: 'var(--text-secondary)' }}>
-                        To advance the science and practice of animal reproduction in the Philippines by
-                        fostering professional development and technical excellence, strengthening
-                        collaboration, promoting ethical research, and translating reproductive
-                        technologies into impactful solutions that enhance animal productivity, farmer
-                        welfare, and national food security.
-                      </p>
+                      <div className="objective-title">{i + 1}. {o.title}</div>
+                      <ul className="objective-list">
+                        {o.points.map((p, j) => <li key={j}>{p}</li>)}
+                      </ul>
                     </div>
                   </div>
-                  <div className="card">
-                    <div className="card-header"><div className="card-title">Our Vision</div></div>
-                    <div className="card-body">
-                      <p style={{ fontSize: '14px', lineHeight: 1.7, color: 'var(--text-secondary)' }}>
-                        A nationally and regionally recognized leader in animal reproductive science,
-                        driving innovation, shaping policy, and building a vibrant community of experts
-                        committed to sustainable livestock development and scientific excellence across
-                        ASEAN.
-                      </p>
-                    </div>
-                  </div>
-                </div>
+                ))}
+              </div>
 
-                <div id="about-kisspa" className="page-header" style={{ marginBottom: '16px' }}>
-                  <div className="page-title" style={{ fontSize: '18px' }}>Core Values — KISSPA</div>
-                </div>
-                <div className="kisspa-grid">
-                  {KISSPA_VALUES.map((v, i) => (
-                    <div key={i} className="kisspa-card">
-                      <div className="kisspa-letter">{v.letter}</div>
-                      <div className="kisspa-title">{v.title}</div>
-                      <div className="kisspa-desc">{v.desc}</div>
-                    </div>
-                  ))}
-                </div>
-
-                <div id="about-objectives" className="page-header" style={{ marginBottom: '16px', marginTop: '28px' }}>
-                  <div className="page-title" style={{ fontSize: '18px' }}>Strategic Objectives</div>
-                </div>
-                <div className="objectives-grid">
-                  {STRATEGIC_OBJECTIVES.map((o, i) => (
-                    <div key={i} className="card">
-                      <div className="card-body">
-                        <div className="objective-title">{i + 1}. {o.title}</div>
-                        <ul className="objective-list">
-                          {o.points.map((p, j) => <li key={j}>{p}</li>)}
-                        </ul>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="about-founder">
-                  Founding President: <strong>Danilda Hufana-Duran, Ph.D., L.Arg.</strong>
-                </div>
+              <div className="about-founder">
+                Founding President: <strong>Danilda Hufana-Duran, Ph.D., L.Arg.</strong>
               </div>
             </div>
           )}
