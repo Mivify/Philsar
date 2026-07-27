@@ -1870,7 +1870,16 @@ export default function App() {
     handleTabNavigate('about');
     setSidebarOpen(false);
     setTimeout(() => {
-      document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const el = document.getElementById(sectionId);
+      if (!el) return;
+      // Plain scrollIntoView aligns the section's top edge with the very top of
+      // the viewport, which is exactly where the sticky topbar sits — hiding the
+      // section's own heading underneath it. Offset by the topbar's real height
+      // (read live instead of hardcoded, since it's shorter on mobile) plus a
+      // little breathing room.
+      const topbarHeight = document.querySelector('.topbar')?.getBoundingClientRect().height || 0;
+      const targetY = el.getBoundingClientRect().top + window.scrollY - topbarHeight - 16;
+      window.scrollTo({ top: targetY, behavior: 'smooth' });
     }, 100);
   };
 
