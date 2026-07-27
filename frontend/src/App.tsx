@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   BookOpen,
   MessageSquare,
-  ChevronRight,
   Menu,
   X,
   Info,
@@ -268,7 +267,6 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>(() => tabFromPath(window.location.pathname));
   const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'modules' | 'meetings' | 'home' | 'settings'>('users');
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [aboutMenuOpen, setAboutMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLessonIndex, setSelectedLessonIndex] = useState<number>(0);
   const [completedLessonsMap, setCompletedLessonsMap] = useState<Record<number, number[]>>({});
@@ -1879,28 +1877,6 @@ export default function App() {
     setSearchQuery('');
   };
 
-  // Jumps to a section of the About Us page from the sidebar dropdown.
-  // Navigates to the About tab first (a no-op if already there), then waits
-  // a beat for that view's content to mount/the scroll-reset effect to run
-  // before scrolling to the target section — otherwise the scroll-to-top
-  // effect that fires on every tab change would immediately undo the jump.
-  const handleAboutJump = (sectionId: string) => {
-    handleTabNavigate('about');
-    setSidebarOpen(false);
-    setTimeout(() => {
-      const el = document.getElementById(sectionId);
-      if (!el) return;
-      // Plain scrollIntoView aligns the section's top edge with the very top of
-      // the viewport, which is exactly where the sticky topbar sits — hiding the
-      // section's own heading underneath it. Offset by the topbar's real height
-      // (read live instead of hardcoded, since it's shorter on mobile) plus a
-      // little breathing room.
-      const topbarHeight = document.querySelector('.topbar')?.getBoundingClientRect().height || 0;
-      const targetY = el.getBoundingClientRect().top + window.scrollY - topbarHeight - 16;
-      window.scrollTo({ top: targetY, behavior: 'smooth' });
-    }, 100);
-  };
-
   // Password visibility toggle
   const [showPassword, setShowPassword] = useState(false);
 
@@ -2319,26 +2295,12 @@ export default function App() {
           </button>
 
           <button
-            className="nav-item"
-            onClick={() => setAboutMenuOpen(!aboutMenuOpen)}
+            className={`nav-item ${activeTab === 'about' ? 'active' : ''}`}
+            onClick={() => handleTabNavigate('about')}
           >
             <div className="nav-icon">ℹ️</div>
             About Us
-            <ChevronRight size={14} className={`nav-dropdown-chevron ${aboutMenuOpen ? 'open' : ''}`} />
           </button>
-          {aboutMenuOpen && (
-            <div className="nav-dropdown-panel">
-              <button className="nav-dropdown-subitem" onClick={() => handleTabNavigate('about')}>
-                Mission &amp; Vision
-              </button>
-              <button className="nav-dropdown-subitem" onClick={() => handleAboutJump('about-kisspa')}>
-                Core Values (KISSPA)
-              </button>
-              <button className="nav-dropdown-subitem" onClick={() => handleAboutJump('about-objectives')}>
-                Strategic Objectives
-              </button>
-            </div>
-          )}
 
           <button
             className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
@@ -2620,7 +2582,7 @@ export default function App() {
                 </div>
               </div>
 
-              <div id="about-mission-vision" className="grid-2" style={{ marginBottom: '20px' }}>
+              <div className="grid-2" style={{ marginBottom: '20px' }}>
                 <div className="card">
                   <div className="card-header"><div className="card-title">Our Mission</div></div>
                   <div className="card-body">
@@ -2646,7 +2608,7 @@ export default function App() {
                 </div>
               </div>
 
-              <div id="about-kisspa" className="page-header" style={{ marginBottom: '16px' }}>
+              <div className="page-header" style={{ marginBottom: '16px' }}>
                 <div className="page-title" style={{ fontSize: '18px' }}>Core Values — KISSPA</div>
               </div>
               <div className="kisspa-grid">
@@ -2659,7 +2621,7 @@ export default function App() {
                 ))}
               </div>
 
-              <div id="about-objectives" className="page-header" style={{ marginBottom: '16px', marginTop: '28px' }}>
+              <div className="page-header" style={{ marginBottom: '16px', marginTop: '28px' }}>
                 <div className="page-title" style={{ fontSize: '18px' }}>Strategic Objectives</div>
               </div>
               <div className="objectives-grid">
