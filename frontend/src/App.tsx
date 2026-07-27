@@ -2341,7 +2341,9 @@ export default function App() {
           >
             <div className="nav-icon">🎥</div>
             Virtual Meetings
-            <span className="nav-badge" style={{ background: '#52c41a', color: '#fff' }}>Live</span>
+            {meetings.some(m => m.status === 'Live') && (
+              <span className="nav-badge" style={{ background: '#52c41a', color: '#fff' }}>Live</span>
+            )}
           </button>
 
           <div className="nav-section-label">Account</div>
