@@ -561,15 +561,34 @@ export default function App() {
 
   useEffect(() => {
     if (activeMeeting && activeMeeting.status !== 'Ended') {
-      const timer = setTimeout(() => {
+      let cancelled = false;
+      let timer: number | undefined;
+
+      (async () => {
+        // Joining anonymously (no jwt) puts the room in JaaS's "testing mode",
+        // where premium features like cloud recording never appear in the
+        // toolbar regardless of client-side config — they're gated behind proof
+        // of moderator rights via a signed token. Falls back to an anonymous
+        // join if this fails, so a token-service hiccup never blocks joining.
+        let jaasJwt: string | undefined;
+        try {
+          const tokenRes = await axios.get(`${API_BASE}/meetings/${activeMeeting.id}/jaas-token`);
+          jaasJwt = tokenRes.data.token;
+        } catch (err) {
+          console.error('Failed to get JaaS token, joining anonymously:', err);
+        }
+        if (cancelled) return;
+
+      timer = window.setTimeout(() => {
         const JitsiMeet = (window as any).JitsiMeetExternalAPI;
         if (JitsiMeet) {
           const sanitizedRoomName = activeMeeting.title.replace(/[^a-zA-Z0-9]/g, '') || 'Seminar';
           const roomName = `vpaas-magic-cookie-53e5d675a0894588a3bd511e6f7dd935/${sanitizedRoomName}`;
-          
+
           jitsiApiRef.current = new JitsiMeet("8x8.vc", {
             roomName: roomName,
             parentNode: document.getElementById('jaas-container'),
+            ...(jaasJwt ? { jwt: jaasJwt } : {}),
             userInfo: {
               displayName: currentUser?.name || 'Guest User',
               email: currentUser?.email || ''
@@ -630,8 +649,10 @@ export default function App() {
           });
         }
       }, 150);
+      })();
 
       return () => {
+        cancelled = true;
         clearTimeout(timer);
         if (attendanceIntervalRef.current) {
           clearInterval(attendanceIntervalRef.current);

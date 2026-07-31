@@ -10,7 +10,8 @@ const {
     getMyAttendance,
     getMeetingAttendance,
     grantCertificate,
-    revokeCertificate
+    revokeCertificate,
+    getJaasToken
 } = require('../controllers/meetingController');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 
@@ -19,6 +20,7 @@ router.get('/', requireAuth, getMeetings);
 router.get('/attendance/:userId', requireAuth, getMyAttendance);
 router.post('/:id/rsvp', requireAuth, rsvpMeeting);
 router.post('/:id/attendance/ping', requireAuth, pingAttendance);
+router.get('/:id/jaas-token', requireAuth, getJaasToken);
 
 // Admin-only: global-resource writes, or acting on another user's data
 router.get('/:id/attendance', requireAdmin, getMeetingAttendance);

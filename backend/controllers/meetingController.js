@@ -1,6 +1,7 @@
 const Meeting = require('../models/Meeting');
 const User = require('../models/User');
 const MeetingAttendance = require('../models/MeetingAttendance');
+const { generateJaasToken } = require('../utils/jaasToken');
 
 const HEARTBEAT_SECONDS = 30;
 const MAX_ELAPSED_PER_PING_SECONDS = 5 * 60;
@@ -250,6 +251,36 @@ const revokeCertificate = async (req, res) => {
     }
 };
 
+const getJaasToken = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const meeting = await Meeting.findByPk(id);
+        if (!meeting) {
+            return res.status(404).json({ message: 'Meeting not found' });
+        }
+
+        const user = await User.findByPk(req.user.id);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        if (!process.env.JAAS_PRIVATE_KEY) {
+            return res.status(503).json({ message: 'Video call authentication is not configured' });
+        }
+
+        const token = generateJaasToken({
+            userId: user.id,
+            name: user.name,
+            email: user.email,
+            moderator: user.role === 'Admin'
+        });
+
+        res.status(200).json({ token });
+    } catch (error) {
+        res.status(500).json({ message: 'Error generating video call token', error: error.message });
+    }
+};
+
 module.exports = {
     getMeetings,
     rsvpMeeting,
@@ -260,5 +291,6 @@ module.exports = {
     getMyAttendance,
     getMeetingAttendance,
     grantCertificate,
-    revokeCertificate
+    revokeCertificate,
+    getJaasToken
 };
