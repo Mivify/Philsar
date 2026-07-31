@@ -12,26 +12,6 @@ const getPrivateKey = () => {
     return raw.includes('\\n') ? raw.replace(/\\n/g, '\n') : raw;
 };
 
-// Temporary, safe-to-expose diagnostics for tracking down env-var formatting
-// issues in a deployed environment without ever revealing the key itself —
-// only structural facts (length, boilerplate markers, which newline style is
-// present). Remove once the deployment issue is confirmed fixed.
-const debugPrivateKeyShape = () => {
-    const raw = process.env.JAAS_PRIVATE_KEY || '';
-    const normalized = getPrivateKey();
-    return {
-        rawLength: raw.length,
-        startsWithBeginMarker: raw.trimStart().startsWith('-----BEGIN'),
-        endsWithEndMarker: raw.trimEnd().endsWith('-----'),
-        first30: raw.slice(0, 30),
-        last30: raw.slice(-30),
-        containsRealNewline: raw.includes('\n'),
-        containsLiteralBackslashN: raw.includes('\\n'),
-        normalizedLength: normalized.length,
-        normalizedLineCount: normalized.split('\n').length
-    };
-};
-
 // Mints a short-lived JWT for a specific user to join an 8x8 JaaS room. Without
 // this, the app joins rooms anonymously — which JaaS treats as a "testing mode"
 // room where premium features like cloud recording are unavailable regardless
@@ -68,4 +48,4 @@ const generateJaasToken = ({ userId, name, email, moderator }) => {
     });
 };
 
-module.exports = { generateJaasToken, debugPrivateKeyShape };
+module.exports = { generateJaasToken };
