@@ -26,7 +26,8 @@ import {
   Ban,
   UserCheck,
   Maximize2,
-  Minimize2
+  Minimize2,
+  Users
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import axios from 'axios';
@@ -297,7 +298,9 @@ export default function App() {
   const certBgImgRef = useRef<HTMLImageElement | null>(null);
   const [certModalOpen, setCertModalOpen] = useState(false);
   const [certModalMeeting, setCertModalMeeting] = useState<Meeting | null>(null);
-  const [certAttendanceRows, setCertAttendanceRows] = useState<Record<number, { secondsAttended: number; eligible: boolean; granted: boolean }>>({});
+  const [certAttendanceRows, setCertAttendanceRows] = useState<Record<number, { secondsAttended: number; eligible: boolean; granted: boolean; rsvped: boolean }>>({});
+  const [registrantsModalOpen, setRegistrantsModalOpen] = useState(false);
+  const [registrantsModalMeeting, setRegistrantsModalMeeting] = useState<Meeting | null>(null);
   const [cattleModalOpen, setCattleModalOpen] = useState(false);
   const [cattleList, setCattleList] = useState<CattleRecord[]>([]);
   const [newCattleForm, setNewCattleForm] = useState({ tagId: '', breed: '', notes: '' });
@@ -1234,9 +1237,9 @@ export default function App() {
   const fetchCertAttendance = async (meetingId: number) => {
     try {
       const res = await axios.get(`${API_BASE}/meetings/${meetingId}/attendance`);
-      const map: Record<number, { secondsAttended: number; eligible: boolean; granted: boolean }> = {};
+      const map: Record<number, { secondsAttended: number; eligible: boolean; granted: boolean; rsvped: boolean }> = {};
       for (const row of res.data) {
-        map[row.userId] = { secondsAttended: row.secondsAttended, eligible: row.eligible, granted: row.granted };
+        map[row.userId] = { secondsAttended: row.secondsAttended, eligible: row.eligible, granted: row.granted, rsvped: row.rsvped };
       }
       setCertAttendanceRows(map);
     } catch (error) {
@@ -1259,6 +1262,22 @@ export default function App() {
     const interval = setInterval(() => fetchCertAttendance(certModalMeeting.id), 20000);
     return () => clearInterval(interval);
   }, [certModalOpen, certModalMeeting]);
+
+  // Shares fetchCertAttendance/certAttendanceRows with the certificate modal —
+  // same underlying per-meeting attendance data, and only one of the two
+  // modals is ever open at a time.
+  const openRegistrantsModal = async (meeting: Meeting) => {
+    setRegistrantsModalMeeting(meeting);
+    setRegistrantsModalOpen(true);
+    setCertAttendanceRows({});
+    await fetchCertAttendance(meeting.id);
+  };
+
+  useEffect(() => {
+    if (!registrantsModalOpen || !registrantsModalMeeting) return;
+    const interval = setInterval(() => fetchCertAttendance(registrantsModalMeeting.id), 20000);
+    return () => clearInterval(interval);
+  }, [registrantsModalOpen, registrantsModalMeeting]);
 
   const handleToggleCertificate = async (userId: number, currentlyGranted: boolean) => {
     if (!certModalMeeting) return;
@@ -4161,6 +4180,9 @@ export default function App() {
                                     >
                                       <Pencil size={14} />
                                     </button>
+                                    <button className="table-action" onClick={() => openRegistrantsModal(m)} title="View registrants">
+                                      <Users size={14} style={{ color: 'var(--green-mid)' }} />
+                                    </button>
                                     <button className="table-action" onClick={() => openCertModal(m)} title="Manage certificates">
                                       <Award size={14} style={{ color: 'var(--amber)' }} />
                                     </button>
@@ -4913,6 +4935,52 @@ export default function App() {
             </div>
             <div className="confirm-actions" style={{ marginTop: '16px' }}>
               <button className="confirm-btn confirm-btn-cancel" onClick={() => setCertModalOpen(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Seminar Registrants (Admin) */}
+      {registrantsModalOpen && registrantsModalMeeting && (
+        <div className="confirm-overlay" onClick={() => setRegistrantsModalOpen(false)}>
+          <div className="confirm-box" style={{ maxWidth: '560px' }} onClick={e => e.stopPropagation()}>
+            <div className="confirm-message" style={{ fontWeight: 700, marginBottom: '14px' }}>
+              👥 Registrants — {registrantsModalMeeting.title}
+            </div>
+            {(() => {
+              const registrants = allUsers.filter(u => certAttendanceRows[u.id]?.rsvped);
+              if (registrants.length === 0) {
+                return (
+                  <div style={{ padding: '20px 4px', color: 'var(--text-muted)', fontSize: '13px' }}>
+                    No one has registered for this seminar yet.
+                  </div>
+                );
+              }
+              return (
+                <div style={{ maxHeight: '360px', overflowY: 'auto' }}>
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>User</th>
+                        <th>Email</th>
+                        <th>Attended</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {registrants.map(u => (
+                        <tr key={u.id}>
+                          <td>{u.name}</td>
+                          <td style={{ fontSize: '13px' }}>{u.email}</td>
+                          <td>{Math.floor((certAttendanceRows[u.id]?.secondsAttended || 0) / 60)} min</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })()}
+            <div className="confirm-actions" style={{ marginTop: '16px' }}>
+              <button className="confirm-btn confirm-btn-cancel" onClick={() => setRegistrantsModalOpen(false)}>Close</button>
             </div>
           </div>
         </div>

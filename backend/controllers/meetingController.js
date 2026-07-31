@@ -192,7 +192,8 @@ const getMeetingAttendance = async (req, res) => {
             userId: row.userId,
             secondsAttended: row.secondsAttended,
             granted: row.granted,
-            eligible: isEligible(row)
+            eligible: isEligible(row),
+            rsvped: row.rsvped
         })));
     } catch (error) {
         res.status(500).json({ message: 'Error retrieving meeting attendance', error: error.message });
