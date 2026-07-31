@@ -44,6 +44,10 @@ const generateJaasToken = ({ userId, name, email, moderator }) => {
     return jwt.sign(payload, getPrivateKey(), {
         algorithm: 'RS256',
         expiresIn: '3h',
+        // 8x8 requires nbf on its own, alongside exp — jsonwebtoken's expiresIn
+        // option only sets iat/exp, not nbf, and JaaS silently rejects the join
+        // (despite a perfectly valid signature) without it.
+        notBefore: 0,
         header: { kid: process.env.JAAS_API_KEY_ID }
     });
 };
