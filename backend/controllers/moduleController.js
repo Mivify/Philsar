@@ -1,7 +1,22 @@
 const Module = require('../models/Module');
+const ModuleChunk = require('../models/ModuleChunk');
+const { chunkModuleContent, embedText } = require('../utils/embeddings');
 const fs = require('fs');
 const path = require('path');
 const cloudinary = require('cloudinary').v2;
+
+// Re-chunks and re-embeds a module's content for RAG retrieval in the chatbot.
+// Wrapped by callers in a try/catch that only logs — a Gemini hiccup here
+// shouldn't block saving the module itself, since embeddings are a secondary
+// feature, not the module's source of truth.
+const reindexModuleChunks = async (moduleId, content) => {
+    await ModuleChunk.destroy({ where: { moduleId } });
+    const chunks = chunkModuleContent(content);
+    for (const chunk of chunks) {
+        const embedding = await embedText(chunk.content, 'RETRIEVAL_DOCUMENT');
+        await ModuleChunk.create({ moduleId, lessonTitle: chunk.lessonTitle, content: chunk.content, embedding });
+    }
+};
 
 const useCloudinary = !!(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET);
 if (useCloudinary) {
@@ -44,6 +59,11 @@ const createModule = async (req, res) => {
         // Coerce the "No topic" option's empty string to null — the ENUM column
         // only accepts one of its defined values or null, not an empty string.
         const moduleItem = await Module.create({ title, description, content, imageUrl, topic: topic || null });
+        try {
+            await reindexModuleChunks(moduleItem.id, content);
+        } catch (embedError) {
+            console.error('Embedding generation failed for new module:', embedError);
+        }
         res.status(201).json({ message: 'Module created successfully', module: moduleItem });
     } catch (error) {
         res.status(500).json({ message: 'Error creating module', error: error.message });
@@ -59,6 +79,8 @@ const updateModule = async (req, res) => {
         const moduleItem = await Module.findByPk(id);
         if (!moduleItem) return res.status(404).json({ message: 'Module not found' });
 
+        const contentChanged = !!content && content !== moduleItem.content;
+
         if (title) moduleItem.title = title;
         if (description !== undefined) moduleItem.description = description;
         if (content) moduleItem.content = content;
@@ -66,6 +88,15 @@ const updateModule = async (req, res) => {
         if (topic !== undefined) moduleItem.topic = topic || null;
 
         await moduleItem.save();
+
+        if (contentChanged) {
+            try {
+                await reindexModuleChunks(moduleItem.id, moduleItem.content);
+            } catch (embedError) {
+                console.error('Embedding regeneration failed for updated module:', embedError);
+            }
+        }
+
         res.status(200).json({ message: 'Module updated successfully', module: moduleItem });
     } catch (error) {
         res.status(500).json({ message: 'Error updating module', error: error.message });
@@ -79,6 +110,7 @@ const deleteModule = async (req, res) => {
         const moduleItem = await Module.findByPk(id);
         if (!moduleItem) return res.status(404).json({ message: 'Module not found' });
 
+        await ModuleChunk.destroy({ where: { moduleId: id } });
         await moduleItem.destroy();
         res.status(200).json({ message: 'Module deleted successfully' });
     } catch (error) {
@@ -139,4 +171,22 @@ const uploadImage = async (req, res) => {
     }
 };
 
-module.exports = { getModules, getModuleById, createModule, updateModule, deleteModule, uploadImage };
+// One-time catch-up for modules created before RAG chunking existed — safe to
+// re-run, since it only touches modules that currently have zero chunk rows.
+const backfillEmbeddings = async (req, res) => {
+    try {
+        const modules = await Module.findAll();
+        let indexed = 0;
+        for (const moduleItem of modules) {
+            const existingCount = await ModuleChunk.count({ where: { moduleId: moduleItem.id } });
+            if (existingCount > 0) continue;
+            await reindexModuleChunks(moduleItem.id, moduleItem.content);
+            indexed++;
+        }
+        res.status(200).json({ message: `Backfilled embeddings for ${indexed} module(s).`, totalModules: modules.length, indexed });
+    } catch (error) {
+        res.status(500).json({ message: 'Error backfilling embeddings', error: error.message });
+    }
+};
+
+module.exports = { getModules, getModuleById, createModule, updateModule, deleteModule, uploadImage, backfillEmbeddings };

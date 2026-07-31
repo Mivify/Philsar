@@ -266,6 +266,38 @@ body {
 
 .topbar-btn:hover { background: white; border-color: var(--amber); }
 
+.lang-toggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.lang-toggle button {
+  border: none;
+  background: var(--warm-white);
+  color: var(--text-muted);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0 12px;
+  height: 38px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.lang-toggle button:first-child { border-right: 1px solid var(--border); }
+
+.lang-toggle button.active {
+  background: var(--amber);
+  color: #fff;
+}
+
+.lang-toggle button:not(.active):hover {
+  background: var(--amber-pale);
+  color: var(--text-primary);
+}
+
 .notif-dot {
   position: absolute; top: 6px; right: 6px;
   width: 7px; height: 7px;
@@ -1208,6 +1240,14 @@ body {
   background: var(--brown-dark);
   color: var(--cream);
   border-top-right-radius: 4px;
+}
+
+.msg-sources {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 11.5px;
+  color: var(--text-muted);
 }
 
 .chat-input-area {

@@ -1,8 +1,48 @@
 const { GoogleGenAI } = require('@google/genai');
+const Module = require('../models/Module');
+const ModuleChunk = require('../models/ModuleChunk');
+const { embedText, cosineSimilarity } = require('../utils/embeddings');
 require('dotenv').config();
 
-// The genai package has a different API:
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+// Below this, a chunk is treated as unrelated to the question rather than
+// forced into the prompt — keeps the bot from citing irrelevant lessons on
+// questions the modules don't actually cover.
+const RELEVANCE_THRESHOLD = 0.65;
+const TOP_K = 4;
+
+// RAG retrieval over the Learning Modules' precomputed chunk embeddings
+// (generated in moduleController on module create/update). Brute-force
+// cosine similarity in Node is fine at this dataset size — no vector DB
+// needed. Falls back to no retrieved context (not an error) if anything
+// here fails, so a chatbot hiccup in retrieval never blocks a chat reply.
+const retrieveRelevantChunks = async (message) => {
+    try {
+        const queryEmbedding = await embedText(message, 'RETRIEVAL_QUERY');
+        const chunks = await ModuleChunk.findAll();
+        if (chunks.length === 0) return [];
+
+        const moduleIds = [...new Set(chunks.map(c => c.moduleId))];
+        const modules = await Module.findAll({ where: { id: moduleIds } });
+        const moduleTitleById = Object.fromEntries(modules.map(m => [m.id, m.title]));
+
+        return chunks
+            .map(chunk => ({
+                moduleId: chunk.moduleId,
+                moduleTitle: moduleTitleById[chunk.moduleId] || 'Untitled Module',
+                lessonTitle: chunk.lessonTitle,
+                content: chunk.content,
+                score: cosineSimilarity(queryEmbedding, chunk.embedding)
+            }))
+            .filter(c => c.score >= RELEVANCE_THRESHOLD)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, TOP_K);
+    } catch (error) {
+        console.error('RAG retrieval failed, answering without module context:', error);
+        return [];
+    }
+};
 
 const handleChat = async (req, res) => {
     try {
@@ -29,9 +69,14 @@ const handleChat = async (req, res) => {
         });
         const dateTimeContext = `\nThe current date and time is: ${currentDate}.`;
 
+        const relevantChunks = await retrieveRelevantChunks(message);
+        const referenceContext = relevantChunks.length > 0
+            ? `\n\nReference material from PHILSAR's Learning Modules (ground your answer in this when it's relevant to the question; otherwise answer from your own knowledge — don't force a connection that isn't there):\n${relevantChunks.map(c => `--- From "${c.moduleTitle}" (${c.lessonTitle}) ---\n${c.content}`).join('\n\n')}`
+            : '';
+
         const promptContext = `
 You are an expert AI assistant for the Philippine Society of Animal Reproduction (PHILSAR).
-You help users understand cattle reproductive systems, breeding technologies natural and artificial, and related educational materials.${userContext}${dateTimeContext}
+You help users understand cattle reproductive systems, breeding technologies natural and artificial, and related educational materials.${userContext}${dateTimeContext}${referenceContext}
 Default to responding in English, unless the user writes in or explicitly asks for another language.
 
 Please answer the following user query accurately and educationally:
@@ -42,11 +87,17 @@ User Query: ${message}`;
             contents: promptContext
         });
 
-        res.status(200).json({ response: response.text });
+        // Deduped by module — citing every matched lesson individually is noisier
+        // than useful when several land in the same module.
+        const sources = Object.values(
+            Object.fromEntries(relevantChunks.map(c => [c.moduleId, { moduleId: c.moduleId, moduleTitle: c.moduleTitle }]))
+        );
+
+        res.status(200).json({ response: response.text, sources });
     } catch (error) {
         console.error('Chat error:', error);
         // Return a clean, generic user-friendly message, keeping details in server console logs
-        res.status(200).json({ response: "Sorry, I am unable to connect to the AI assistant right now. Please try again later." });
+        res.status(200).json({ response: "Sorry, I am unable to connect to the AI assistant right now. Please try again later.", sources: [] });
     }
 };
 

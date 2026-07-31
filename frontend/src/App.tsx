@@ -266,12 +266,140 @@ const STRATEGIC_OBJECTIVES = [
   ] }
 ];
 
+// First-pass i18n: covers the sidebar, topbar, Home page, and the page
+// title/subtitle/primary buttons on every other tab. Deeper content (form
+// labels, table headers, admin sub-panels, AI-generated chatbot/DSS output,
+// admin-authored modules/announcements) stays English-only for now — those
+// aren't reachable by a static dictionary the same way.
+type Language = 'en' | 'tl';
+const TRANSLATIONS: Record<Language, Record<string, string>> = {
+  en: {
+    'nav.main': 'Main',
+    'nav.home': 'Home',
+    'nav.about': 'About Us',
+    'nav.dashboard': 'Dashboard',
+    'nav.learning': 'Learning Modules',
+    'nav.chatbot': 'AI Assistant',
+    'nav.dss': 'Decision Support',
+    'nav.meetings': 'Virtual Meetings',
+    'nav.live': 'Live',
+    'nav.account': 'Account',
+    'nav.profile': 'My Profile',
+    'nav.admin': 'Admin Panel',
+    'nav.signOut': 'Sign Out',
+    'search.placeholder': 'Search modules, topics…',
+    'search.noResults': 'No modules found.',
+    'home.eyebrow': 'PHILSAR Cattle Reproductive Portal',
+    'home.title': 'Smarter Breeding Decisions, Healthier Herds',
+    'home.subtitle': "Data-driven decision support, structured e-learning, and virtual seminars — built for Filipino cattle farmers, livestock managers, and veterinary extension workers.",
+    'home.runAssessment': '🧬 Run Breeding Assessment',
+    'home.exploreModules': '📚 Explore Learning Modules',
+    'home.announcements': 'Announcements',
+    'home.upcomingSeminars': 'Upcoming Seminars',
+    'home.seeAll': 'See all',
+    'home.noUpcomingSeminars': 'No upcoming seminars scheduled right now.',
+    'home.quickAccess': 'Quick Access',
+    'home.learningCenter': 'Learning Center',
+    'home.learningCenterDesc': 'Structured courses on cattle reproductive anatomy and breeding.',
+    'home.decisionSupport': 'Decision Support',
+    'home.decisionSupportDesc': 'AI-assisted breeding readiness assessment for your herd.',
+    'home.aiAssistant': 'AI Assistant',
+    'home.aiAssistantDesc': 'Ask PHILSARBot about estrus cycles, AI procedures, and more.',
+    'home.virtualMeetings': 'Virtual Meetings',
+    'home.virtualMeetingsDesc': 'Join live seminars and connect with extension workers.',
+    'about.title': 'About PHILSAR',
+    'about.subtitle': 'The Philippine Society of Animal Reproduction — advancing the science and practice of animal reproduction in the Philippines.',
+    'dashboard.greeting': 'Good morning',
+    'dashboard.subtitle': "Here's what's happening with your herd today",
+    'learning.title': 'Learning Center',
+    'learning.subtitle': 'Structured visual courses on cattle reproductive anatomy, estrus sync protocols, and breeding techniques',
+    'chatbot.title': 'AI Assistant',
+    'chatbot.subtitle': 'Ask anything about cattle reproduction, AI timing, semen viability, and herd management',
+    'dss.title': 'Decision Support System',
+    'dss.subtitle': "Input your cow's physiological data to receive a rule-based and AI-guided breeding recommendation",
+    'meetings.title': 'Virtual Meetings & Seminars',
+    'meetings.subtitle': 'Join live webcasts and interactive lessons hosted by PHILSAR reproduction experts',
+    'profile.title': 'My Profile',
+    'admin.title': 'Administrator Panel',
+    'admin.subtitle': 'Manage portal users, educational modules, scheduled webcasts, and system parameters',
+    'admin.tabUsers': '👥 Users',
+    'admin.tabModules': '📚 Modules',
+    'admin.tabMeetings': '🎥 Meetings',
+    'admin.tabHomePage': '🏠 Home Page',
+    'admin.tabSettings': '⚙️ Settings'
+  },
+  tl: {
+    'nav.main': 'Pangunahin',
+    'nav.home': 'Home',
+    'nav.about': 'Tungkol Sa Amin',
+    'nav.dashboard': 'Dashboard',
+    'nav.learning': 'Mga Modyul sa Pag-aaral',
+    'nav.chatbot': 'AI Assistant',
+    'nav.dss': 'Suporta sa Desisyon',
+    'nav.meetings': 'Mga Virtual na Pagpupulong',
+    'nav.live': 'Live',
+    'nav.account': 'Account',
+    'nav.profile': 'Aking Profile',
+    'nav.admin': 'Admin Panel',
+    'nav.signOut': 'Mag-sign Out',
+    'search.placeholder': 'Maghanap ng mga modyul, paksa…',
+    'search.noResults': 'Walang nahanap na modyul.',
+    'home.eyebrow': 'PHILSAR Cattle Reproductive Portal',
+    'home.title': 'Mas Matalinong Desisyon sa Pagpaparami, Mas Malusog na Kawan',
+    'home.subtitle': 'Suporta sa desisyon batay sa datos, structured na e-learning, at mga virtual na seminar — ginawa para sa mga Pilipinong magsasaka ng baka, tagapamahala ng alagang hayop, at mga extension worker sa beterinarya.',
+    'home.runAssessment': '🧬 Magsagawa ng Pagsusuri sa Pagpaparami',
+    'home.exploreModules': '📚 Tuklasin ang mga Modyul sa Pag-aaral',
+    'home.announcements': 'Mga Anunsyo',
+    'home.upcomingSeminars': 'Paparating na mga Seminar',
+    'home.seeAll': 'Tingnan lahat',
+    'home.noUpcomingSeminars': 'Walang naka-iskedyul na seminar sa ngayon.',
+    'home.quickAccess': 'Mabilisang Access',
+    'home.learningCenter': 'Sentro ng Pag-aaral',
+    'home.learningCenterDesc': 'Structured na mga kurso tungkol sa anatomiya at pagpaparami ng baka.',
+    'home.decisionSupport': 'Suporta sa Desisyon',
+    'home.decisionSupportDesc': 'AI-assisted na pagsusuri sa kahandaan sa pagpaparami ng iyong kawan.',
+    'home.aiAssistant': 'AI Assistant',
+    'home.aiAssistantDesc': 'Magtanong kay PHILSARBot tungkol sa estrus cycle, pamamaraan ng AI, at iba pa.',
+    'home.virtualMeetings': 'Mga Virtual na Pagpupulong',
+    'home.virtualMeetingsDesc': 'Sumali sa mga live na seminar at makipag-ugnayan sa mga extension worker.',
+    'about.title': 'Tungkol sa PHILSAR',
+    'about.subtitle': 'Ang Philippine Society of Animal Reproduction — nagsusulong ng agham at kasanayan sa pagpaparami ng hayop sa Pilipinas.',
+    'dashboard.greeting': 'Magandang umaga',
+    'dashboard.subtitle': 'Narito ang mga nangyayari sa iyong kawan ngayong araw',
+    'learning.title': 'Sentro ng Pag-aaral',
+    'learning.subtitle': 'Structured na visual na mga kurso tungkol sa anatomiya ng pagpaparami ng baka, mga protocol sa estrus sync, at mga teknik sa pagpaparami',
+    'chatbot.title': 'AI Assistant',
+    'chatbot.subtitle': 'Magtanong ng kahit ano tungkol sa pagpaparami ng baka, timing ng AI, viability ng semilya, at pamamahala ng kawan',
+    'dss.title': 'Sistema ng Suporta sa Desisyon',
+    'dss.subtitle': 'Ilagay ang physiological data ng iyong baka upang makatanggap ng rule-based at AI-guided na rekomendasyon sa pagpaparami',
+    'meetings.title': 'Mga Virtual na Pagpupulong at Seminar',
+    'meetings.subtitle': 'Sumali sa mga live na webcast at interactive na aralin na isinasagawa ng mga eksperto sa pagpaparami ng PHILSAR',
+    'profile.title': 'Aking Profile',
+    'admin.title': 'Admin Panel',
+    'admin.subtitle': 'Pamahalaan ang mga user ng portal, mga edukasyonal na modyul, mga naka-iskedyul na webcast, at mga parameter ng sistema',
+    'admin.tabUsers': '👥 Mga User',
+    'admin.tabModules': '📚 Mga Modyul',
+    'admin.tabMeetings': '🎥 Mga Pagpupulong',
+    'admin.tabHomePage': '🏠 Home Page',
+    'admin.tabSettings': '⚙️ Mga Setting'
+  }
+};
+
 export default function App() {
   // Navigation & UI States
   const [activeTab, setActiveTab] = useState<Tab>(() => tabFromPath(window.location.pathname));
   const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'modules' | 'meetings' | 'home' | 'settings'>('users');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [language, setLanguage] = useState<Language>(() => {
+    const saved = localStorage.getItem('philsar_language');
+    return saved === 'tl' ? 'tl' : 'en';
+  });
+  const t = (key: string): string => TRANSLATIONS[language][key] || TRANSLATIONS.en[key] || key;
+
+  useEffect(() => {
+    localStorage.setItem('philsar_language', language);
+  }, [language]);
   const [selectedLessonIndex, setSelectedLessonIndex] = useState<number>(0);
   const [completedLessonsMap, setCompletedLessonsMap] = useState<Record<number, number[]>>({});
   const [meetingModalOpen, setMeetingModalOpen] = useState(false);
@@ -355,7 +483,7 @@ export default function App() {
   const certBgFileInputRef = useRef<HTMLInputElement>(null);
 
   // Chat State
-  const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([CHAT_GREETING]);
+  const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'assistant'; content: string; sources?: { moduleId: number; moduleTitle: string }[] }[]>([CHAT_GREETING]);
   const [inputMessage, setInputMessage] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -989,7 +1117,8 @@ export default function App() {
         } : null
       });
       const reply = response.data?.response || "I couldn't process that query.";
-      setChatMessages(prev => [...prev, { role: 'assistant', content: reply }]);
+      const sources = response.data?.sources || [];
+      setChatMessages(prev => [...prev, { role: 'assistant', content: reply, sources }]);
     } catch (error) {
       console.error(error);
       setChatMessages(prev => [...prev, { role: 'assistant', content: "Sorry, I encountered an error connecting to the server. Please check your connection." }]);
@@ -2319,14 +2448,14 @@ export default function App() {
         </div>
 
         <nav className="sidebar-nav">
-          <div className="nav-section-label">Main</div>
+          <div className="nav-section-label">{t('nav.main')}</div>
 
           <button
             className={`nav-item ${activeTab === 'home' ? 'active' : ''}`}
             onClick={() => handleTabNavigate('home')}
           >
             <div className="nav-icon">🏠</div>
-            Home
+            {t('nav.home')}
           </button>
 
           <button
@@ -2334,7 +2463,7 @@ export default function App() {
             onClick={() => handleTabNavigate('about')}
           >
             <div className="nav-icon">ℹ️</div>
-            About Us
+            {t('nav.about')}
           </button>
 
           <button
@@ -2342,7 +2471,7 @@ export default function App() {
             onClick={() => handleTabNavigate('dashboard')}
           >
             <div className="nav-icon">📊</div>
-            Dashboard
+            {t('nav.dashboard')}
           </button>
 
           <button
@@ -2350,7 +2479,7 @@ export default function App() {
             onClick={() => handleTabNavigate('learning')}
           >
             <div className="nav-icon">📚</div>
-            Learning Modules
+            {t('nav.learning')}
           </button>
 
           <button
@@ -2358,7 +2487,7 @@ export default function App() {
             onClick={() => handleTabNavigate('chatbot')}
           >
             <div className="nav-icon">🤖</div>
-            AI Assistant
+            {t('nav.chatbot')}
           </button>
 
           <button
@@ -2366,7 +2495,7 @@ export default function App() {
             onClick={() => handleTabNavigate('dss')}
           >
             <div className="nav-icon">🧬</div>
-            Decision Support
+            {t('nav.dss')}
           </button>
 
           <button
@@ -2374,20 +2503,20 @@ export default function App() {
             onClick={() => handleTabNavigate('meetings')}
           >
             <div className="nav-icon">🎥</div>
-            Virtual Meetings
+            {t('nav.meetings')}
             {meetings.some(m => m.status === 'Live') && (
-              <span className="nav-badge" style={{ background: '#52c41a', color: '#fff' }}>Live</span>
+              <span className="nav-badge" style={{ background: '#52c41a', color: '#fff' }}>{t('nav.live')}</span>
             )}
           </button>
 
-          <div className="nav-section-label">Account</div>
+          <div className="nav-section-label">{t('nav.account')}</div>
 
           <button
             className={`nav-item ${activeTab === 'profile' ? 'active' : ''}`}
             onClick={() => handleTabNavigate('profile')}
           >
             <div className="nav-icon">👤</div>
-            My Profile
+            {t('nav.profile')}
           </button>
 
           {currentUser?.role === 'Admin' && (
@@ -2396,14 +2525,14 @@ export default function App() {
               onClick={() => handleTabNavigate('admin')}
             >
               <div className="nav-icon">⚙️</div>
-              Admin Panel
+              {t('nav.admin')}
             </button>
           )}
         </nav>
 
         <div className="sidebar-footer">
           <button className="logout-btn" onClick={handleLogout}>
-            <span>🚪</span> Sign Out
+            <span>🚪</span> {t('nav.signOut')}
           </button>
         </div>
       </nav>
@@ -2433,7 +2562,7 @@ export default function App() {
                 <span>🔍</span>
                 <input
                   type="text"
-                  placeholder="Search modules, topics…"
+                  placeholder={t('search.placeholder')}
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Escape') setSearchQuery(''); }}
@@ -2449,10 +2578,14 @@ export default function App() {
                       </div>
                     ))
                   ) : (
-                    <div className="search-result-empty">No modules found.</div>
+                    <div className="search-result-empty">{t('search.noResults')}</div>
                   )}
                 </div>
               )}
+            </div>
+            <div className="lang-toggle">
+              <button className={language === 'en' ? 'active' : ''} onClick={() => setLanguage('en')}>EN</button>
+              <button className={language === 'tl' ? 'active' : ''} onClick={() => setLanguage('tl')}>TL</button>
             </div>
             <div className="topbar-btn" onClick={() => handleTabNavigate('profile')}>👤</div>
           </div>
@@ -2481,18 +2614,17 @@ export default function App() {
                 )}
                 <div className="home-hero-overlay" />
                 <div className="home-hero-content">
-                  <div className="home-hero-eyebrow">PHILSAR Cattle Reproductive Portal</div>
-                  <h1 className="home-hero-title">Smarter Breeding Decisions, Healthier Herds</h1>
+                  <div className="home-hero-eyebrow">{t('home.eyebrow')}</div>
+                  <h1 className="home-hero-title">{t('home.title')}</h1>
                   <p className="home-hero-subtitle">
-                    Data-driven decision support, structured e-learning, and virtual seminars — built for
-                    Filipino cattle farmers, livestock managers, and veterinary extension workers.
+                    {t('home.subtitle')}
                   </p>
                   <div className="home-hero-actions">
                     <button className="home-hero-btn primary" onClick={() => handleTabNavigate('dss')}>
-                      🧬 Run Breeding Assessment
+                      {t('home.runAssessment')}
                     </button>
                     <button className="home-hero-btn" onClick={() => handleTabNavigate('learning')}>
-                      📚 Explore Learning Modules
+                      {t('home.exploreModules')}
                     </button>
                   </div>
                 </div>
@@ -2513,7 +2645,7 @@ export default function App() {
               {announcements.length > 0 && (
                 <div className="home-section">
                   <div className="page-header" style={{ marginBottom: '16px' }}>
-                    <div className="page-title" style={{ fontSize: '20px' }}>Announcements</div>
+                    <div className="page-title" style={{ fontSize: '20px' }}>{t('home.announcements')}</div>
                   </div>
                   <div className="announcement-grid">
                     {announcements.map(a => (
@@ -2534,13 +2666,13 @@ export default function App() {
               <div className="home-section">
                 <div className="card">
                   <div className="card-header">
-                    <div className="card-title">Upcoming Seminars</div>
-                    <button className="card-action" onClick={() => handleTabNavigate('meetings')}>See all</button>
+                    <div className="card-title">{t('home.upcomingSeminars')}</div>
+                    <button className="card-action" onClick={() => handleTabNavigate('meetings')}>{t('home.seeAll')}</button>
                   </div>
                   <div className="card-body">
                     {meetings.filter(m => m.status !== 'Ended').length === 0 ? (
                       <div style={{ padding: '20px 4px', color: 'var(--text-muted)', fontSize: '13px' }}>
-                        No upcoming seminars scheduled right now.
+                        {t('home.noUpcomingSeminars')}
                       </div>
                     ) : (
                       meetings.filter(m => m.status !== 'Ended').slice(0, 3).map(session => (
@@ -2579,28 +2711,28 @@ export default function App() {
 
               <div className="home-section">
                 <div className="page-header" style={{ marginBottom: '16px' }}>
-                  <div className="page-title" style={{ fontSize: '20px' }}>Quick Access</div>
+                  <div className="page-title" style={{ fontSize: '20px' }}>{t('home.quickAccess')}</div>
                 </div>
                 <div className="quick-access-grid">
                   <div className="quick-access-card" onClick={() => handleTabNavigate('learning')}>
                     <div className="quick-access-icon">📚</div>
-                    <div className="quick-access-title">Learning Center</div>
-                    <div className="quick-access-desc">Structured courses on cattle reproductive anatomy and breeding.</div>
+                    <div className="quick-access-title">{t('home.learningCenter')}</div>
+                    <div className="quick-access-desc">{t('home.learningCenterDesc')}</div>
                   </div>
                   <div className="quick-access-card" onClick={() => handleTabNavigate('dss')}>
                     <div className="quick-access-icon">🧬</div>
-                    <div className="quick-access-title">Decision Support</div>
-                    <div className="quick-access-desc">AI-assisted breeding readiness assessment for your herd.</div>
+                    <div className="quick-access-title">{t('home.decisionSupport')}</div>
+                    <div className="quick-access-desc">{t('home.decisionSupportDesc')}</div>
                   </div>
                   <div className="quick-access-card" onClick={() => handleTabNavigate('chatbot')}>
                     <div className="quick-access-icon">🤖</div>
-                    <div className="quick-access-title">AI Assistant</div>
-                    <div className="quick-access-desc">Ask PHILSARBot about estrus cycles, AI procedures, and more.</div>
+                    <div className="quick-access-title">{t('home.aiAssistant')}</div>
+                    <div className="quick-access-desc">{t('home.aiAssistantDesc')}</div>
                   </div>
                   <div className="quick-access-card" onClick={() => handleTabNavigate('meetings')}>
                     <div className="quick-access-icon">🎥</div>
-                    <div className="quick-access-title">Virtual Meetings</div>
-                    <div className="quick-access-desc">Join live seminars and connect with extension workers.</div>
+                    <div className="quick-access-title">{t('home.virtualMeetings')}</div>
+                    <div className="quick-access-desc">{t('home.virtualMeetingsDesc')}</div>
                   </div>
                 </div>
               </div>
@@ -2611,10 +2743,9 @@ export default function App() {
           {activeTab === 'about' && (
             <div className="view active">
               <div className="page-header">
-                <div className="page-title">About PHILSAR</div>
+                <div className="page-title">{t('about.title')}</div>
                 <div className="page-subtitle">
-                  The Philippine Society of Animal Reproduction — advancing the science and practice of
-                  animal reproduction in the Philippines.
+                  {t('about.subtitle')}
                 </div>
               </div>
 
@@ -2683,9 +2814,9 @@ export default function App() {
           {activeTab === 'dashboard' && (
             <div className="view active">
               <div className="page-header">
-                <div className="page-title">Good morning, {currentUser?.name?.split(' ')[0]} 👋</div>
+                <div className="page-title">{t('dashboard.greeting')}, {currentUser?.name?.split(' ')[0]} 👋</div>
                 <div className="page-subtitle">
-                  Here's what's happening with your herd today — {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                  {t('dashboard.subtitle')} — {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                 </div>
               </div>
 
@@ -2862,8 +2993,8 @@ export default function App() {
               {!selectedModule ? (
                 <div id="moduleList">
                   <div className="page-header">
-                    <div className="page-title">Learning Center</div>
-                    <div className="page-subtitle">Structured visual courses on cattle reproductive anatomy, estrus sync protocols, and breeding techniques</div>
+                    <div className="page-title">{t('learning.title')}</div>
+                    <div className="page-subtitle">{t('learning.subtitle')}</div>
                   </div>
 
                   <div className="module-filter">
@@ -3014,8 +3145,8 @@ export default function App() {
           {activeTab === 'chatbot' && (
             <div className="view active">
               <div className="page-header">
-                <div className="page-title">AI Assistant</div>
-                <div className="page-subtitle">Ask anything about cattle reproduction, AI timing, semen viability, and herd management</div>
+                <div className="page-title">{t('chatbot.title')}</div>
+                <div className="page-subtitle">{t('chatbot.subtitle')}</div>
               </div>
 
               <div className="chat-layout">
@@ -3034,6 +3165,11 @@ export default function App() {
                         <div className="msg-avatar">{msg.role === 'user' ? '🧑' : '🤖'}</div>
                         <div className="msg-bubble">
                           <ReactMarkdown>{msg.content}</ReactMarkdown>
+                          {msg.sources && msg.sources.length > 0 && (
+                            <div className="msg-sources">
+                              📚 Based on: {msg.sources.map(s => s.moduleTitle).join(', ')}
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -3094,8 +3230,8 @@ export default function App() {
           {activeTab === 'dss' && (
             <div className="view active">
               <div className="page-header">
-                <div className="page-title">Decision Support System</div>
-                <div className="page-subtitle">Input your cow's physiological data to receive a rule-based and AI-guided breeding recommendation</div>
+                <div className="page-title">{t('dss.title')}</div>
+                <div className="page-subtitle">{t('dss.subtitle')}</div>
               </div>
 
               <div className="dss-layout">
@@ -3297,8 +3433,8 @@ export default function App() {
           {activeTab === 'meetings' && (
             <div className="view active">
               <div className="page-header">
-                <div className="page-title">Virtual Meetings & Seminars</div>
-                <div className="page-subtitle">Join live webcasts and interactive lessons hosted by PHILSAR reproduction experts</div>
+                <div className="page-title">{t('meetings.title')}</div>
+                <div className="page-subtitle">{t('meetings.subtitle')}</div>
               </div>
 
               <div className="meetings-layout">
@@ -3426,7 +3562,7 @@ export default function App() {
           {activeTab === 'profile' && (
             <div className="view active">
               <div className="page-header">
-                <div className="page-title">My Profile</div>
+                <div className="page-title">{t('profile.title')}</div>
               </div>
 
               <div className="profile-hero">
@@ -3610,8 +3746,8 @@ export default function App() {
           {activeTab === 'admin' && currentUser?.role === 'Admin' && (
             <div className="view active">
               <div className="page-header">
-                <div className="page-title">Administrator Panel</div>
-                <div className="page-subtitle">Manage portal users, educational modules, scheduled webcasts, and system parameters</div>
+                <div className="page-title">{t('admin.title')}</div>
+                <div className="page-subtitle">{t('admin.subtitle')}</div>
               </div>
 
               {/* ADMIN INTERNAL TABS */}
@@ -3620,31 +3756,31 @@ export default function App() {
                   className={`admin-tab ${activeAdminTab === 'users' ? 'active' : ''}`}
                   onClick={() => setActiveAdminTab('users')}
                 >
-                  👥 Users
+                  {t('admin.tabUsers')}
                 </button>
                 <button
                   className={`admin-tab ${activeAdminTab === 'modules' ? 'active' : ''}`}
                   onClick={() => setActiveAdminTab('modules')}
                 >
-                  📚 Modules
+                  {t('admin.tabModules')}
                 </button>
                 <button
                   className={`admin-tab ${activeAdminTab === 'meetings' ? 'active' : ''}`}
                   onClick={() => setActiveAdminTab('meetings')}
                 >
-                  🎥 Meetings
+                  {t('admin.tabMeetings')}
                 </button>
                 <button
                   className={`admin-tab ${activeAdminTab === 'home' ? 'active' : ''}`}
                   onClick={() => setActiveAdminTab('home')}
                 >
-                  🏠 Home Page
+                  {t('admin.tabHomePage')}
                 </button>
                 <button
                   className={`admin-tab ${activeAdminTab === 'settings' ? 'active' : ''}`}
                   onClick={() => setActiveAdminTab('settings')}
                 >
-                  ⚙️ Settings
+                  {t('admin.tabSettings')}
                 </button>
               </div>
 
