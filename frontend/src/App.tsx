@@ -2316,7 +2316,6 @@ export default function App() {
           >
             <div className="nav-icon">📚</div>
             Learning Modules
-            <span className="nav-badge">{modules.length}</span>
           </button>
 
           <button
