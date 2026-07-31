@@ -22,6 +22,10 @@ const Module = sequelize.define('Module', {
     imageUrl: {
         type: DataTypes.STRING,
         allowNull: true,
+    },
+    topic: {
+        type: DataTypes.ENUM('Anatomy', 'Physiology', 'Breeding', 'Pregnancy'),
+        allowNull: true,
     }
 }, {
     timestamps: true,

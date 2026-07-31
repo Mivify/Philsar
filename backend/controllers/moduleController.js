@@ -37,11 +37,13 @@ const getModuleById = async (req, res) => {
 // Create module
 const createModule = async (req, res) => {
     try {
-        const { title, description, content, imageUrl } = req.body;
+        const { title, description, content, imageUrl, topic } = req.body;
         if (!title || !content) {
             return res.status(400).json({ message: 'Title and content are required' });
         }
-        const moduleItem = await Module.create({ title, description, content, imageUrl });
+        // Coerce the "No topic" option's empty string to null — the ENUM column
+        // only accepts one of its defined values or null, not an empty string.
+        const moduleItem = await Module.create({ title, description, content, imageUrl, topic: topic || null });
         res.status(201).json({ message: 'Module created successfully', module: moduleItem });
     } catch (error) {
         res.status(500).json({ message: 'Error creating module', error: error.message });
@@ -52,7 +54,7 @@ const createModule = async (req, res) => {
 const updateModule = async (req, res) => {
     try {
         const { id } = req.params;
-        const { title, description, content, imageUrl } = req.body;
+        const { title, description, content, imageUrl, topic } = req.body;
 
         const moduleItem = await Module.findByPk(id);
         if (!moduleItem) return res.status(404).json({ message: 'Module not found' });
@@ -61,6 +63,7 @@ const updateModule = async (req, res) => {
         if (description !== undefined) moduleItem.description = description;
         if (content) moduleItem.content = content;
         if (imageUrl !== undefined) moduleItem.imageUrl = imageUrl;
+        if (topic !== undefined) moduleItem.topic = topic || null;
 
         await moduleItem.save();
         res.status(200).json({ message: 'Module updated successfully', module: moduleItem });

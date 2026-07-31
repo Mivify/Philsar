@@ -54,6 +54,7 @@ interface LearningModule {
   description: string;
   content: string;
   imageUrl?: string;
+  topic?: string;
 }
 
 interface Meeting {
@@ -371,7 +372,8 @@ export default function App() {
 
   // Admin Operations State
   const [newUserForm, setNewUserForm] = useState({ name: '', email: '', password: '', role: 'Farmer', organization: '' });
-  const [newModuleForm, setNewModuleForm] = useState({ title: '', description: '', content: '', imageUrl: '' });
+  const [newModuleForm, setNewModuleForm] = useState({ title: '', description: '', content: '', imageUrl: '', topic: '' });
+  const [topicFilter, setTopicFilter] = useState('All Topics');
   const [newMeetingForm, setNewMeetingForm] = useState({ title: '', host: '', dateTime: '', status: 'Upcoming' as any, videoLink: '', recordingUrl: '' });
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
   const [savingUser, setSavingUser] = useState(false);
@@ -1740,7 +1742,7 @@ export default function App() {
         await axios.post(`${API_BASE}/modules`, newModuleForm);
         showToast('Module created successfully!', 'success');
       }
-      setNewModuleForm({ title: '', description: '', content: '', imageUrl: '' });
+      setNewModuleForm({ title: '', description: '', content: '', imageUrl: '', topic: '' });
       fetchGlobalData();
     } catch (error) {
       console.error(error);
@@ -2846,15 +2848,29 @@ export default function App() {
                   </div>
 
                   <div className="module-filter">
-                    <div className="filter-chip active">All Topics</div>
-                    <div className="filter-chip">Anatomy</div>
-                    <div className="filter-chip">Physiology</div>
-                    <div className="filter-chip">Breeding</div>
-                    <div className="filter-chip">Pregnancy</div>
+                    {['All Topics', 'Anatomy', 'Physiology', 'Breeding', 'Pregnancy'].map(t => (
+                      <div
+                        key={t}
+                        className={`filter-chip ${topicFilter === t ? 'active' : ''}`}
+                        onClick={() => setTopicFilter(t)}
+                      >
+                        {t}
+                      </div>
+                    ))}
                   </div>
 
+                  {(() => {
+                    const filteredModules = topicFilter === 'All Topics' ? modules : modules.filter(m => m.topic === topicFilter);
+                    if (filteredModules.length === 0) {
+                      return (
+                        <div style={{ padding: '40px 4px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '14px' }}>
+                          No modules in this topic yet.
+                        </div>
+                      );
+                    }
+                    return (
                   <div className="modules-grid">
-                    {modules.map((mod, idx) => {
+                    {filteredModules.map((mod, idx) => {
                       const icons = ['🦴', '🔄', '🧬', '🐂', '🤰', '❤️'];
                       const icon = icons[idx % icons.length];
                       const backgrounds = [
@@ -2866,8 +2882,6 @@ export default function App() {
                         'linear-gradient(135deg, #FCE4EC, #F8BBD9)'
                       ];
                       const bg = backgrounds[idx % backgrounds.length];
-                      const categories = ['Anatomy', 'Physiology', 'Breeding', 'Natural Mating', 'Pregnancy', 'Health'];
-                      const cat = categories[idx % categories.length];
 
                       return (
                         <div key={mod.id} className="module-card" onClick={() => { setSelectedModule(mod); setSelectedLessonIndex(0); }}>
@@ -2878,7 +2892,7 @@ export default function App() {
                             {!isValidImageUrl(mod.imageUrl) && icon}
                           </div>
                           <div className="module-body">
-                            <div className="module-category" style={{ color: 'var(--amber)' }}>{cat}</div>
+                            {mod.topic && <div className="module-category" style={{ color: 'var(--amber)' }}>{mod.topic}</div>}
                             <div className="module-title">{mod.title}</div>
                             <div className="module-desc">{mod.description}</div>
                             <div className="module-meta">
@@ -2905,6 +2919,8 @@ export default function App() {
                       );
                     })}
                   </div>
+                    );
+                  })()}
                 </div>
               ) : (
                 <div id="lessonViewer" className="lesson-viewer" style={{ display: 'block' }}>
@@ -3774,6 +3790,20 @@ export default function App() {
                             />
                           </div>
                           <div className="form-group">
+                            <label className="form-label">Topic</label>
+                            <select
+                              className="form-control"
+                              value={newModuleForm.topic}
+                              onChange={e => setNewModuleForm({ ...newModuleForm, topic: e.target.value })}
+                            >
+                              <option value="">No topic</option>
+                              <option value="Anatomy">Anatomy</option>
+                              <option value="Physiology">Physiology</option>
+                              <option value="Breeding">Breeding</option>
+                              <option value="Pregnancy">Pregnancy</option>
+                            </select>
+                          </div>
+                          <div className="form-group">
                             <label className="form-label">Cover Image</label>
 
                             {/* Hidden file input */}
@@ -3926,7 +3956,7 @@ export default function App() {
                                 type="button"
                                 onClick={() => {
                                   setEditingModule(null);
-                                  setNewModuleForm({ title: '', description: '', content: '', imageUrl: '' });
+                                  setNewModuleForm({ title: '', description: '', content: '', imageUrl: '', topic: '' });
                                 }}
                               >
                                 Cancel
@@ -3962,7 +3992,8 @@ export default function App() {
                                           title: m.title,
                                           description: m.description || '',
                                           content: m.content,
-                                          imageUrl: m.imageUrl || ''
+                                          imageUrl: m.imageUrl || '',
+                                          topic: m.topic || ''
                                         });
                                       }}
                                     >
