@@ -424,7 +424,7 @@ export default function App() {
   const jitsiApiRef = useRef<any>(null);
 
   useEffect(() => {
-    if (meetingModalOpen && activeMeeting && activeMeeting.status !== 'Ended') {
+    if (activeMeeting && activeMeeting.status !== 'Ended') {
       const timer = setTimeout(() => {
         const JitsiMeet = (window as any).JitsiMeetExternalAPI;
         if (JitsiMeet) {
@@ -507,7 +507,7 @@ export default function App() {
         }
       };
     }
-  }, [meetingModalOpen, activeMeeting]);
+  }, [activeMeeting]);
 
   // A 401 means the session is no longer valid server-side (expired, or
   // invalidated by a password change elsewhere) — nothing previously handled
@@ -1083,6 +1083,15 @@ export default function App() {
     setActiveMeeting(meeting);
     setMinutesDraft(meeting.minutes || '');
     setMeetingModalOpen(true);
+  };
+
+  // Closing the modal (background click, the × button) only hides it — the Jitsi
+  // mount effect no longer keys off meetingModalOpen, so the call stays connected
+  // in the background. Actually leaving requires clearing activeMeeting itself,
+  // which is what the effect keys disposal off of.
+  const handleLeaveMeeting = () => {
+    setMeetingModalOpen(false);
+    setActiveMeeting(null);
   };
 
   const handleSaveMinutes = async () => {
@@ -4445,7 +4454,7 @@ export default function App() {
           )}
 
       {/* 🎥 JITSI MEET MODAL PLAYER */}
-      {meetingModalOpen && activeMeeting && (
+      {activeMeeting && (
         <div
           id="meetingModal"
           style={{
@@ -4456,7 +4465,7 @@ export default function App() {
             height: '100vh',
             backgroundColor: 'rgba(0, 0, 0, 0.75)',
             backdropFilter: 'blur(5px)',
-            display: 'flex',
+            display: meetingModalOpen ? 'flex' : 'none',
             alignItems: 'center',
             justifyContent: 'center',
             zIndex: 9999,
@@ -4632,7 +4641,7 @@ export default function App() {
                 </button>
                 <button
                   className="meeting-footer-btn"
-                  onClick={() => setMeetingModalOpen(false)}
+                  onClick={handleLeaveMeeting}
                   style={{ padding: '8px 20px', background: '#cf1322', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', fontWeight: 700, fontSize: '13px' }}
                 >
                   Leave Meeting
@@ -4642,7 +4651,7 @@ export default function App() {
             {activeMeeting.status === 'Ended' && (
               <div style={{ padding: '16px 24px', display: 'flex', justifyContent: 'center', background: 'rgba(0,0,0,0.1)' }}>
                 <button
-                  onClick={() => setMeetingModalOpen(false)}
+                  onClick={handleLeaveMeeting}
                   style={{ padding: '8px 20px', background: '#cf1322', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', fontWeight: 700, fontSize: '13px' }}
                 >
                   Close
@@ -4650,6 +4659,36 @@ export default function App() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Floating "return to call" pill — shown whenever a live meeting is
+          minimized (connected but hidden), reachable from any page. */}
+      {activeMeeting && activeMeeting.status !== 'Ended' && !meetingModalOpen && (
+        <div
+          onClick={() => setMeetingModalOpen(true)}
+          style={{
+            position: 'fixed',
+            bottom: '24px',
+            right: '24px',
+            background: 'var(--brown-dark, #16213e)',
+            color: 'var(--cream, #eef2fc)',
+            padding: '12px 20px',
+            borderRadius: '999px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            boxShadow: '0 10px 25px rgba(0,0,0,0.35)',
+            cursor: 'pointer',
+            zIndex: 9998,
+            fontSize: '13px',
+            fontWeight: 600,
+            border: '1px solid rgba(255,255,255,0.15)'
+          }}
+        >
+          <span style={{ color: '#ff4d4f' }}>🔴</span>
+          Meeting in progress — {activeMeeting.title}
+          <span style={{ opacity: 0.7 }}>▲</span>
         </div>
       )}
 
