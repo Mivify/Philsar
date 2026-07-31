@@ -24,7 +24,9 @@ import {
   Award,
   Pencil,
   Ban,
-  UserCheck
+  UserCheck,
+  Maximize2,
+  Minimize2
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import axios from 'axios';
@@ -271,6 +273,7 @@ export default function App() {
   const [selectedLessonIndex, setSelectedLessonIndex] = useState<number>(0);
   const [completedLessonsMap, setCompletedLessonsMap] = useState<Record<number, number[]>>({});
   const [meetingModalOpen, setMeetingModalOpen] = useState(false);
+  const [meetingExpanded, setMeetingExpanded] = useState(false);
   const [activeMeeting, setActiveMeeting] = useState<Meeting | null>(null);
   const [minutesDraft, setMinutesDraft] = useState('');
   const [savingMinutes, setSavingMinutes] = useState(false);
@@ -1083,6 +1086,7 @@ export default function App() {
     setActiveMeeting(meeting);
     setMinutesDraft(meeting.minutes || '');
     setMeetingModalOpen(true);
+    setMeetingExpanded(false);
   };
 
   // Closing the modal (background click, the × button) only hides it — the Jitsi
@@ -1091,6 +1095,7 @@ export default function App() {
   // which is what the effect keys disposal off of.
   const handleLeaveMeeting = () => {
     setMeetingModalOpen(false);
+    setMeetingExpanded(false);
     setActiveMeeting(null);
   };
 
@@ -4469,7 +4474,7 @@ export default function App() {
             alignItems: 'center',
             justifyContent: 'center',
             zIndex: 9999,
-            padding: '20px',
+            padding: meetingExpanded ? 0 : '20px',
             boxSizing: 'border-box'
           }}
           onClick={() => setMeetingModalOpen(false)}
@@ -4477,10 +4482,11 @@ export default function App() {
           <div
             style={{
               background: 'var(--brown-dark, #16213e)',
-              width: '900px',
-              maxWidth: '95vw',
-              maxHeight: '90vh',
-              borderRadius: '20px',
+              width: meetingExpanded ? '100vw' : '900px',
+              height: meetingExpanded ? '100vh' : undefined,
+              maxWidth: meetingExpanded ? '100vw' : '95vw',
+              maxHeight: meetingExpanded ? '100vh' : '90vh',
+              borderRadius: meetingExpanded ? 0 : '20px',
               overflow: 'hidden',
               boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 10px 10px -5px rgba(0, 0, 0, 0.3)',
               border: '1px solid rgba(255, 255, 255, 0.1)',
@@ -4493,35 +4499,77 @@ export default function App() {
               <div style={{ color: 'var(--cream, #eef2fc)', fontWeight: 600, fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span style={{ color: '#ff4d4f', fontSize: '12px' }}>🔴</span> {activeMeeting.title}
               </div>
-              <button
-                onClick={() => setMeetingModalOpen(false)}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.05)',
-                  border: 'none',
-                  color: 'rgba(255,255,255,0.6)',
-                  fontSize: '18px',
-                  width: '32px',
-                  height: '32px',
-                  borderRadius: '50%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
-                  e.currentTarget.style.color = '#fff';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-                  e.currentTarget.style.color = 'rgba(255,255,255,0.6)';
-                }}
-              >
-                ×
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  onClick={() => setMeetingExpanded(!meetingExpanded)}
+                  title={meetingExpanded ? 'Exit fullscreen' : 'Fill screen'}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    border: 'none',
+                    color: 'rgba(255,255,255,0.6)',
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
+                    e.currentTarget.style.color = '#fff';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                    e.currentTarget.style.color = 'rgba(255,255,255,0.6)';
+                  }}
+                >
+                  {meetingExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+                </button>
+                <button
+                  onClick={() => setMeetingModalOpen(false)}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    border: 'none',
+                    color: 'rgba(255,255,255,0.6)',
+                    fontSize: '18px',
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
+                    e.currentTarget.style.color = '#fff';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                    e.currentTarget.style.color = 'rgba(255,255,255,0.6)';
+                  }}
+                >
+                  ×
+                </button>
+              </div>
             </div>
-            <div className="meeting-modal-video" style={{ background: '#111', height: '480px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '16px', position: 'relative' }}>
+            <div
+              className="meeting-modal-video"
+              style={{
+                background: '#111',
+                height: meetingExpanded ? 'auto' : '480px',
+                flex: meetingExpanded ? 1 : undefined,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexDirection: 'column',
+                gap: '16px',
+                position: 'relative'
+              }}
+            >
               {activeMeeting.status === 'Ended' ? (
                 <>
                   <div style={{ fontSize: '60px' }}>{activeMeeting.recordingUrl ? '🎬' : '📼'}</div>
