@@ -16,15 +16,16 @@ const getPrivateKey = () => {
 // this, the app joins rooms anonymously — which JaaS treats as a "testing mode"
 // room where premium features like cloud recording are unavailable regardless
 // of client-side toolbar config, since they're gated behind proof of moderator
-// rights via a signed token. `room: '*'` (rather than the frontend's sanitized
-// room name) avoids duplicating that sanitization logic server-side — this app
-// already gates who can request a token at all via requireAuth on the route.
-const generateJaasToken = ({ userId, name, email, moderator }) => {
+// rights via a signed token. `room` is matched to the exact room being joined
+// (not the "*" wildcard) — this specific tenant rejected wildcard-room tokens
+// with "not allowed to join" even though the signature and every other claim
+// were valid, so an exact literal match is the more reliably-honored path.
+const generateJaasToken = ({ userId, name, email, moderator, room }) => {
     const payload = {
         aud: 'jitsi',
         iss: 'chat',
         sub: process.env.JAAS_APP_ID,
-        room: '*',
+        room: room || '*',
         context: {
             user: {
                 id: String(userId),

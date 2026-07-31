@@ -268,11 +268,20 @@ const getJaasToken = async (req, res) => {
             return res.status(503).json({ message: 'Video call authentication is not configured' });
         }
 
+        // Must match the room the frontend actually joins (App.tsx's Jitsi-mount
+        // effect uses the same replace()) — the room claim needs to be the
+        // literal room, not the "*" wildcard. Lowercased because Jitsi's
+        // underlying XMPP room naming is conventionally case-insensitive/
+        // lowercased regardless of the case passed into the iframe's roomName,
+        // and several real meeting titles here have mixed case.
+        const sanitizedRoomName = (meeting.title.replace(/[^a-zA-Z0-9]/g, '') || 'Seminar').toLowerCase();
+
         const token = generateJaasToken({
             userId: user.id,
             name: user.name,
             email: user.email,
-            moderator: user.role === 'Admin'
+            moderator: user.role === 'Admin',
+            room: sanitizedRoomName
         });
 
         res.status(200).json({ token });
