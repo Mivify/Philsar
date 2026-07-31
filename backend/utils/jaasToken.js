@@ -1,6 +1,17 @@
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
 
+// Cloud env-var UIs are inconsistent about preserving real newlines in a
+// pasted multi-line value — some flatten it to one line, silently breaking
+// PEM parsing (Node's crypto module requires the actual line breaks, not
+// just the BEGIN/END markers). Normalizing here means the env var works
+// whichever way it was pasted: as real newlines, or as one line with
+// literal "\n" escape sequences.
+const getPrivateKey = () => {
+    const raw = process.env.JAAS_PRIVATE_KEY || '';
+    return raw.includes('\\n') ? raw.replace(/\\n/g, '\n') : raw;
+};
+
 // Mints a short-lived JWT for a specific user to join an 8x8 JaaS room. Without
 // this, the app joins rooms anonymously — which JaaS treats as a "testing mode"
 // room where premium features like cloud recording are unavailable regardless
@@ -30,7 +41,7 @@ const generateJaasToken = ({ userId, name, email, moderator }) => {
         }
     };
 
-    return jwt.sign(payload, process.env.JAAS_PRIVATE_KEY, {
+    return jwt.sign(payload, getPrivateKey(), {
         algorithm: 'RS256',
         expiresIn: '3h',
         header: { kid: process.env.JAAS_API_KEY_ID }
