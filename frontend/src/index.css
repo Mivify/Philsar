@@ -388,6 +388,13 @@ body {
   animation: viewEnter 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* Scoped version of the app-wide zoom bump this replaced — applied only to
+   the Home, About Us, and Dashboard views instead of every page. zoom (not
+   transform:scale()) triggers a real re-layout, so it doesn't clip/overlap. */
+.view-large-text {
+  zoom: 1.1;
+}
+
 @keyframes viewEnter {
   from {
     opacity: 0;

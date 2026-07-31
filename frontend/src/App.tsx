@@ -2596,7 +2596,7 @@ export default function App() {
 
           {/* ── VIEW: HOME ── */}
           {activeTab === 'home' && (
-            <div className="view active">
+            <div className="view active view-large-text">
               <div className="home-hero">
                 {landingImages.length > 0 ? (
                   landingImages.map((img, i) => (
@@ -2741,7 +2741,7 @@ export default function App() {
 
           {/* ── VIEW: ABOUT US ── */}
           {activeTab === 'about' && (
-            <div className="view active">
+            <div className="view active view-large-text">
               <div className="page-header">
                 <div className="page-title">{t('about.title')}</div>
                 <div className="page-subtitle">
@@ -2812,7 +2812,7 @@ export default function App() {
 
           {/* ── VIEW: DASHBOARD ── */}
           {activeTab === 'dashboard' && (
-            <div className="view active">
+            <div className="view active view-large-text">
               <div className="page-header">
                 <div className="page-title">{t('dashboard.greeting')}, {currentUser?.name?.split(' ')[0]} 👋</div>
                 <div className="page-subtitle">
