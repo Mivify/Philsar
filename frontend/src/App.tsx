@@ -2848,7 +2848,7 @@ export default function App() {
                   </div>
 
                   <div className="module-filter">
-                    {['All Topics', 'Anatomy', 'Physiology', 'Breeding', 'Pregnancy'].map(t => (
+                    {['All Topics', 'Anatomy & Physiology', 'Breeds & Breeding', 'Estrus Cycle & Detection', 'Reproductive Biotechnology', 'Gestation & Pregnancy', 'Reproductive Health'].map(t => (
                       <div
                         key={t}
                         className={`filter-chip ${topicFilter === t ? 'active' : ''}`}
@@ -3797,10 +3797,12 @@ export default function App() {
                               onChange={e => setNewModuleForm({ ...newModuleForm, topic: e.target.value })}
                             >
                               <option value="">No topic</option>
-                              <option value="Anatomy">Anatomy</option>
-                              <option value="Physiology">Physiology</option>
-                              <option value="Breeding">Breeding</option>
-                              <option value="Pregnancy">Pregnancy</option>
+                              <option value="Anatomy & Physiology">Anatomy & Physiology</option>
+                              <option value="Breeds & Breeding">Breeds & Breeding</option>
+                              <option value="Estrus Cycle & Detection">Estrus Cycle & Detection</option>
+                              <option value="Reproductive Biotechnology">Reproductive Biotechnology</option>
+                              <option value="Gestation & Pregnancy">Gestation & Pregnancy</option>
+                              <option value="Reproductive Health">Reproductive Health</option>
                             </select>
                           </div>
                           <div className="form-group">

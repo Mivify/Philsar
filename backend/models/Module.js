@@ -24,7 +24,14 @@ const Module = sequelize.define('Module', {
         allowNull: true,
     },
     topic: {
-        type: DataTypes.ENUM('Anatomy', 'Physiology', 'Breeding', 'Pregnancy'),
+        type: DataTypes.ENUM(
+            'Anatomy & Physiology',
+            'Breeds & Breeding',
+            'Estrus Cycle & Detection',
+            'Reproductive Biotechnology',
+            'Gestation & Pregnancy',
+            'Reproductive Health'
+        ),
         allowNull: true,
     }
 }, {
