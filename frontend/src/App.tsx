@@ -104,6 +104,7 @@ interface Assessment {
   recommendation: string;
   guidance: string;
   createdAt: string;
+  sources?: { moduleId: number; moduleTitle: string }[];
 }
 
 interface SystemSettings {
@@ -1172,7 +1173,7 @@ export default function App() {
         userId: currentUser?.id
       });
 
-      setDssResult(response.data.assessment);
+      setDssResult({ ...response.data.assessment, sources: response.data.sources });
 
       // Reload assessments feed & refresh user stats in state
       fetchGlobalData();
@@ -3186,11 +3187,6 @@ export default function App() {
                         <div className="msg-avatar">{msg.role === 'user' ? '🧑' : '🤖'}</div>
                         <div className="msg-bubble">
                           <ReactMarkdown>{msg.content}</ReactMarkdown>
-                          {msg.sources && msg.sources.length > 0 && (
-                            <div className="msg-sources">
-                              📚 Based on: {msg.sources.map(s => s.moduleTitle).join(', ')}
-                            </div>
-                          )}
                         </div>
                       </div>
                     ))}
@@ -3431,7 +3427,7 @@ export default function App() {
                             Voluntary waiting period (VWP) is sufficient ( &gt;= 45 days)
                           </li>
                           <li className="criteria-item">
-                            <div className="criteria-icon">{!dssForm.healthStatus.includes('Ongoing') ? '✅' : '❌'}</div>
+                            <div className="criteria-icon">{(dssForm.healthStatus === 'Healthy — no issues' || dssForm.healthStatus === 'Minor health issue — treated') ? '✅' : '❌'}</div>
                             Clear of untreated ongoing reproductive or general health conditions
                           </li>
                         </ul>

@@ -2,14 +2,25 @@ const BreedingAssessment = require('../models/BreedingAssessment');
 const User = require('../models/User');
 const Cattle = require('../models/Cattle');
 const { GoogleGenAI } = require('@google/genai');
+const { retrieveRelevantChunks } = require('../utils/ragRetrieval');
 require('dotenv').config();
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 // Falls back to the previous hardcoded guidance if the Gemini call fails for any reason
 // (rate limit, network, bad key) — the DSS feature must never hard-fail because of this.
+// RAG-grounds the guidance in the Learning Modules the same way the chatbot does — a case
+// summary is embedded and matched against module content, but the model still falls back
+// to its own veterinary/animal husbandry knowledge when nothing relevant comes back, so
+// guidance isn't limited to only what happens to be written in the modules.
 const generateBreedingGuidance = async (data, fallback) => {
     try {
+        const caseQuery = `Breeding readiness assessment: age ${data.age} years, body condition score ${data.bcs}, ${data.daysSinceCalving} days since last calving, estrus indicators: ${data.estrusIndicators}, reproductive history: ${data.history}, current health status: ${data.healthStatus}. Determined ${data.isReady ? 'ready for breeding' : 'not ready for breeding'} — recommended action: ${data.recommendation}.`;
+        const relevantChunks = await retrieveRelevantChunks(caseQuery);
+        const referenceContext = relevantChunks.length > 0
+            ? `\n\nReference material from PHILSAR's Learning Modules (ground your guidance in this when it's relevant to this case; otherwise rely on your own veterinary/animal husbandry knowledge — don't force a connection that isn't there):\n${relevantChunks.map(c => `--- From "${c.moduleTitle}" (${c.lessonTitle}) ---\n${c.content}`).join('\n\n')}`
+            : '';
+
         const prompt = `You are a livestock reproduction advisor for the PHILSAR Cattle Reproductive Portal. Based on the following breeding assessment, write a short, practical guidance paragraph (2-4 sentences, no headers or bullet points) for the farmer.
 
 Cattle ID: ${data.cattleId}
@@ -20,7 +31,7 @@ Estrus Indicators Observed: ${data.estrusIndicators}
 Reproductive History: ${data.history}
 Current Health Status: ${data.healthStatus}
 Breeding Eligibility: ${data.isReady ? 'Ready for breeding' : 'Not ready for breeding'}
-Recommended Action: ${data.recommendation}
+Recommended Action: ${data.recommendation}${referenceContext}
 
 Write actionable guidance specific to this cattle's data above.`;
 
@@ -29,10 +40,16 @@ Write actionable guidance specific to this cattle's data above.`;
             contents: prompt
         });
 
-        return response.text?.trim() || fallback;
+        // Deduped by module — citing every matched lesson individually is noisier
+        // than useful when several land in the same module.
+        const sources = Object.values(
+            Object.fromEntries(relevantChunks.map(c => [c.moduleId, { moduleId: c.moduleId, moduleTitle: c.moduleTitle }]))
+        );
+
+        return { text: response.text?.trim() || fallback, sources };
     } catch (error) {
         console.error('Gemini guidance generation error:', error);
-        return fallback;
+        return { text: fallback, sources: [] };
     }
 };
 
@@ -53,9 +70,15 @@ const createAssessment = async (req, res) => {
         const indicatorList = estrusIndicators.split(',').map(s => s.trim()).filter(Boolean);
         const hasEstrusSign = indicatorList.length > 0 && !indicatorList.includes('None Observed');
 
+        // Only these two of the 4 dropdown options count as clear — the previous
+        // `!includes('ongoing')` check let "Recovering from illness" silently pass,
+        // contradicting the AI guidance text which correctly treated active
+        // recovery as a reason to postpone breeding.
+        const isHealthClear = healthStatus === 'Healthy — no issues' || healthStatus === 'Minor health issue — treated';
+
         const isReady = ageNum >= 2 && ageNum <= 8 &&
                         bcsNum >= 4 && bcsNum <= 7 &&
-                        !healthStatus.toLowerCase().includes('ongoing') &&
+                        isHealthClear &&
                         daysNum >= 45 &&
                         hasEstrusSign;
 
@@ -71,7 +94,7 @@ const createAssessment = async (req, res) => {
                 : 'Introduce a proven bull at a ratio of 1:20–30. Monitor closely and keep breeding records. Observe for return to heat in 21 days to confirm breeding success.')
             : 'Improve body condition through improved nutrition if BCS is below 5. Treat any health conditions with veterinary guidance. Re-evaluate in 2–4 weeks.';
 
-        const guidance = await generateBreedingGuidance(
+        const { text: guidance, sources } = await generateBreedingGuidance(
             { cattleId, age: ageNum, bcs: bcsNum, daysSinceCalving: daysNum, estrusIndicators, history, healthStatus, isReady, recommendation },
             fallbackGuidance
         );
@@ -106,7 +129,8 @@ const createAssessment = async (req, res) => {
 
         res.status(201).json({
             message: 'Assessment completed and saved successfully',
-            assessment
+            assessment,
+            sources
         });
     } catch (error) {
         res.status(500).json({ message: 'Server error during assessment', error: error.message });
