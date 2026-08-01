@@ -40,10 +40,12 @@ const computeModulesCompleted = async (userId) => {
 };
 
 // Returns completion state shaped as { [moduleId]: [lessonIndex, ...] }, matching the
-// frontend's completedLessonsMap state shape exactly.
+// frontend's completedLessonsMap state shape exactly. Route keeps a :userId param for
+// URL-shape compatibility with existing frontend calls, but it's ignored — always scoped
+// to the caller's own id, so one user can't read another's progress by editing the URL.
 const getProgress = async (req, res) => {
     try {
-        const { userId } = req.params;
+        const userId = req.user.id;
         const rows = await LessonProgress.findAll({ where: { userId } });
 
         const map = {};
@@ -60,9 +62,10 @@ const getProgress = async (req, res) => {
 
 const markLessonComplete = async (req, res) => {
     try {
-        const { userId, moduleId, lessonIndex } = req.body;
-        if (!userId || !moduleId || lessonIndex === undefined) {
-            return res.status(400).json({ message: 'Missing userId, moduleId, or lessonIndex' });
+        const userId = req.user.id;
+        const { moduleId, lessonIndex } = req.body;
+        if (!moduleId || lessonIndex === undefined) {
+            return res.status(400).json({ message: 'Missing moduleId or lessonIndex' });
         }
 
         const moduleItem = await Module.findByPk(moduleId);
@@ -96,9 +99,10 @@ const markLessonComplete = async (req, res) => {
 
 const unmarkLessonComplete = async (req, res) => {
     try {
-        const { userId, moduleId, lessonIndex } = req.body;
-        if (!userId || !moduleId || lessonIndex === undefined) {
-            return res.status(400).json({ message: 'Missing userId, moduleId, or lessonIndex' });
+        const userId = req.user.id;
+        const { moduleId, lessonIndex } = req.body;
+        if (!moduleId || lessonIndex === undefined) {
+            return res.status(400).json({ message: 'Missing moduleId or lessonIndex' });
         }
 
         const moduleItem = await Module.findByPk(moduleId);
