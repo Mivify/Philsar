@@ -21,6 +21,21 @@ const generateBreedingGuidance = async (data, fallback) => {
             ? `\n\nReference material from PHILSAR's Learning Modules (ground your guidance in this when it's relevant to this case; otherwise rely on your own veterinary/animal husbandry knowledge — don't force a connection that isn't there):\n${relevantChunks.map(c => `--- From "${c.moduleTitle}" (${c.lessonTitle}) ---\n${c.content}`).join('\n\n')}`
             : '';
 
+        // Without this, the model forms its own opinion from the raw numbers alone —
+        // e.g. flagging a BCS of 4 as a concern because the UI itself labels it
+        // "Borderline", even though this system's own rule treats 4-7 as acceptable.
+        // That produced guidance that contradicted the checklist shown right next to
+        // it (checklist ✅ on BCS, guidance text citing BCS as a reason to postpone).
+        // Telling the model exactly which criteria this system already decided met/
+        // didn't meet keeps its explanation aligned with what the farmer sees.
+        const checklistSummary = `
+System Checklist Results (already evaluated by this system's rules — do not contradict these; only explain the verdict using criteria marked NOT MET, even if a MET value might seem non-ideal by general standards):
+- Age within 2-8 years: ${data.checklist.ageOk ? 'MET' : 'NOT MET'}
+- Body Condition Score within 4-7: ${data.checklist.bcsOk ? 'MET' : 'NOT MET'}
+- Health status clear of untreated/ongoing conditions: ${data.checklist.healthOk ? 'MET' : 'NOT MET'}
+- Voluntary waiting period (>=45 days since calving): ${data.checklist.vwpOk ? 'MET' : 'NOT MET'}
+- Estrus/heat signs observed: ${data.checklist.estrusOk ? 'MET' : 'NOT MET'}`;
+
         const prompt = `You are a livestock reproduction advisor for the PHILSAR Cattle Reproductive Portal. Based on the following breeding assessment, write a short, practical guidance paragraph (2-4 sentences, no headers or bullet points) for the farmer.
 
 Cattle ID: ${data.cattleId}
@@ -31,7 +46,8 @@ Estrus Indicators Observed: ${data.estrusIndicators}
 Reproductive History: ${data.history}
 Current Health Status: ${data.healthStatus}
 Breeding Eligibility: ${data.isReady ? 'Ready for breeding' : 'Not ready for breeding'}
-Recommended Action: ${data.recommendation}${referenceContext}
+Recommended Action: ${data.recommendation}
+${checklistSummary}${referenceContext}
 
 Write actionable guidance specific to this cattle's data above.`;
 
@@ -76,11 +92,11 @@ const createAssessment = async (req, res) => {
         // recovery as a reason to postpone breeding.
         const isHealthClear = healthStatus === 'Healthy — no issues' || healthStatus === 'Minor health issue — treated';
 
-        const isReady = ageNum >= 2 && ageNum <= 8 &&
-                        bcsNum >= 4 && bcsNum <= 7 &&
-                        isHealthClear &&
-                        daysNum >= 45 &&
-                        hasEstrusSign;
+        const ageOk = ageNum >= 2 && ageNum <= 8;
+        const bcsOk = bcsNum >= 4 && bcsNum <= 7;
+        const vwpOk = daysNum >= 45;
+
+        const isReady = ageOk && bcsOk && isHealthClear && vwpOk && hasEstrusSign;
 
         const useAI = isReady && (indicatorList.includes('Standing Heat') || indicatorList.includes('Clear Discharge'));
 
@@ -95,7 +111,10 @@ const createAssessment = async (req, res) => {
             : 'Improve body condition through improved nutrition if BCS is below 5. Treat any health conditions with veterinary guidance. Re-evaluate in 2–4 weeks.';
 
         const { text: guidance, sources } = await generateBreedingGuidance(
-            { cattleId, age: ageNum, bcs: bcsNum, daysSinceCalving: daysNum, estrusIndicators, history, healthStatus, isReady, recommendation },
+            {
+                cattleId, age: ageNum, bcs: bcsNum, daysSinceCalving: daysNum, estrusIndicators, history, healthStatus, isReady, recommendation,
+                checklist: { ageOk, bcsOk, healthOk: isHealthClear, vwpOk, estrusOk: hasEstrusSign }
+            },
             fallbackGuidance
         );
 
