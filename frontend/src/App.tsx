@@ -881,13 +881,20 @@ export default function App() {
 
   // Re-check certificate eligibility whenever the user opens Virtual Meetings —
   // covers certificates an admin granted manually since the last page load.
+  // currentUser?.id is deliberately included: on a hard refresh landing directly
+  // on /meetings, activeTab is already 'meetings' on the very first render but
+  // currentUser hasn't hydrated from localStorage yet, so the condition above
+  // is false. Without this dependency the effect would never re-fire once
+  // currentUser becomes available a moment later, leaving myAttendance empty —
+  // showing the RSVP button and hiding earned certificates until the user
+  // navigates away from the tab and back.
   useEffect(() => {
     if (activeTab === 'meetings' && currentUser) {
       axios.get(`${API_BASE}/meetings/attendance/${currentUser.id}`)
         .then(res => setMyAttendance(res.data))
         .catch(err => console.error('Error loading seminar attendance:', err));
     }
-  }, [activeTab]);
+  }, [activeTab, currentUser?.id]);
 
   // Auth Operations
   const handleLoginSubmit = async (e: React.FormEvent) => {
