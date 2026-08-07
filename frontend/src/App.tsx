@@ -423,6 +423,7 @@ export default function App() {
   const [landingImages, setLandingImages] = useState<LandingImage[]>([]);
   const [heroIndex, setHeroIndex] = useState(0);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [viewingAnnouncement, setViewingAnnouncement] = useState<Announcement | null>(null);
   const [myAttendance, setMyAttendance] = useState<Record<number, { secondsAttended: number; eligible: boolean; rsvped: boolean }>>({});
   const attendanceIntervalRef = useRef<number | null>(null);
   const logoImgRef = useRef<HTMLImageElement | null>(null);
@@ -2719,7 +2720,14 @@ export default function App() {
                   </div>
                   <div className="announcement-grid">
                     {announcements.map(a => (
-                      <div key={a.id} className="announcement-card">
+                      <div
+                        key={a.id}
+                        className="announcement-card"
+                        onClick={() => setViewingAnnouncement(a)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setViewingAnnouncement(a); } }}
+                      >
                         {isValidImageUrl(a.imageUrl || undefined) && (
                           <div className="announcement-card-img" style={{ backgroundImage: `url(${a.imageUrl})` }} />
                         )}
@@ -5233,6 +5241,33 @@ export default function App() {
             })()}
             <div className="confirm-actions" style={{ marginTop: '16px' }}>
               <button className="confirm-btn confirm-btn-cancel" onClick={() => setRegistrantsModalOpen(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Announcement Detail */}
+      {viewingAnnouncement && (
+        <div className="confirm-overlay" onClick={() => setViewingAnnouncement(null)}>
+          <div className="confirm-box" style={{ maxWidth: '600px', padding: 0, overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+            {isValidImageUrl(viewingAnnouncement.imageUrl || undefined) && (
+              <div style={{
+                height: '220px',
+                backgroundImage: `url(${viewingAnnouncement.imageUrl})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center'
+              }} />
+            )}
+            <div style={{ padding: '24px' }}>
+              <div className="confirm-message" style={{ fontWeight: 700, fontSize: '19px', marginBottom: '12px' }}>
+                {viewingAnnouncement.title}
+              </div>
+              <div style={{ fontSize: '14.5px', lineHeight: 1.7, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', maxHeight: '50vh', overflowY: 'auto' }}>
+                {viewingAnnouncement.body}
+              </div>
+              <div className="confirm-actions" style={{ marginTop: '20px' }}>
+                <button className="confirm-btn confirm-btn-cancel" onClick={() => setViewingAnnouncement(null)}>Close</button>
+              </div>
             </div>
           </div>
         </div>

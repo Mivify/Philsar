@@ -626,10 +626,12 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
+  cursor: pointer;
   transition: transform 0.2s, box-shadow 0.2s;
 }
 
 .announcement-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); }
+.announcement-card:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
 
 .announcement-card-img {
   height: 150px;
