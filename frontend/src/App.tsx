@@ -27,7 +27,9 @@ import {
   UserCheck,
   Maximize2,
   Minimize2,
-  Users
+  Users,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import axios from 'axios';
@@ -1821,6 +1823,27 @@ export default function App() {
     } catch (error) {
       console.error('Error deleting landing image:', error);
       showToast('Error removing image.', 'error');
+    }
+  };
+
+  // Swaps the photo at `index` with its neighbor in the given direction, updates
+  // the UI immediately, then persists the full new order. Reverts on failure so
+  // the on-screen order never drifts from what's actually saved.
+  const handleMoveLandingImage = async (index: number, direction: -1 | 1) => {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= landingImages.length) return;
+
+    const previousOrder = landingImages;
+    const reordered = [...landingImages];
+    [reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]];
+    setLandingImages(reordered);
+
+    try {
+      await axios.put(`${API_BASE}/landing-images/reorder`, { orderedIds: reordered.map(img => img.id) });
+    } catch (error) {
+      console.error('Error reordering landing images:', error);
+      showToast('Error saving new order.', 'error');
+      setLandingImages(previousOrder);
     }
   };
 
@@ -4445,9 +4468,16 @@ export default function App() {
                         </div>
                       ) : (
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '14px' }}>
-                          {landingImages.map(img => (
+                          {landingImages.map((img, i) => (
                             <div key={img.id} style={{ position: 'relative', borderRadius: 'var(--radius-sm)', overflow: 'hidden', border: '1px solid var(--border)', aspectRatio: '16 / 10' }}>
                               <img src={img.imageUrl} alt="Home background" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                              <div style={{
+                                position: 'absolute', top: '8px', left: '8px',
+                                padding: '2px 8px', borderRadius: '10px',
+                                background: 'rgba(0,0,0,0.6)', color: 'white', fontSize: '11px', fontWeight: 700
+                              }}>
+                                {i + 1}
+                              </div>
                               <button
                                 type="button"
                                 onClick={() => handleDeleteLandingImage(img.id)}
@@ -4461,6 +4491,40 @@ export default function App() {
                               >
                                 <Trash size={13} />
                               </button>
+                              <div style={{
+                                position: 'absolute', bottom: '8px', left: '8px', right: '8px',
+                                display: 'flex', justifyContent: 'space-between', gap: '8px'
+                              }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoveLandingImage(i, -1)}
+                                  disabled={i === 0}
+                                  title="Move earlier in the rotation"
+                                  style={{
+                                    width: '28px', height: '28px', borderRadius: '50%',
+                                    background: 'rgba(0,0,0,0.6)', color: 'white', border: 'none',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    cursor: i === 0 ? 'default' : 'pointer', opacity: i === 0 ? 0.35 : 1
+                                  }}
+                                >
+                                  <ChevronLeft size={15} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoveLandingImage(i, 1)}
+                                  disabled={i === landingImages.length - 1}
+                                  title="Move later in the rotation"
+                                  style={{
+                                    width: '28px', height: '28px', borderRadius: '50%',
+                                    background: 'rgba(0,0,0,0.6)', color: 'white', border: 'none',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    cursor: i === landingImages.length - 1 ? 'default' : 'pointer',
+                                    opacity: i === landingImages.length - 1 ? 0.35 : 1
+                                  }}
+                                >
+                                  <ChevronRight size={15} />
+                                </button>
+                              </div>
                             </div>
                           ))}
                         </div>
