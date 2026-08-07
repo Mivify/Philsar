@@ -1595,9 +1595,9 @@ export default function App() {
     try {
       await axios.delete(`${API_BASE}/auth/users/${userId}`);
       setAllUsers(prev => prev.filter(u => u.id !== userId));
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      showToast('Error deleting user.', 'error');
+      showToast(error.response?.data?.message || 'Error deleting user.', 'error');
     }
   };
 

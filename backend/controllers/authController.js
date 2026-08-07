@@ -14,6 +14,13 @@ const generateToken = (user) => jwt.sign(
     { expiresIn: '7d' }
 );
 
+// A valid-format bcrypt hash that matches no real password. Compared against
+// on every failed lookup so a nonexistent email takes the same code path (and
+// roughly the same time) as a real one with a wrong password — otherwise the
+// missing bcrypt.compare() call is both a faster response and a status-code
+// tell (404 vs 401) that leaks which emails are registered.
+const DUMMY_PASSWORD_HASH = '$2a$10$CwTycUXWue0Thq9StjUM0uJ8OrJfmMptFOL3.gEO3jS3vG4TmqXKG';
+
 const register = async (req, res) => {
     try {
         const { name, email, password, role, organization } = req.body;
@@ -69,12 +76,8 @@ const login = async (req, res) => {
         const { email, password } = req.body;
 
         const user = await User.findOne({ where: { email } });
-        if (!user) {
-            return res.status(404).json({ message: 'User not found' });
-        }
-
-        const passwordMatches = await bcrypt.compare(password, user.password);
-        if (!passwordMatches) {
+        const passwordMatches = await bcrypt.compare(password, user ? user.password : DUMMY_PASSWORD_HASH);
+        if (!user || !passwordMatches) {
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
@@ -107,7 +110,7 @@ const login = async (req, res) => {
 const updateProfile = async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, email, role, organization, status, profilePicture, password, currentPassword, modulesCompleted } = req.body;
+        const { name, email, role, organization, status, profilePicture, password, currentPassword } = req.body;
 
         const isSelf = req.user.id === parseInt(id, 10);
         const isAdmin = req.user.role === 'Admin';
@@ -136,7 +139,10 @@ const updateProfile = async (req, res) => {
         if (email) user.email = email;
         if (organization !== undefined) user.organization = organization;
         if (profilePicture !== undefined) user.profilePicture = profilePicture;
-        if (modulesCompleted !== undefined) user.modulesCompleted = parseInt(modulesCompleted);
+        // modulesCompleted is intentionally not settable here — it's always
+        // recomputed from actual lesson completions in progressController.js.
+        // Accepting it from the request body would let a user directly
+        // overwrite their own progress stat without doing the work.
         // role/status are account-management fields — only an Admin may change them,
         // even when editing their own account, to close the self-escalation path.
         if (isAdmin) {
@@ -224,6 +230,20 @@ const deleteUser = async (req, res) => {
         const user = await User.findByPk(id);
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
+        }
+
+        if (req.user.id === user.id) {
+            return res.status(400).json({ message: "You can't delete your own account." });
+        }
+
+        // Only an Admin can grant the Admin role to anyone else, so losing the
+        // last one would lock the whole app out of admin features with no way
+        // back in short of editing the database directly.
+        if (user.role === 'Admin') {
+            const adminCount = await User.count({ where: { role: 'Admin' } });
+            if (adminCount <= 1) {
+                return res.status(400).json({ message: 'Cannot delete the last remaining Admin account.' });
+            }
         }
 
         await user.destroy();
