@@ -1257,7 +1257,17 @@ export default function App() {
   // mount effect no longer keys off meetingModalOpen, so the call stays connected
   // in the background. Actually leaving requires clearing activeMeeting itself,
   // which is what the effect keys disposal off of.
+  //
+  // dispose() alone (fired by that effect's cleanup once activeMeeting clears)
+  // only tears down the local iframe/connection — it doesn't reliably send
+  // Jitsi's own graceful-hangup signal to the conference first. That left a
+  // "ghost" participant tile behind (visible as a duplicate on rejoin) until
+  // the server's own timeout cleared it, whereas Jitsi's built-in hang-up
+  // button works because it runs this same 'hangup' command internally before
+  // tearing anything down. Running it here first, then clearing state as
+  // before, makes our button behave the same way.
   const handleLeaveMeeting = () => {
+    jitsiApiRef.current?.executeCommand('hangup');
     setMeetingModalOpen(false);
     setMeetingExpanded(false);
     setActiveMeeting(null);
@@ -4828,47 +4838,27 @@ export default function App() {
                   <div style={{ fontSize: '60px' }}>{activeMeeting.recordingUrl ? '🎬' : '📼'}</div>
                   <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '14px', fontWeight: 500, textAlign: 'center', maxWidth: '380px' }}>
                     {activeMeeting.recordingUrl
-                      ? 'A recording of this session is available.'
-                      : 'No recording has been uploaded for this session yet.'}
-                    <br />You can reopen the session room to review it — camera &amp; mic start muted.
+                      ? 'This session has ended. A recording is available below.'
+                      : 'This session has ended. No recording has been uploaded for it yet.'}
                   </div>
-                  <div style={{ display: 'flex', gap: '10px' }}>
-                    {activeMeeting.recordingUrl && (
-                      <a
-                        href={activeMeeting.recordingUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{
-                          padding: '10px 24px',
-                          background: 'var(--amber)',
-                          borderRadius: '8px',
-                          color: 'var(--brown-dark)',
-                          textDecoration: 'none',
-                          fontWeight: 700,
-                          fontSize: '14px'
-                        }}
-                      >
-                        ▶ Watch Recording
-                      </a>
-                    )}
+                  {activeMeeting.recordingUrl && (
                     <a
-                      href={`${activeMeeting.videoLink}#config.startWithAudioMuted=true&config.startWithVideoMuted=true`}
+                      href={activeMeeting.recordingUrl}
                       target="_blank"
                       rel="noreferrer"
                       style={{
                         padding: '10px 24px',
-                        background: activeMeeting.recordingUrl ? 'rgba(255,255,255,0.08)' : 'var(--amber)',
-                        border: activeMeeting.recordingUrl ? '1px solid rgba(255,255,255,0.15)' : 'none',
+                        background: 'var(--amber)',
                         borderRadius: '8px',
-                        color: activeMeeting.recordingUrl ? 'var(--cream)' : 'var(--brown-dark)',
+                        color: 'var(--brown-dark)',
                         textDecoration: 'none',
                         fontWeight: 700,
                         fontSize: '14px'
                       }}
                     >
-                      Reopen Session Room (Muted)
+                      ▶ Watch Recording
                     </a>
-                  </div>
+                  )}
                 </>
               ) : (
                 <div id="jaas-container" style={{ width: '100%', height: '100%' }}></div>
