@@ -504,6 +504,7 @@ export default function App() {
 
   // Admin Operations State
   const [newUserForm, setNewUserForm] = useState({ name: '', email: '', password: '', role: 'Farmer', organization: '' });
+  const [userSearchQuery, setUserSearchQuery] = useState('');
   const [newModuleForm, setNewModuleForm] = useState({ title: '', description: '', content: '', imageUrl: '', topic: '' });
   const [topicFilter, setTopicFilter] = useState('All Topics');
   const [newMeetingForm, setNewMeetingForm] = useState({ title: '', host: '', dateTime: '', status: 'Upcoming' as any, videoLink: '', recordingUrl: '' });
@@ -2062,6 +2063,13 @@ export default function App() {
     setSelectedLessonIndex(0);
     setSearchQuery('');
   };
+
+  const filteredUsers = userSearchQuery.trim().length > 0
+    ? allUsers.filter(u => {
+        const q = userSearchQuery.toLowerCase();
+        return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
+      })
+    : allUsers;
 
   // Password visibility toggle
   const [showPassword, setShowPassword] = useState(false);
@@ -3873,7 +3881,30 @@ export default function App() {
                     </div>
 
                     <div className="card">
-                      <div className="card-body data-table-wrapper">
+                      <div className="card-header">
+                        <div className="card-title">All Accounts</div>
+                        <div className="admin-users-search">
+                          <Search size={15} />
+                          <input
+                            className="admin-users-search-input"
+                            type="text"
+                            placeholder="Search by name or email…"
+                            value={userSearchQuery}
+                            onChange={e => setUserSearchQuery(e.target.value)}
+                          />
+                          {userSearchQuery && (
+                            <button
+                              type="button"
+                              className="admin-users-search-clear"
+                              onClick={() => setUserSearchQuery('')}
+                              aria-label="Clear search"
+                            >
+                              <X size={14} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="card-body data-table-wrapper admin-users-table-wrapper">
                         <table className="data-table">
                           <thead>
                             <tr>
@@ -3885,7 +3916,14 @@ export default function App() {
                             </tr>
                           </thead>
                           <tbody>
-                            {allUsers.map(u => (
+                            {filteredUsers.length === 0 && (
+                              <tr>
+                                <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '28px 16px' }}>
+                                  No accounts match "{userSearchQuery}".
+                                </td>
+                              </tr>
+                            )}
+                            {filteredUsers.map(u => (
                               <tr key={u.id}>
                                 <td>
                                   <div className="user-chip">

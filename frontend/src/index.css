@@ -1617,6 +1617,67 @@ body {
   overflow-x: auto;
 }
 
+/* Keeps the accounts list scrolling in place rather than growing the whole
+   admin page as more users are registered. Header stays pinned so column
+   labels don't scroll out of view. */
+.admin-users-table-wrapper {
+  max-height: 520px;
+  overflow-y: auto;
+}
+
+.admin-users-table-wrapper .data-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--warm-white);
+  z-index: 1;
+}
+
+.admin-users-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--cream);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  color: var(--text-muted);
+  min-width: 220px;
+}
+
+.admin-users-search-input {
+  flex: 1;
+  border: none;
+  background: none;
+  outline: none;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.admin-users-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.admin-users-search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  flex-shrink: 0;
+}
+
+.admin-users-search-clear:hover {
+  color: var(--text-primary);
+}
+
+@media (max-width: 640px) {
+  .admin-users-search { min-width: 0; width: 100%; }
+}
+
 .data-table {
   width: 100%;
   border-collapse: collapse;
