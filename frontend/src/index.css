@@ -1620,28 +1620,17 @@ body {
 }
 
 /* Keeps the accounts list scrolling in place rather than growing the whole
-   admin page as more users are registered. Header stays pinned so column
-   labels don't scroll out of view. */
+   admin page as more users are registered.
+   NOTE: a pinned (position: sticky) header was tried here twice and both
+   times rendered broken in Chrome — the header cells detached from their
+   row and overlapped the body rows instead of staying cleanly on top, even
+   after switching to border-collapse: separate. Dropping it rather than
+   continuing to guess at a fix that can't be verified without a browser;
+   the header now just scrolls with the rest of the table, same as any
+   other .data-table in the app. */
 .admin-users-table-wrapper {
   max-height: 520px;
   overflow-y: auto;
-}
-
-/* position: sticky on <th> is unreliable in Chromium when the table uses
-   border-collapse: collapse (the cells render detached from their row,
-   overlapping/misaligned with the body rows) — switching just this table to
-   separate borders (with spacing zeroed out, so it still looks collapsed)
-   fixes the sticky header without touching the shared .data-table elsewhere. */
-.admin-users-table-wrapper .data-table {
-  border-collapse: separate;
-  border-spacing: 0;
-}
-
-.admin-users-table-wrapper .data-table thead th {
-  position: sticky;
-  top: 0;
-  background: var(--warm-white);
-  z-index: 1;
 }
 
 .admin-users-search {
