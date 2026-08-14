@@ -1627,6 +1627,16 @@ body {
   overflow-y: auto;
 }
 
+/* position: sticky on <th> is unreliable in Chromium when the table uses
+   border-collapse: collapse (the cells render detached from their row,
+   overlapping/misaligned with the body rows) — switching just this table to
+   separate borders (with spacing zeroed out, so it still looks collapsed)
+   fixes the sticky header without touching the shared .data-table elsewhere. */
+.admin-users-table-wrapper .data-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
 .admin-users-table-wrapper .data-table thead th {
   position: sticky;
   top: 0;
