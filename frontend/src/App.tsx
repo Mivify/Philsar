@@ -638,7 +638,15 @@ export default function App() {
             axios.post(`${API_BASE}/meetings/${meetingId}/attendance/ping`, { userId, elapsedSeconds })
               .then(res => {
                 lastPingAt = now;
-                setMyAttendance(prev => ({ ...prev, [meetingId]: res.data }));
+                // Merged, not replaced — the ping response doesn't necessarily
+                // carry every field the initial full fetch does (e.g. rsvped),
+                // and blindly replacing the whole entry silently dropped
+                // whichever ones it omitted. That previously wiped `rsvped`
+                // to undefined after the very first heartbeat, so leaving and
+                // rejoining the same call incorrectly asked the user to RSVP
+                // again — even though they already had — until a full page
+                // refresh re-fetched the complete record.
+                setMyAttendance(prev => ({ ...prev, [meetingId]: { ...prev[meetingId], ...res.data } }));
                 // The host ending the seminar doesn't push to already-connected
                 // participants — this heartbeat is the only channel checking back in,
                 // so it doubles as the signal to disconnect everyone still in the call.
@@ -1303,19 +1311,42 @@ export default function App() {
   // in the background. Actually leaving requires clearing activeMeeting itself,
   // which is what the effect keys disposal off of.
   //
-  // dispose() alone (fired by that effect's cleanup once activeMeeting clears)
-  // only tears down the local iframe/connection — it doesn't reliably send
-  // Jitsi's own graceful-hangup signal to the conference first. That left a
-  // "ghost" participant tile behind (visible as a duplicate on rejoin) until
-  // the server's own timeout cleared it, whereas Jitsi's built-in hang-up
-  // button works because it runs this same 'hangup' command internally before
-  // tearing anything down. Running it here first, then clearing state as
-  // before, makes our button behave the same way.
+  // dispose() (fired by that effect's cleanup once activeMeeting clears) only
+  // tears down the local iframe/connection — it doesn't wait for the
+  // 'hangup' command to actually finish. Calling executeCommand('hangup')
+  // and clearing activeMeeting in the same tick (a prior attempt at this fix)
+  // still raced: dispose() ran essentially immediately, tearing the iframe
+  // down before the async postMessage to Jitsi had time to reach the
+  // conference server — so the "ghost" duplicate tile on rejoin kept
+  // happening. Jitsi's own hang-up button doesn't have this problem because
+  // it waits for the real 'videoConferenceLeft' event before doing anything
+  // else, so we wait for that same event here before clearing state (with a
+  // timeout fallback in case it never fires, e.g. the connection already
+  // dropped). The jitsiApiRef.current === api check guards against a rejoin
+  // racing ahead of this and creating a *new* Jitsi instance before this
+  // stale cleanup fires — without it, this could wrongly tear down the new
+  // session instead of the one actually being left.
   const handleLeaveMeeting = () => {
-    jitsiApiRef.current?.executeCommand('hangup');
     setMeetingModalOpen(false);
     setMeetingExpanded(false);
-    setActiveMeeting(null);
+
+    const api = jitsiApiRef.current;
+    if (!api) {
+      setActiveMeeting(null);
+      return;
+    }
+
+    let cleared = false;
+    const clearIfStillCurrent = () => {
+      if (cleared) return;
+      cleared = true;
+      if (jitsiApiRef.current === api) {
+        setActiveMeeting(null);
+      }
+    };
+    api.addEventListener('videoConferenceLeft', clearIfStillCurrent);
+    api.executeCommand('hangup');
+    setTimeout(clearIfStillCurrent, 3000);
   };
 
   const handleSaveMinutes = async () => {

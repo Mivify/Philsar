@@ -155,7 +155,8 @@ const pingAttendance = async (req, res) => {
         res.status(200).json({
             secondsAttended: record.secondsAttended,
             eligible: isEligible(record),
-            status: meeting.status
+            status: meeting.status,
+            rsvped: record.rsvped
         });
     } catch (error) {
         res.status(500).json({ message: 'Error recording attendance', error: error.message });
