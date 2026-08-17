@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const rateLimit = require('express-rate-limit');
-const { register, login, updateProfile, getUserById, getUsers, deleteUser, forgotPassword, resetPassword } = require('../controllers/authController');
+const { register, login, updateProfile, getUserById, getUsers, deleteUser, forgotPassword, resetPassword, verifyEmail, resendVerification } = require('../controllers/authController');
 const { uploadImage } = require('../controllers/moduleController');
 const { optionalAuth, requireAuth, requireAdmin } = require('../middleware/auth');
 
@@ -39,11 +39,22 @@ const resetPasswordLimiter = rateLimit({
     legacyHeaders: false,
     message: { message: 'Too many attempts. Please try again in a few minutes.' }
 });
+// Same enumeration concern as forgot-password — email-triggering and keyed
+// off an unauthenticated email address.
+const resendVerificationLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: 'Too many requests. Please try again in a few minutes.' }
+});
 
 router.post('/register', registerLimiter, optionalAuth, register);
 router.post('/login', loginLimiter, login);
 router.post('/forgot-password', forgotPasswordLimiter, forgotPassword);
 router.post('/reset-password', resetPasswordLimiter, resetPassword);
+router.post('/verify-email', resetPasswordLimiter, verifyEmail);
+router.post('/resend-verification', resendVerificationLimiter, resendVerification);
 router.get('/profile/:id', requireAuth, getUserById);
 router.put('/profile/:id', requireAuth, updateProfile);
 router.get('/users', requireAdmin, getUsers);

@@ -457,16 +457,24 @@ export default function App() {
   const [authForm, setAuthForm] = useState({ name: '', email: '', password: '', role: 'Farmer', organization: '' });
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
-  const [authView, setAuthView] = useState<'login' | 'register' | 'forgot' | 'reset'>(() =>
-    window.location.pathname === '/reset-password' && new URLSearchParams(window.location.search).get('token')
-      ? 'reset'
-      : 'login'
-  );
+  const [authView, setAuthView] = useState<'login' | 'register' | 'forgot' | 'reset' | 'verify' | 'verify-pending'>(() => {
+    const hasToken = !!new URLSearchParams(window.location.search).get('token');
+    if (window.location.pathname === '/reset-password' && hasToken) return 'reset';
+    if (window.location.pathname === '/verify-email' && hasToken) return 'verify';
+    return 'login';
+  });
   const [resetToken] = useState(() => new URLSearchParams(window.location.search).get('token') || '');
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotSubmitted, setForgotSubmitted] = useState(false);
   const [resetPasswordForm, setResetPasswordForm] = useState({ password: '', confirmPassword: '' });
   const [resetSuccess, setResetSuccess] = useState(false);
+  // verifyToken reuses the same "read once at mount" approach as resetToken above.
+  const [verifyToken] = useState(() => new URLSearchParams(window.location.search).get('token') || '');
+  const [verifyStatus, setVerifyStatus] = useState<'pending' | 'success' | 'error'>('pending');
+  const [verifyErrorMsg, setVerifyErrorMsg] = useState('');
+  const [pendingVerificationEmail, setPendingVerificationEmail] = useState('');
+  const [resendingVerification, setResendingVerification] = useState(false);
+  const [resendSent, setResendSent] = useState(false);
 
   // Profile Form State
   const [profileForm, setProfileForm] = useState({
@@ -729,11 +737,31 @@ export default function App() {
     logoImgRef.current = logoImg;
 
     // Normalize the landing URL so it always reflects the active tab — but leave
-    // a reset-password link alone, since its token lives in the query string and
-    // tabFromPath would otherwise coerce it straight to /dashboard.
-    if (window.location.pathname !== '/reset-password') {
+    // a reset-password or verify-email link alone, since their token lives in
+    // the query string and tabFromPath would otherwise coerce it straight to
+    // /dashboard.
+    if (window.location.pathname !== '/reset-password' && window.location.pathname !== '/verify-email') {
       window.history.replaceState({}, '', `/${tabFromPath(window.location.pathname)}`);
     }
+  }, []);
+
+  // Fires the verification call once, only when landing directly on a
+  // /verify-email?token=... link (authView/verifyToken are both established
+  // by their lazy useState initializers before this first runs, so reading
+  // them here on mount is safe without listing them as dependencies).
+  useEffect(() => {
+    if (authView !== 'verify') return;
+    if (!verifyToken) {
+      setVerifyStatus('error');
+      setVerifyErrorMsg('This verification link is missing its token. Please request a new one.');
+      return;
+    }
+    axios.post(`${API_BASE}/auth/verify-email`, { token: verifyToken })
+      .then(() => setVerifyStatus('success'))
+      .catch(err => {
+        setVerifyStatus('error');
+        setVerifyErrorMsg(err.response?.data?.message || 'This verification link is invalid or has expired.');
+      });
   }, []);
 
   // A tab left open (or backgrounded) has no way to learn that data changed
@@ -929,7 +957,13 @@ export default function App() {
       // Refetch stats and activity logs
       fetchGlobalData();
     } catch (error: any) {
-      setAuthError(error.response?.data?.message || 'Invalid email or password.');
+      if (error.response?.data?.requiresVerification) {
+        setPendingVerificationEmail(authForm.email);
+        setResendSent(false);
+        setAuthView('verify-pending');
+      } else {
+        setAuthError(error.response?.data?.message || 'Invalid email or password.');
+      }
     } finally {
       setAuthLoading(false);
     }
@@ -940,35 +974,37 @@ export default function App() {
     setAuthError('');
     setAuthLoading(true);
     try {
-      const response = await axios.post(`${API_BASE}/auth/register`, {
+      await axios.post(`${API_BASE}/auth/register`, {
         name: authForm.name,
         email: authForm.email,
         password: authForm.password,
         role: authForm.role,
         organization: authForm.organization
       });
-      const user = { ...response.data.user, token: response.data.token };
-      axios.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
-      localStorage.setItem('philsar_user', JSON.stringify(user));
-      setCurrentUser(user);
-      setIsAuthenticated(true);
+      // Self-serve registration no longer logs the user straight in — the
+      // account starts unverified and can't sign in until they click the
+      // link emailed to them (see requiresVerification handling in `login`).
+      setPendingVerificationEmail(authForm.email);
+      setResendSent(false);
+      setAuthView('verify-pending');
       setAuthForm({ name: '', email: '', password: '', role: 'Farmer', organization: '' });
-
-      // Prepopulate profile form
-      setProfileForm({
-        name: user.name,
-        email: user.email,
-        organization: user.organization || '',
-        role: user.role,
-        password: '',
-        currentPassword: ''
-      });
-
-      fetchGlobalData();
     } catch (error: any) {
       setAuthError(error.response?.data?.message || 'Registration failed. Email may already be in use.');
     } finally {
       setAuthLoading(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    setResendingVerification(true);
+    setResendSent(false);
+    try {
+      await axios.post(`${API_BASE}/auth/resend-verification`, { email: pendingVerificationEmail });
+      setResendSent(true);
+    } catch (error: any) {
+      setAuthError(error.response?.data?.message || 'Error resending verification email.');
+    } finally {
+      setResendingVerification(false);
     }
   };
 
@@ -2119,9 +2155,9 @@ export default function App() {
   // Password visibility toggle
   const [showPassword, setShowPassword] = useState(false);
 
-  // Render Auth Screen (Gatekeeper) — a reset-password link must show the reset
-  // screen even if this browser already has an active session.
-  if (!isAuthenticated || authView === 'reset') {
+  // Render Auth Screen (Gatekeeper) — a reset-password or verify-email link
+  // must show its screen even if this browser already has an active session.
+  if (!isAuthenticated || authView === 'reset' || authView === 'verify') {
     return (
       <div className="auth-wrapper">
         <div className="auth-card">
@@ -2398,7 +2434,79 @@ export default function App() {
                     </a>
                   </p>
                 </>
-              ) : (
+              ) : authView === 'verify-pending' ? (
+                <>
+                  <div className="auth-form-header">
+                    <h2 className="auth-form-title">Check your email</h2>
+                    <p className="auth-form-subtitle">We sent a verification link to {pendingVerificationEmail}</p>
+                  </div>
+
+                  {authError && (
+                    <div className="auth-error-box">{authError}</div>
+                  )}
+
+                  <div className="auth-error-box" style={{ background: 'rgba(48,92,222,0.08)', borderColor: 'rgba(48,92,222,0.3)', color: 'var(--text-primary)' }}>
+                    Click the link in that email to activate your account, then come back and sign in. Check your spam folder if you don't see it within a few minutes.
+                  </div>
+
+                  {resendSent && (
+                    <div className="auth-error-box" style={{ background: 'rgba(34,139,34,0.08)', borderColor: 'rgba(34,139,34,0.3)', color: '#2e7d32' }}>
+                      Verification email resent.
+                    </div>
+                  )}
+
+                  <button className="auth-submit-btn" type="button" onClick={handleResendVerification} disabled={resendingVerification}>
+                    <span>→</span>
+                    {resendingVerification ? 'Resending…' : 'Resend verification email'}
+                  </button>
+
+                  <p className="auth-switch-text">
+                    <a className="auth-switch-link" onClick={() => { setAuthView('login'); setAuthError(''); }}>
+                      Back to sign in
+                    </a>
+                  </p>
+                </>
+              ) : authView === 'verify' ? (
+                <>
+                  <div className="auth-form-header">
+                    <h2 className="auth-form-title">Email verification</h2>
+                  </div>
+
+                  {verifyStatus === 'pending' && (
+                    <div className="auth-error-box">Verifying your email…</div>
+                  )}
+
+                  {verifyStatus === 'success' && (
+                    <>
+                      <div className="auth-error-box" style={{ background: 'rgba(34,139,34,0.08)', borderColor: 'rgba(34,139,34,0.3)', color: '#2e7d32' }}>
+                        Your email has been verified. You can now sign in.
+                      </div>
+                      <button
+                        className="auth-submit-btn"
+                        type="button"
+                        onClick={() => { window.history.replaceState({}, '', '/'); setAuthView('login'); }}
+                      >
+                        <span>→</span>
+                        Go to Sign In
+                      </button>
+                    </>
+                  )}
+
+                  {verifyStatus === 'error' && (
+                    <>
+                      <div className="auth-error-box">{verifyErrorMsg}</div>
+                      <button
+                        className="auth-submit-btn"
+                        type="button"
+                        onClick={() => { window.history.replaceState({}, '', '/'); setAuthView('login'); }}
+                      >
+                        <span>→</span>
+                        Back to Sign In
+                      </button>
+                    </>
+                  )}
+                </>
+              ) : authView === 'reset' ? (
                 <>
                   <div className="auth-form-header">
                     <h2 className="auth-form-title">Set a new password</h2>
@@ -2482,7 +2590,7 @@ export default function App() {
                     </a>
                   </p>
                 </>
-              )}
+              ) : null}
 
             </div>
           </div>

@@ -48,6 +48,24 @@ const User = sequelize.define('User', {
         type: DataTypes.INTEGER,
         defaultValue: 0,
     },
+    // Defaults to true (not false) so this migrates safely onto an existing
+    // table: every pre-existing row picks up `true` when the column is added,
+    // and admin-created accounts (which never go through the self-serve
+    // verification flow) also get `true` implicitly. Only self-serve
+    // registration explicitly sets this to false at creation time.
+    emailVerified: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: true,
+    },
+    emailVerificationTokenHash: {
+        type: DataTypes.STRING,
+        allowNull: true,
+    },
+    emailVerificationExpires: {
+        type: DataTypes.BIGINT,
+        allowNull: true,
+    },
     resetPasswordTokenHash: {
         type: DataTypes.STRING,
         allowNull: true,

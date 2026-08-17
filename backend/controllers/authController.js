@@ -2,11 +2,17 @@ const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
-const { sendPasswordResetEmail } = require('../utils/email');
+const { sendPasswordResetEmail, sendVerificationEmail } = require('../utils/email');
 
 // Roles a user can grant themselves via public self-registration. Admin accounts can
 // only be created by an existing Admin (see the role-handling logic in `register`).
 const SELF_SERVE_ROLES = ['Farmer', 'Livestock Manager', 'Veterinarian', 'Extension Worker'];
+
+// Deliberately permissive (catches "no @", "no domain", stray spaces) rather than
+// a strict RFC 5322 pattern — the goal is rejecting obvious typos, not being the
+// sole line of defense; deliverability is ultimately proven by the verification
+// email actually arriving.
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const generateToken = (user) => jwt.sign(
     { id: user.id, role: user.role },
@@ -25,6 +31,10 @@ const register = async (req, res) => {
     try {
         const { name, email, password, role, organization } = req.body;
 
+        if (!email || !EMAIL_REGEX.test(email)) {
+            return res.status(400).json({ message: 'Please enter a valid email address' });
+        }
+
         // Check if user exists
         const existingUser = await User.findOne({ where: { email } });
         if (existingUser) {
@@ -42,13 +52,37 @@ const register = async (req, res) => {
 
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        const user = await User.create({
-            name,
-            email,
-            password: hashedPassword,
-            role: finalRole,
-            organization: organization || ''
-        });
+        // Admin-created accounts skip verification entirely (the admin is already
+        // vouching for the address) and rely on the model's emailVerified default
+        // of true. Self-serve signups are explicitly marked unverified and get a
+        // token emailed to them; they can't log in until they use it (see `login`).
+        let verificationToken = null;
+        const userData = { name, email, password: hashedPassword, role: finalRole, organization: organization || '' };
+        if (!isAdminCreating) {
+            verificationToken = crypto.randomBytes(32).toString('hex');
+            userData.emailVerified = false;
+            userData.emailVerificationTokenHash = crypto.createHash('sha256').update(verificationToken).digest('hex');
+            userData.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000;
+        }
+
+        const user = await User.create(userData);
+
+        if (!isAdminCreating) {
+            const baseUrl = process.env.BACKEND_URL || `https://${req.get('host')}`;
+            const link = `${baseUrl}/verify-email?token=${verificationToken}`;
+            try {
+                await sendVerificationEmail(user.email, link);
+            } catch (emailError) {
+                // Registration still succeeds — the user can retry sending it
+                // via the "resend verification email" flow.
+                console.error('Failed to send verification email:', emailError);
+            }
+
+            return res.status(201).json({
+                message: 'Account created. Please check your email to verify your account before signing in.',
+                requiresVerification: true
+            });
+        }
 
         res.status(201).json({
             message: 'User registered successfully',
@@ -83,6 +117,13 @@ const login = async (req, res) => {
 
         if (user.status === 'Inactive') {
             return res.status(403).json({ message: 'This account has been deactivated. Contact an administrator.' });
+        }
+
+        if (!user.emailVerified) {
+            return res.status(403).json({
+                message: 'Please verify your email before logging in.',
+                requiresVerification: true
+            });
         }
 
         // Return full user details for profile state
@@ -313,4 +354,69 @@ const resetPassword = async (req, res) => {
     }
 };
 
-module.exports = { register, login, updateProfile, getUserById, getUsers, deleteUser, forgotPassword, resetPassword };
+const verifyEmail = async (req, res) => {
+    try {
+        const { token } = req.body;
+        if (!token) {
+            return res.status(400).json({ message: 'Missing verification token' });
+        }
+
+        const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+        const user = await User.findOne({ where: { emailVerificationTokenHash: tokenHash } });
+
+        if (!user || !user.emailVerificationExpires || Number(user.emailVerificationExpires) < Date.now()) {
+            return res.status(400).json({ message: 'This verification link is invalid or has expired.' });
+        }
+
+        user.emailVerified = true;
+        user.emailVerificationTokenHash = null;
+        user.emailVerificationExpires = null;
+        await user.save();
+
+        res.status(200).json({ message: 'Email verified successfully' });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
+const resendVerification = async (req, res) => {
+    try {
+        const { email } = req.body;
+        const user = await User.findOne({ where: { email } });
+
+        // Same anti-enumeration shape as forgotPassword: only do real work when
+        // there's an actual unverified account behind the email, but always
+        // respond identically either way.
+        if (user && !user.emailVerified) {
+            const rawToken = crypto.randomBytes(32).toString('hex');
+            user.emailVerificationTokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+            user.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000;
+            await user.save();
+
+            const baseUrl = process.env.BACKEND_URL || `https://${req.get('host')}`;
+            const link = `${baseUrl}/verify-email?token=${rawToken}`;
+            try {
+                await sendVerificationEmail(user.email, link);
+            } catch (emailError) {
+                console.error('Failed to send verification email:', emailError);
+            }
+        }
+
+        res.status(200).json({ message: 'If that account needs verifying, a new email has been sent.' });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
+module.exports = {
+    register,
+    login,
+    updateProfile,
+    getUserById,
+    getUsers,
+    deleteUser,
+    forgotPassword,
+    resetPassword,
+    verifyEmail,
+    resendVerification
+};

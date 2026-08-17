@@ -4,12 +4,7 @@
 // local dev/testing works without a Brevo account configured.
 const emailEnabled = !!(process.env.BREVO_API_KEY && process.env.BREVO_SENDER_EMAIL);
 
-const sendPasswordResetEmail = async (to, link) => {
-    if (!emailEnabled) {
-        console.log(`[email disabled] Password reset link for ${to}: ${link}`);
-        return;
-    }
-
+const sendEmail = async (to, subject, html) => {
     const response = await fetch('https://api.brevo.com/v3/smtp/email', {
         method: 'POST',
         headers: {
@@ -20,12 +15,8 @@ const sendPasswordResetEmail = async (to, link) => {
         body: JSON.stringify({
             sender: { name: 'PHILSAR Portal', email: process.env.BREVO_SENDER_EMAIL },
             to: [{ email: to }],
-            subject: 'Reset your PHILSAR password',
-            htmlContent: `
-                <p>You requested a password reset for your PHILSAR Cattle Reproductive Portal account.</p>
-                <p><a href="${link}">Click here to reset your password</a></p>
-                <p>This link expires in 1 hour. If you didn't request this, you can safely ignore this email.</p>
-            `,
+            subject,
+            htmlContent: html,
         }),
     });
 
@@ -35,11 +26,37 @@ const sendPasswordResetEmail = async (to, link) => {
     if (!response.ok) {
         const error = await response.json().catch(() => ({ message: response.statusText }));
         console.error('Brevo send failed:', error);
-        throw new Error(error.message || 'Failed to send reset email');
+        throw new Error(error.message || 'Failed to send email');
     }
 
     const data = await response.json();
-    console.log(`Reset email sent to ${to}, Brevo messageId: ${data?.messageId}`);
+    console.log(`Email "${subject}" sent to ${to}, Brevo messageId: ${data?.messageId}`);
 };
 
-module.exports = { sendPasswordResetEmail };
+const sendPasswordResetEmail = async (to, link) => {
+    if (!emailEnabled) {
+        console.log(`[email disabled] Password reset link for ${to}: ${link}`);
+        return;
+    }
+
+    await sendEmail(to, 'Reset your PHILSAR password', `
+        <p>You requested a password reset for your PHILSAR Cattle Reproductive Portal account.</p>
+        <p><a href="${link}">Click here to reset your password</a></p>
+        <p>This link expires in 1 hour. If you didn't request this, you can safely ignore this email.</p>
+    `);
+};
+
+const sendVerificationEmail = async (to, link) => {
+    if (!emailEnabled) {
+        console.log(`[email disabled] Verification link for ${to}: ${link}`);
+        return;
+    }
+
+    await sendEmail(to, 'Verify your PHILSAR account', `
+        <p>Welcome to the PHILSAR Cattle Reproductive Portal! Please verify your email address to activate your account.</p>
+        <p><a href="${link}">Click here to verify your email</a></p>
+        <p>This link expires in 24 hours. If you didn't create this account, you can safely ignore this email.</p>
+    `);
+};
+
+module.exports = { sendPasswordResetEmail, sendVerificationEmail };
