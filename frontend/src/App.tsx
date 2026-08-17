@@ -498,8 +498,8 @@ export default function App() {
     age: '',
     bcs: '5 — Moderate',
     daysSinceCalving: '',
-    estrusIndicators: ['Standing Heat'] as string[],
-    history: 'Successful Previous Calving',
+    estrusIndicators: [] as string[],
+    history: '',
     healthStatus: 'Healthy — no issues'
   });
   const [dssResult, setDssResult] = useState<Assessment | null>(null);
@@ -1169,6 +1169,10 @@ export default function App() {
     }
     if (dssForm.estrusIndicators.length === 0) {
       showToast('Please select at least one estrus indicator (or "None Observed").', 'warning');
+      return;
+    }
+    if (!dssForm.history) {
+      showToast('Please select the cattle\'s reproductive history.', 'warning');
       return;
     }
     setDssLoading(true);
