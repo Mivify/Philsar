@@ -407,6 +407,7 @@ export default function App() {
   const [completedLessonsMap, setCompletedLessonsMap] = useState<Record<number, number[]>>({});
   const [meetingModalOpen, setMeetingModalOpen] = useState(false);
   const [meetingExpanded, setMeetingExpanded] = useState(false);
+  const [minutesPanelOpen, setMinutesPanelOpen] = useState(false);
   const [activeMeeting, setActiveMeeting] = useState<Meeting | null>(null);
   const [minutesDraft, setMinutesDraft] = useState('');
   const [savingMinutes, setSavingMinutes] = useState(false);
@@ -1294,6 +1295,7 @@ export default function App() {
     setMinutesDraft(meeting.minutes || '');
     setMeetingModalOpen(true);
     setMeetingExpanded(false);
+    setMinutesPanelOpen(false);
   };
 
   // Closing the modal (background click, the × button) only hides it — the Jitsi
@@ -5048,10 +5050,12 @@ export default function App() {
                 <div id="jaas-container" style={{ width: '100%', height: '100%' }}></div>
               )}
             </div>
-            {activeMeeting.status === 'Ended' && (
+            {(activeMeeting.status === 'Ended' || (currentUser?.role === 'Admin' && minutesPanelOpen)) && (
               <div style={{ padding: '18px 24px', borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.08)', maxHeight: '260px', overflowY: 'auto' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                  <div style={{ color: 'var(--cream, #eef2fc)', fontWeight: 700, fontSize: '14px' }}>📝 Meeting Minutes</div>
+                  <div style={{ color: 'var(--cream, #eef2fc)', fontWeight: 700, fontSize: '14px' }}>
+                    📝 Meeting Minutes {activeMeeting.status !== 'Ended' && <span style={{ fontWeight: 400, fontSize: '12px', color: 'rgba(255,255,255,0.5)' }}>(draft — visible to attendees once the seminar ends)</span>}
+                  </div>
                   {activeMeeting.minutes && (
                     <button
                       onClick={() => handleDownloadMinutes(activeMeeting)}
@@ -5114,6 +5118,15 @@ export default function App() {
                 >
                   💬 Toggle Chat
                 </button>
+                {currentUser?.role === 'Admin' && (
+                  <button
+                    className="meeting-footer-btn"
+                    onClick={() => setMinutesPanelOpen(o => !o)}
+                    style={{ padding: '8px 20px', background: minutesPanelOpen ? 'var(--amber)' : 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: minutesPanelOpen ? 'var(--brown-dark)' : 'var(--cream)', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}
+                  >
+                    📝 {minutesPanelOpen ? 'Hide Minutes' : 'Write Minutes'}
+                  </button>
+                )}
                 <button
                   className="meeting-footer-btn"
                   onClick={handleLeaveMeeting}
