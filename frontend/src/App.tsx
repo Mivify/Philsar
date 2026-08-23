@@ -2835,14 +2835,6 @@ export default function App() {
                   <p className="home-hero-subtitle">
                     {t('home.subtitle')}
                   </p>
-                  <div className="home-hero-actions">
-                    <button className="home-hero-btn primary" onClick={() => handleTabNavigate('dss')}>
-                      {t('home.runAssessment')}
-                    </button>
-                    <button className="home-hero-btn" onClick={() => handleTabNavigate('learning')}>
-                      {t('home.exploreModules')}
-                    </button>
-                  </div>
                 </div>
                 {landingImages.length > 1 && (
                   <div className="home-hero-dots">
