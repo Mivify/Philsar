@@ -120,6 +120,7 @@ interface SystemSettings {
   certPrimaryColor: string;
   certAccentColor: string;
   certBackgroundImage: string;
+  certAttendanceThresholdMinutes: string;
 }
 
 function isValidImageUrl(url?: string): boolean {
@@ -460,7 +461,8 @@ export default function App() {
     certClosingText: 'PHILSAR Cattle Reproductive Portal',
     certPrimaryColor: '#305CDE',
     certAccentColor: '#7B93E0',
-    certBackgroundImage: ''
+    certBackgroundImage: '',
+    certAttendanceThresholdMinutes: '30'
   });
 
   // Auth Forms State
@@ -4885,6 +4887,23 @@ export default function App() {
                             <option>v2.1 — AI-Assisted Rule-Based</option>
                             <option>v1.0 — Rule-Based Only</option>
                           </select>
+                        </div>
+                        <div style={{ borderTop: '1px solid var(--border)', margin: '20px 0 16px', paddingTop: '16px', fontWeight: 700, fontSize: '14px' }}>
+                          ⏱ Attendance & Certification
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">Minutes of Attendance Required for Automatic Certificate</label>
+                          <input
+                            className="form-control"
+                            type="number"
+                            min="1"
+                            style={{ maxWidth: '160px' }}
+                            value={settings.certAttendanceThresholdMinutes}
+                            onChange={e => setSettings({ ...settings, certAttendanceThresholdMinutes: e.target.value })}
+                          />
+                          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                            Attendees who stay in a seminar for at least this many minutes automatically qualify for a certificate. Admins can still manually grant or revoke one regardless of this threshold.
+                          </div>
                         </div>
                         <div style={{ borderTop: '1px solid var(--border)', margin: '20px 0 16px', paddingTop: '16px', fontWeight: 700, fontSize: '14px' }}>
                           🎓 Certificate Design

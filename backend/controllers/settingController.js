@@ -10,7 +10,8 @@ const DEFAULT_SETTINGS = {
     certClosingText: 'PHILSAR Cattle Reproductive Portal',
     certPrimaryColor: '#8B5E3C',
     certAccentColor: '#D4A574',
-    certBackgroundImage: ''
+    certBackgroundImage: '',
+    certAttendanceThresholdMinutes: '30'
 };
 
 const getSettings = async (req, res) => {

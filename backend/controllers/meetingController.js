@@ -1,13 +1,22 @@
 const Meeting = require('../models/Meeting');
 const User = require('../models/User');
 const MeetingAttendance = require('../models/MeetingAttendance');
+const Setting = require('../models/Setting');
 const { generateJaasToken } = require('../utils/jaasToken');
 
 const HEARTBEAT_SECONDS = 30;
 const MAX_ELAPSED_PER_PING_SECONDS = 5 * 60;
-const CERTIFICATE_THRESHOLD_SECONDS = 30 * 60;
+const DEFAULT_CERTIFICATE_THRESHOLD_MINUTES = 30;
 
-const isEligible = (record) => record.secondsAttended >= CERTIFICATE_THRESHOLD_SECONDS || record.granted;
+// Admin-configurable via the Settings tab (certAttendanceThresholdMinutes) —
+// falls back to the default if unset or not a sane positive number.
+const getCertificateThresholdSeconds = async () => {
+    const setting = await Setting.findByPk('certAttendanceThresholdMinutes');
+    const minutes = Number(setting?.value);
+    return (Number.isFinite(minutes) && minutes > 0 ? minutes : DEFAULT_CERTIFICATE_THRESHOLD_MINUTES) * 60;
+};
+
+const isEligible = (record, thresholdSeconds) => record.secondsAttended >= thresholdSeconds || record.granted;
 
 const getMeetings = async (req, res) => {
     try {
@@ -173,9 +182,10 @@ const pingAttendance = async (req, res) => {
         record.secondsAttended += safeElapsed;
         await record.save();
 
+        const thresholdSeconds = await getCertificateThresholdSeconds();
         res.status(200).json({
             secondsAttended: record.secondsAttended,
-            eligible: isEligible(record),
+            eligible: isEligible(record, thresholdSeconds),
             status: meeting.status,
             rsvped: record.rsvped
         });
@@ -190,12 +200,13 @@ const getMyAttendance = async (req, res) => {
         // frontend calls, but it's ignored — always scoped to the caller's own id.
         const userId = req.user.id;
         const rows = await MeetingAttendance.findAll({ where: { userId } });
+        const thresholdSeconds = await getCertificateThresholdSeconds();
 
         const map = {};
         for (const row of rows) {
             map[row.meetingId] = {
                 secondsAttended: row.secondsAttended,
-                eligible: isEligible(row),
+                eligible: isEligible(row, thresholdSeconds),
                 rsvped: row.rsvped
             };
         }
@@ -210,12 +221,13 @@ const getMeetingAttendance = async (req, res) => {
     try {
         const { id } = req.params;
         const rows = await MeetingAttendance.findAll({ where: { meetingId: id } });
+        const thresholdSeconds = await getCertificateThresholdSeconds();
 
         res.status(200).json(rows.map(row => ({
             userId: row.userId,
             secondsAttended: row.secondsAttended,
             granted: row.granted,
-            eligible: isEligible(row),
+            eligible: isEligible(row, thresholdSeconds),
             rsvped: row.rsvped
         })));
     } catch (error) {
@@ -238,10 +250,11 @@ const grantCertificate = async (req, res) => {
         record.granted = true;
         await record.save();
 
+        const thresholdSeconds = await getCertificateThresholdSeconds();
         res.status(200).json({
             secondsAttended: record.secondsAttended,
             granted: record.granted,
-            eligible: isEligible(record)
+            eligible: isEligible(record, thresholdSeconds)
         });
     } catch (error) {
         res.status(500).json({ message: 'Error granting certificate', error: error.message });
@@ -263,10 +276,11 @@ const revokeCertificate = async (req, res) => {
         record.granted = false;
         await record.save();
 
+        const thresholdSeconds = await getCertificateThresholdSeconds();
         res.status(200).json({
             secondsAttended: record.secondsAttended,
             granted: record.granted,
-            eligible: isEligible(record)
+            eligible: isEligible(record, thresholdSeconds)
         });
     } catch (error) {
         res.status(500).json({ message: 'Error revoking certificate', error: error.message });
