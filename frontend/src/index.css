@@ -1891,6 +1891,16 @@ body {
   font-size: 14px; padding: 6px;
 }
 
+/* Reusable show/hide toggle for plain .form-control password fields
+   (e.g. the Admin Panel's Add New User Account form) */
+.password-input-wrap { position: relative; display: flex; align-items: center; }
+.password-input-wrap .form-control { padding-right: 40px; }
+.password-eye-btn {
+  position: absolute; right: 10px;
+  background: none; border: none; cursor: pointer;
+  font-size: 14px; padding: 6px;
+}
+
 .auth-submit-btn {
   width: 100%;
   padding: 14px;

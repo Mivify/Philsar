@@ -525,6 +525,7 @@ export default function App() {
 
   // Admin Operations State
   const [newUserForm, setNewUserForm] = useState({ name: '', email: '', password: '', role: 'Farmer', organization: '' });
+  const [showNewUserPassword, setShowNewUserPassword] = useState(false);
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [newModuleForm, setNewModuleForm] = useState({ title: '', description: '', content: '', imageUrl: '', topic: '' });
   const [topicFilter, setTopicFilter] = useState('All Topics');
@@ -4053,13 +4054,23 @@ export default function App() {
                           </div>
                           <div className="form-group">
                             <label className="form-label">Password</label>
-                            <input
-                              className="form-control"
-                              type="password"
-                              value={newUserForm.password}
-                              onChange={e => setNewUserForm({ ...newUserForm, password: e.target.value })}
-                              required
-                            />
+                            <div className="password-input-wrap">
+                              <input
+                                className="form-control"
+                                type={showNewUserPassword ? 'text' : 'password'}
+                                value={newUserForm.password}
+                                onChange={e => setNewUserForm({ ...newUserForm, password: e.target.value })}
+                                required
+                              />
+                              <button
+                                type="button"
+                                className="password-eye-btn"
+                                onClick={() => setShowNewUserPassword(p => !p)}
+                                tabIndex={-1}
+                              >
+                                {showNewUserPassword ? '🙈' : '👁️'}
+                              </button>
+                            </div>
                           </div>
                           <div className="form-group">
                             <label className="form-label">Role</label>
