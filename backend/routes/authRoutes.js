@@ -3,7 +3,7 @@ const router = express.Router();
 const rateLimit = require('express-rate-limit');
 const { register, login, updateProfile, getUserById, getUsers, deleteUser, forgotPassword, resetPassword, verifyEmail, resendVerification } = require('../controllers/authController');
 const { uploadImage } = require('../controllers/moduleController');
-const { optionalAuth, requireAuth, requireAdmin } = require('../middleware/auth');
+const { optionalAuth, requireAuth, requireAdmin, requireSubAdmin } = require('../middleware/auth');
 
 // Login is the sensitive one — caps brute-force attempts per IP. Registration gets a
 // looser limit too, mainly to stop automated account-creation spam.
@@ -57,7 +57,10 @@ router.post('/verify-email', resetPasswordLimiter, verifyEmail);
 router.post('/resend-verification', resendVerificationLimiter, resendVerification);
 router.get('/profile/:id', requireAuth, getUserById);
 router.put('/profile/:id', requireAuth, updateProfile);
-router.get('/users', requireAdmin, getUsers);
+// Sub Admin needs the roster too — the Meetings/certificates panel matches
+// attendees against it — but never the write side (account deletion stays
+// strictly System-Admin-only, same as the Users tab itself).
+router.get('/users', requireSubAdmin, getUsers);
 router.delete('/users/:id', requireAdmin, deleteUser);
 router.post('/upload-avatar', requireAuth, uploadImage);
 

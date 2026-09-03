@@ -20,8 +20,14 @@ const User = sequelize.define('User', {
         type: DataTypes.STRING,
         allowNull: false,
     },
+    // Sub Admin: everything under Learning Modules and the Meetings/seminars
+    // control panel, but never Users or Settings — only Admin (System Admin)
+    // has that. Secretary: identical to a normal self-serve role everywhere
+    // except one added power, editing meeting minutes — see requireMinutesAccess
+    // in middleware/auth.js. Neither is self-registerable (see SELF_SERVE_ROLES
+    // in authController.js), same as Admin already wasn't.
     role: {
-        type: DataTypes.ENUM('Livestock Manager', 'Farmer', 'Veterinarian', 'Extension Worker', 'Admin'),
+        type: DataTypes.ENUM('Livestock Manager', 'Farmer', 'Veterinarian', 'Extension Worker', 'Admin', 'Sub Admin', 'Secretary'),
         defaultValue: 'Farmer',
     },
     organization: {

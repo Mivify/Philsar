@@ -41,7 +41,7 @@ interface User {
   id: number;
   name: string;
   email: string;
-  role: 'Livestock Manager' | 'Farmer' | 'Veterinarian' | 'Extension Worker' | 'Admin';
+  role: 'Livestock Manager' | 'Farmer' | 'Veterinarian' | 'Extension Worker' | 'Admin' | 'Sub Admin' | 'Secretary';
   organization: string;
   status: 'Active' | 'Inactive';
   profilePicture?: string;
@@ -415,6 +415,15 @@ export default function App() {
   // Authentication State
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+
+  // Role-tier helpers, reused across every gate below instead of repeating
+  // the role list at each call site (and risking the two drifting apart).
+  // isSystemAdmin: everything, including Users/Settings/Home Page — Admin only.
+  // isModuleOrMeetingAdmin: + Learning Modules and the Meetings control panel — Sub Admin too.
+  // canEditMinutes: + writing/editing meeting minutes — Secretary too.
+  const isSystemAdmin = currentUser?.role === 'Admin';
+  const isModuleOrMeetingAdmin = currentUser?.role === 'Admin' || currentUser?.role === 'Sub Admin';
+  const canEditMinutes = currentUser?.role === 'Admin' || currentUser?.role === 'Sub Admin' || currentUser?.role === 'Secretary';
 
   // Dynamic Data States
   const [modules, setModules] = useState<LearningModule[]>([]);
@@ -908,7 +917,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (activeTab === 'admin' && currentUser?.role === 'Admin') {
+    if (activeTab === 'admin' && isModuleOrMeetingAdmin) {
       fetchUsersList();
     }
     // currentUser?.role is deliberately included: on a hard refresh landing
@@ -918,6 +927,15 @@ export default function App() {
     // never re-fire once currentUser becomes available a moment later,
     // leaving the Users table empty until logging out and back in.
   }, [activeTab, currentUser?.role]);
+
+  // Sub Admin has no Users tab (activeAdminTab's 'users' default), so on
+  // opening the Admin Panel they'd otherwise land on a tab whose content
+  // block never renders for them — bounce to Modules instead.
+  useEffect(() => {
+    if (activeTab === 'admin' && activeAdminTab === 'users' && !isSystemAdmin && isModuleOrMeetingAdmin) {
+      setActiveAdminTab('modules');
+    }
+  }, [activeTab, activeAdminTab, isSystemAdmin, isModuleOrMeetingAdmin]);
 
   // Re-check certificate eligibility whenever the user opens Virtual Meetings —
   // covers certificates an admin granted manually since the last page load.
@@ -1293,8 +1311,8 @@ export default function App() {
   const handleJoinMeeting = (meeting: Meeting) => {
     // The video room only actually embeds for non-Ended meetings — gate those behind
     // having RSVP'd, so the room isn't open to every logged-in account by default.
-    // Admins (who host/manage these) are exempt.
-    const needsRsvp = meeting.status !== 'Ended' && currentUser?.role !== 'Admin' && !myAttendance[meeting.id]?.rsvped;
+    // Admins/Sub Admins (who host/manage these) are exempt.
+    const needsRsvp = meeting.status !== 'Ended' && !isModuleOrMeetingAdmin && !myAttendance[meeting.id]?.rsvped;
     if (needsRsvp) {
       showToast('Please RSVP to this seminar first — use the RSVP button, then Join Live will be available.', 'warning');
       return;
@@ -1353,7 +1371,7 @@ export default function App() {
     if (!activeMeeting) return;
     setSavingMinutes(true);
     try {
-      const res = await axios.put(`${API_BASE}/meetings/${activeMeeting.id}`, { minutes: minutesDraft });
+      const res = await axios.put(`${API_BASE}/meetings/${activeMeeting.id}/minutes`, { minutes: minutesDraft });
       setActiveMeeting(res.data.meeting);
       setMinutesDraft(res.data.meeting.minutes || '');
       fetchGlobalData();
@@ -2735,7 +2753,7 @@ export default function App() {
             {t('nav.profile')}
           </button>
 
-          {currentUser?.role === 'Admin' && (
+          {isModuleOrMeetingAdmin && (
             <button
               className={`nav-item ${activeTab === 'admin' ? 'active' : ''}`}
               onClick={() => handleTabNavigate('admin')}
@@ -3862,6 +3880,8 @@ export default function App() {
                           <option>Veterinarian</option>
                           <option>Extension Worker</option>
                           {currentUser?.role === 'Admin' && <option>Admin</option>}
+                          {currentUser?.role === 'Sub Admin' && <option>Sub Admin</option>}
+                          {currentUser?.role === 'Secretary' && <option>Secretary</option>}
                         </select>
                       </div>
 
@@ -3953,7 +3973,7 @@ export default function App() {
           )}
 
           {/* ── VIEW: ADMIN PANEL ── */}
-          {activeTab === 'admin' && currentUser?.role === 'Admin' && (
+          {activeTab === 'admin' && isModuleOrMeetingAdmin && (
             <div className="view active">
               <div className="page-header">
                 <div className="page-title">{t('admin.title')}</div>
@@ -3962,12 +3982,14 @@ export default function App() {
 
               {/* ADMIN INTERNAL TABS */}
               <div className="admin-tabs">
-                <button
-                  className={`admin-tab ${activeAdminTab === 'users' ? 'active' : ''}`}
-                  onClick={() => setActiveAdminTab('users')}
-                >
-                  {t('admin.tabUsers')}
-                </button>
+                {isSystemAdmin && (
+                  <button
+                    className={`admin-tab ${activeAdminTab === 'users' ? 'active' : ''}`}
+                    onClick={() => setActiveAdminTab('users')}
+                  >
+                    {t('admin.tabUsers')}
+                  </button>
+                )}
                 <button
                   className={`admin-tab ${activeAdminTab === 'modules' ? 'active' : ''}`}
                   onClick={() => setActiveAdminTab('modules')}
@@ -3980,22 +4002,26 @@ export default function App() {
                 >
                   {t('admin.tabMeetings')}
                 </button>
-                <button
-                  className={`admin-tab ${activeAdminTab === 'home' ? 'active' : ''}`}
-                  onClick={() => setActiveAdminTab('home')}
-                >
-                  {t('admin.tabHomePage')}
-                </button>
-                <button
-                  className={`admin-tab ${activeAdminTab === 'settings' ? 'active' : ''}`}
-                  onClick={() => setActiveAdminTab('settings')}
-                >
-                  {t('admin.tabSettings')}
-                </button>
+                {isSystemAdmin && (
+                  <button
+                    className={`admin-tab ${activeAdminTab === 'home' ? 'active' : ''}`}
+                    onClick={() => setActiveAdminTab('home')}
+                  >
+                    {t('admin.tabHomePage')}
+                  </button>
+                )}
+                {isSystemAdmin && (
+                  <button
+                    className={`admin-tab ${activeAdminTab === 'settings' ? 'active' : ''}`}
+                    onClick={() => setActiveAdminTab('settings')}
+                  >
+                    {t('admin.tabSettings')}
+                  </button>
+                )}
               </div>
 
               {/* TAB CONTENT: USERS */}
-              {activeAdminTab === 'users' && (
+              {activeAdminTab === 'users' && isSystemAdmin && (
                 <div id="admin-users">
                   <div className="admin-header-row">
                     <div className="card-title">Registered Portal Accounts</div>
@@ -4046,6 +4072,8 @@ export default function App() {
                               <option>Farmer</option>
                               <option>Veterinarian</option>
                               <option>Extension Worker</option>
+                              <option>Secretary</option>
+                              <option>Sub Admin</option>
                               <option>Admin</option>
                             </select>
                           </div>
@@ -4578,7 +4606,7 @@ export default function App() {
               )}
 
               {/* TAB CONTENT: HOME PAGE BACKGROUNDS */}
-              {activeAdminTab === 'home' && (
+              {activeAdminTab === 'home' && isSystemAdmin && (
                 <div id="admin-home">
                   <div className="card">
                     <div className="card-header">
@@ -4775,7 +4803,7 @@ export default function App() {
               )}
 
               {/* TAB CONTENT: SETTINGS */}
-              {activeAdminTab === 'settings' && (
+              {activeAdminTab === 'settings' && isSystemAdmin && (
                 <div id="admin-settings">
                   <div className="card">
                     <div className="card-header"><div className="card-title">System Settings</div></div>
@@ -5073,7 +5101,7 @@ export default function App() {
                 <div id="jaas-container" style={{ width: '100%', height: '100%' }}></div>
               )}
             </div>
-            {(activeMeeting.status === 'Ended' || (currentUser?.role === 'Admin' && minutesPanelOpen)) && (
+            {(activeMeeting.status === 'Ended' || (canEditMinutes && minutesPanelOpen)) && (
               <div style={{ padding: '18px 24px', borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.08)', maxHeight: '260px', overflowY: 'auto' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                   <div style={{ color: 'var(--cream, #eef2fc)', fontWeight: 700, fontSize: '14px' }}>
@@ -5088,7 +5116,7 @@ export default function App() {
                     </button>
                   )}
                 </div>
-                {currentUser?.role === 'Admin' ? (
+                {canEditMinutes ? (
                   <>
                     <textarea
                       className="form-control"
@@ -5141,7 +5169,7 @@ export default function App() {
                 >
                   💬 Toggle Chat
                 </button>
-                {currentUser?.role === 'Admin' && (
+                {canEditMinutes && (
                   <button
                     className="meeting-footer-btn"
                     onClick={() => setMinutesPanelOpen(o => !o)}

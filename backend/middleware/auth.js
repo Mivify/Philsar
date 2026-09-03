@@ -25,7 +25,13 @@ const optionalAuth = async (req, res, next) => {
             // deactivating a user shouldn't leave their existing token usable until
             // it naturally expires.
             if (user && !tokenIssuedBeforePasswordChange && user.status !== 'Inactive') {
-                req.user = { id: decoded.id, role: decoded.role };
+                // user.role (freshly read just above, not decoded.role from the
+                // token) so a role change by an Admin takes effect on this
+                // user's very next request instead of only after they next log
+                // in — the row was already being fetched here regardless, so
+                // this costs nothing extra and closes an otherwise-stale-until-
+                // relogin window on both promotions and demotions.
+                req.user = { id: decoded.id, role: user.role };
             }
         } catch (error) {
             // Invalid/expired token — treat the same as no token rather than erroring.
@@ -44,7 +50,7 @@ const requireAuth = (req, res, next) => {
     });
 };
 
-// Requires a valid token belonging to an Admin; responds 401/403 otherwise.
+// Requires a valid token belonging to an Admin (System Admin); responds 401/403 otherwise.
 const requireAdmin = (req, res, next) => {
     requireAuth(req, res, () => {
         if (req.user.role !== 'Admin') {
@@ -54,4 +60,28 @@ const requireAdmin = (req, res, next) => {
     });
 };
 
-module.exports = { optionalAuth, requireAuth, requireAdmin };
+// Admin or Sub Admin — the Learning Modules and Meetings/seminars management
+// surface. Sub Admin never gets requireAdmin itself (Users, Settings, Home
+// Page carousel stay System-Admin-only).
+const requireSubAdmin = (req, res, next) => {
+    requireAuth(req, res, () => {
+        if (req.user.role !== 'Admin' && req.user.role !== 'Sub Admin') {
+            return res.status(403).json({ message: 'Admin access required' });
+        }
+        next();
+    });
+};
+
+// Admin, Sub Admin, or Secretary — specifically for writing/editing meeting
+// minutes. Secretary otherwise has ordinary user-level access everywhere
+// else in the app; this is its one added power.
+const requireMinutesAccess = (req, res, next) => {
+    requireAuth(req, res, () => {
+        if (!['Admin', 'Sub Admin', 'Secretary'].includes(req.user.role)) {
+            return res.status(403).json({ message: 'You do not have permission to edit meeting minutes.' });
+        }
+        next();
+    });
+};
+
+module.exports = { optionalAuth, requireAuth, requireAdmin, requireSubAdmin, requireMinutesAccess };

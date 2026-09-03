@@ -107,6 +107,27 @@ const updateMeeting = async (req, res) => {
     }
 };
 
+// Deliberately narrow — only touches `minutes`, unlike updateMeeting above.
+// This is the one Secretary is allowed to call (see requireMinutesAccess),
+// so it must not accept any other field on the meeting.
+const updateMeetingMinutes = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { minutes } = req.body;
+
+        const meeting = await Meeting.findByPk(id);
+        if (!meeting) {
+            return res.status(404).json({ message: 'Meeting not found' });
+        }
+
+        meeting.minutes = minutes ?? '';
+        await meeting.save();
+        res.status(200).json({ message: 'Minutes updated successfully', meeting });
+    } catch (error) {
+        res.status(500).json({ message: 'Error updating minutes', error: error.message });
+    }
+};
+
 const deleteMeeting = async (req, res) => {
     try {
         const { id } = req.params;
@@ -281,7 +302,7 @@ const getJaasToken = async (req, res) => {
             userId: user.id,
             name: user.name,
             email: user.email,
-            moderator: user.role === 'Admin',
+            moderator: user.role === 'Admin' || user.role === 'Sub Admin',
             room: sanitizedRoomName
         });
 
@@ -296,6 +317,7 @@ module.exports = {
     rsvpMeeting,
     createMeeting,
     updateMeeting,
+    updateMeetingMinutes,
     deleteMeeting,
     pingAttendance,
     getMyAttendance,
