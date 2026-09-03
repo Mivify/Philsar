@@ -545,6 +545,7 @@ export default function App() {
   const [uploadingContentImage, setUploadingContentImage] = useState(false);
   const contentFileInputRef = useRef<HTMLInputElement>(null);
   const contentTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const [contentEditorExpanded, setContentEditorExpanded] = useState(false);
 
   // Landing Page Background Image Upload State
   const [uploadingLandingImage, setUploadingLandingImage] = useState(false);
@@ -4365,13 +4366,34 @@ export default function App() {
                               <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
                                 Images appear as Markdown in content
                               </span>
+                              <button
+                                type="button"
+                                onClick={() => setContentEditorExpanded(e => !e)}
+                                style={{
+                                  marginLeft: 'auto',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  padding: '5px 12px',
+                                  fontSize: '12px',
+                                  fontWeight: 600,
+                                  fontFamily: 'inherit',
+                                  color: 'var(--brown-mid)',
+                                  background: 'var(--warm-white)',
+                                  border: '1px solid var(--border)',
+                                  borderRadius: '6px',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                {contentEditorExpanded ? <><Minimize2 size={14} /> Collapse</> : <><Maximize2 size={14} /> Expand</>}
+                              </button>
                             </div>
 
                             <textarea
                               ref={contentTextareaRef}
                               className="form-control"
                               style={{
-                                minHeight: '180px',
+                                minHeight: contentEditorExpanded ? '70vh' : '180px',
                                 borderTopLeftRadius: 0,
                                 borderTopRightRadius: 0,
                                 borderTop: 'none'
