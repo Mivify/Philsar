@@ -1312,8 +1312,8 @@ export default function App() {
   const handleJoinMeeting = (meeting: Meeting) => {
     // The video room only actually embeds for non-Ended meetings — gate those behind
     // having RSVP'd, so the room isn't open to every logged-in account by default.
-    // Admins/Sub Admins (who host/manage these) are exempt.
-    const needsRsvp = meeting.status !== 'Ended' && !isModuleOrMeetingAdmin && !myAttendance[meeting.id]?.rsvped;
+    // Admin/Sub Admin/Secretary (who host, manage, or take minutes for these) are exempt.
+    const needsRsvp = meeting.status !== 'Ended' && !canEditMinutes && !myAttendance[meeting.id]?.rsvped;
     if (needsRsvp) {
       showToast('Please RSVP to this seminar first — use the RSVP button, then Join Live will be available.', 'warning');
       return;
