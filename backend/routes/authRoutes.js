@@ -5,14 +5,17 @@ const { register, login, updateProfile, getUserById, getUsers, deleteUser, forgo
 const { uploadImage } = require('../controllers/moduleController');
 const { optionalAuth, requireAuth, requireAdmin, requireSubAdmin } = require('../middleware/auth');
 
-// Login is the sensitive one — caps brute-force attempts per IP. Registration gets a
-// looser limit too, mainly to stop automated account-creation spam.
+// Login is the sensitive one — caps brute-force attempts per IP. Only failed
+// attempts count (skipSuccessfulRequests) so a legitimate user isn't
+// penalized for their own successful logins sharing the window. Registration
+// gets a looser limit too, mainly to stop automated account-creation spam.
 const loginLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    limit: 10,
+    windowMs: 5 * 60 * 1000,
+    limit: 5,
+    skipSuccessfulRequests: true,
     standardHeaders: true,
     legacyHeaders: false,
-    message: { message: 'Too many login attempts. Please try again in a few minutes.' }
+    message: { message: 'Too many attempts. Please wait a few minutes and try again.' }
 });
 const registerLimiter = rateLimit({
     windowMs: 60 * 60 * 1000,

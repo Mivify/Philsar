@@ -721,6 +721,35 @@ export default function App() {
     return () => axios.interceptors.response.eject(interceptorId);
   }, []);
 
+  // Auto-logout after 15 minutes with no user interaction — protects a session
+  // left open unattended (shared/kiosk computers, walking away mid-shift).
+  // Tracked via plain mutable variables rather than state, since activity fires
+  // on every mousemove/keydown and would otherwise re-render the whole app
+  // constantly; only the periodic idle check needs to actually do anything.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const INACTIVITY_LIMIT_MS = 15 * 60 * 1000;
+    const CHECK_INTERVAL_MS = 30 * 1000;
+    let lastActivityAt = Date.now();
+    const markActivity = () => { lastActivityAt = Date.now(); };
+
+    const activityEvents: (keyof WindowEventMap)[] = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'wheel'];
+    activityEvents.forEach(evt => window.addEventListener(evt, markActivity, { passive: true }));
+
+    const intervalId = window.setInterval(() => {
+      if (Date.now() - lastActivityAt >= INACTIVITY_LIMIT_MS) {
+        handleLogout();
+        showToast("You've been signed out due to inactivity.", 'info');
+      }
+    }, CHECK_INTERVAL_MS);
+
+    return () => {
+      activityEvents.forEach(evt => window.removeEventListener(evt, markActivity));
+      clearInterval(intervalId);
+    };
+  }, [isAuthenticated]);
+
   useEffect(() => {
     // Check locally stored user on mount
     const storedUser = localStorage.getItem('philsar_user');
