@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { sendPasswordResetEmail, sendVerificationEmail } = require('../utils/email');
 const { logActivity } = require('../utils/activityLog');
+const { isStrongPassword, WEAK_PASSWORD_MESSAGE } = require('../utils/passwordPolicy');
 
 // Roles a user can grant themselves via public self-registration. Admin accounts can
 // only be created by an existing Admin (see the role-handling logic in `register`).
@@ -50,6 +51,13 @@ const register = async (req, res) => {
         const finalRole = isAdminCreating
             ? (role || 'Farmer')
             : (SELF_SERVE_ROLES.includes(role) ? role : 'Farmer');
+
+        // Only enforced for self-serve signups — an Admin setting up a staff
+        // account via the Admin Panel isn't gated by this (out of scope of what
+        // was asked, and the Add New User form has no matching live checklist).
+        if (!isAdminCreating && !isStrongPassword(password)) {
+            return res.status(400).json({ message: WEAK_PASSWORD_MESSAGE });
+        }
 
         const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -214,6 +222,9 @@ const updateProfile = async (req, res) => {
         // Password change handling
         let passwordChanged = false;
         if (password) {
+            if (!isStrongPassword(password)) {
+                return res.status(400).json({ message: WEAK_PASSWORD_MESSAGE });
+            }
             const currentMatches = await bcrypt.compare(currentPassword || '', user.password);
             if (!currentMatches) {
                 return res.status(401).json({ message: 'Incorrect current password' });
@@ -417,6 +428,9 @@ const resetPassword = async (req, res) => {
         const { token, newPassword } = req.body;
         if (!token || !newPassword) {
             return res.status(400).json({ message: 'Missing token or new password' });
+        }
+        if (!isStrongPassword(newPassword)) {
+            return res.status(400).json({ message: WEAK_PASSWORD_MESSAGE });
         }
 
         const tokenHash = crypto.createHash('sha256').update(token).digest('hex');

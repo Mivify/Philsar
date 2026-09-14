@@ -243,6 +243,39 @@ function getActivitySeverity(action: string): 'high' | 'medium' | 'low' {
   return ACTIVITY_SEVERITY[action] || 'low';
 }
 
+// Shared everywhere a password gets set (registration, change password, reset
+// password) so the rule and its wording only live in one place. Mirrored
+// server-side in backend/utils/passwordPolicy.js — the checklist here is a
+// UX convenience, not the enforcement; the backend rejects a weak password
+// regardless of what the client sends.
+const PASSWORD_RULES: { key: string; label: string; test: (pw: string) => boolean }[] = [
+  { key: 'length', label: 'At least 8 characters', test: pw => pw.length >= 8 },
+  { key: 'upper', label: 'One uppercase letter (A-Z)', test: pw => /[A-Z]/.test(pw) },
+  { key: 'lower', label: 'One lowercase letter (a-z)', test: pw => /[a-z]/.test(pw) },
+  { key: 'number', label: 'One number (0-9)', test: pw => /[0-9]/.test(pw) },
+  { key: 'special', label: 'One special character (!@#$…)', test: pw => /[^A-Za-z0-9]/.test(pw) },
+];
+
+function isPasswordStrong(password: string): boolean {
+  return PASSWORD_RULES.every(rule => rule.test(password));
+}
+
+function PasswordChecklist({ password }: { password: string }) {
+  return (
+    <div style={{ marginTop: '8px', padding: '10px 12px', background: 'var(--cream)', border: '1px solid var(--border)', borderRadius: '8px' }}>
+      {PASSWORD_RULES.map(rule => {
+        const met = rule.test(password);
+        return (
+          <div key={rule.key} style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px', padding: '2px 0', color: met ? 'var(--green-mid, #2d6a4f)' : 'var(--text-muted)' }}>
+            <span style={{ fontWeight: 700 }}>{met ? '✓' : '○'}</span>
+            {rule.label}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 type Tab = 'home' | 'about' | 'dashboard' | 'learning' | 'chatbot' | 'dss' | 'meetings' | 'profile' | 'admin';
 const VALID_TABS: Tab[] = ['home', 'about', 'dashboard', 'learning', 'chatbot', 'dss', 'meetings', 'profile', 'admin'];
 
@@ -1109,6 +1142,10 @@ export default function App() {
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
+    if (!isPasswordStrong(authForm.password)) {
+      setAuthError('Please choose a stronger password — check the requirements below the password field.');
+      return;
+    }
     setAuthLoading(true);
     try {
       await axios.post(`${API_BASE}/auth/register`, {
@@ -1166,6 +1203,10 @@ export default function App() {
       setAuthError('Passwords do not match.');
       return;
     }
+    if (!isPasswordStrong(resetPasswordForm.password)) {
+      setAuthError('Please choose a stronger password — check the requirements below the field.');
+      return;
+    }
     setAuthLoading(true);
     try {
       await axios.post(`${API_BASE}/auth/reset-password`, {
@@ -1212,6 +1253,10 @@ export default function App() {
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) return;
+    if (profileForm.password && !isPasswordStrong(profileForm.password)) {
+      showToast('Please choose a stronger password — check the requirements below the field.', 'warning');
+      return;
+    }
     try {
       const response = await axios.put(`${API_BASE}/auth/profile/${currentUser.id}`, {
         name: profileForm.name,
@@ -2553,6 +2598,7 @@ export default function App() {
                           {showPassword ? '🙈' : '👁️'}
                         </button>
                       </div>
+                      {authForm.password && <PasswordChecklist password={authForm.password} />}
                     </div>
 
                     <div className="auth-field">
@@ -2586,7 +2632,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    <button className="auth-submit-btn" type="submit" disabled={authLoading}>
+                    <button className="auth-submit-btn" type="submit" disabled={authLoading || !isPasswordStrong(authForm.password)}>
                       <span>→</span>
                       {authLoading ? 'Creating Account…' : 'Create Account'}
                     </button>
@@ -2770,6 +2816,7 @@ export default function App() {
                             {showPassword ? '🙈' : '👁️'}
                           </button>
                         </div>
+                        {resetPasswordForm.password && <PasswordChecklist password={resetPasswordForm.password} />}
                       </div>
 
                       <div className="auth-field">
@@ -2787,7 +2834,7 @@ export default function App() {
                         </div>
                       </div>
 
-                      <button className="auth-submit-btn" type="submit" disabled={authLoading}>
+                      <button className="auth-submit-btn" type="submit" disabled={authLoading || !isPasswordStrong(resetPasswordForm.password)}>
                         <span>→</span>
                         {authLoading ? 'Saving…' : 'Reset Password'}
                       </button>
@@ -4066,10 +4113,16 @@ export default function App() {
                             value={profileForm.password}
                             onChange={e => setProfileForm({ ...profileForm, password: e.target.value })}
                           />
+                          {profileForm.password && <PasswordChecklist password={profileForm.password} />}
                         </div>
                       </div>
 
-                      <button className="submit-btn" style={{ width: 'auto', padding: '12px 28px' }} type="submit">
+                      <button
+                        className="submit-btn"
+                        style={{ width: 'auto', padding: '12px 28px' }}
+                        type="submit"
+                        disabled={!!profileForm.password && !isPasswordStrong(profileForm.password)}
+                      >
                         Save Changes
                       </button>
                     </form>
