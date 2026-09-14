@@ -1615,22 +1615,22 @@ body {
   color: var(--cream);
 }
 
+/* Caps every admin data table to a fixed viewport with its own scrollbar
+   (rather than growing the whole admin page) so the sticky header below has
+   an actual scrolling context to stick within.
+   NOTE: a pinned (position: sticky) header was tried here twice before and
+   rendered broken in Chrome — header cells appeared detached from their row,
+   with body content bleeding through underneath. Root cause found on this
+   third pass: the <th> elements never had an opaque background, so scrolled-
+   past row content showed straight through the "stuck" header — that's
+   exactly what looked like overlapping/detached cells. border-collapse also
+   matters here (collapse doesn't reliably keep sticky cell borders/backgrounds
+   intact while scrolling in Chrome), hence the switch to separate below.
+   Verified this time with an actual browser screenshot, not just guessing. */
 .data-table-wrapper {
   overflow-x: auto;
-}
-
-/* Keeps the accounts list scrolling in place rather than growing the whole
-   admin page as more users are registered.
-   NOTE: a pinned (position: sticky) header was tried here twice and both
-   times rendered broken in Chrome — the header cells detached from their
-   row and overlapped the body rows instead of staying cleanly on top, even
-   after switching to border-collapse: separate. Dropping it rather than
-   continuing to guess at a fix that can't be verified without a browser;
-   the header now just scrolls with the rest of the table, same as any
-   other .data-table in the app. */
-.admin-users-table-wrapper {
-  max-height: 520px;
   overflow-y: auto;
+  max-height: 520px;
 }
 
 .admin-users-search {
@@ -1681,10 +1681,15 @@ body {
 
 .data-table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
 }
 
 .data-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--warm-white);
   text-align: left;
   font-size: 11px;
   font-weight: 700;

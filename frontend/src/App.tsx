@@ -4295,7 +4295,7 @@ export default function App() {
                           )}
                         </div>
                       </div>
-                      <div className="card-body data-table-wrapper admin-users-table-wrapper">
+                      <div className="card-body data-table-wrapper">
                         <table className="data-table">
                           <thead>
                             <tr>
