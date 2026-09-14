@@ -1,4 +1,6 @@
 const Setting = require('../models/Setting');
+const User = require('../models/User');
+const { logActivity } = require('../utils/activityLog');
 
 const DEFAULT_SETTINGS = {
     portalName: 'PHILSAR — Cattle Reproductive Management Portal',
@@ -36,6 +38,13 @@ const updateSettings = async (req, res) => {
         for (const [key, value] of Object.entries(updates)) {
             await Setting.upsert({ key, value: String(value) });
         }
+
+        const actor = await User.findByPk(req.user.id, { attributes: ['name', 'role'] });
+        logActivity({
+            userId: req.user.id, userName: actor?.name, userRole: actor?.role,
+            action: 'settings_updated', category: 'admin',
+            details: `Changed: ${Object.keys(updates).join(', ')}`, req
+        });
 
         const settings = await Setting.findAll();
         const settingsMap = { ...DEFAULT_SETTINGS };

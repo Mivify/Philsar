@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { sendPasswordResetEmail, sendVerificationEmail } = require('../utils/email');
+const { logActivity } = require('../utils/activityLog');
 
 // Roles a user can grant themselves via public self-registration. Admin accounts can
 // only be created by an existing Admin (see the role-handling logic in `register`).
@@ -67,6 +68,13 @@ const register = async (req, res) => {
 
         const user = await User.create(userData);
 
+        logActivity({
+            userId: user.id, userName: user.name, userRole: user.role,
+            action: 'account_registered', category: 'account',
+            details: isAdminCreating ? `${finalRole} account created for ${email} by an admin` : `${finalRole} account self-registered: ${email}`,
+            req
+        });
+
         if (!isAdminCreating) {
             const baseUrl = process.env.BACKEND_URL || `https://${req.get('host')}`;
             const link = `${baseUrl}/verify-email?token=${verificationToken}`;
@@ -112,19 +120,37 @@ const login = async (req, res) => {
         const user = await User.findOne({ where: { email } });
         const passwordMatches = await bcrypt.compare(password, user ? user.password : DUMMY_PASSWORD_HASH);
         if (!user || !passwordMatches) {
+            logActivity({
+                userId: user?.id || null, userName: email, userRole: user?.role || null,
+                action: 'login_failed', category: 'auth',
+                details: user ? 'Wrong password' : 'No account with this email', req
+            });
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
         if (user.status === 'Inactive') {
+            logActivity({
+                userId: user.id, userName: user.name, userRole: user.role,
+                action: 'login_blocked', category: 'auth', details: 'Deactivated account attempted login', req
+            });
             return res.status(403).json({ message: 'This account has been deactivated. Contact an administrator.' });
         }
 
         if (!user.emailVerified) {
+            logActivity({
+                userId: user.id, userName: user.name, userRole: user.role,
+                action: 'login_blocked', category: 'auth', details: 'Unverified email attempted login', req
+            });
             return res.status(403).json({
                 message: 'Please verify your email before logging in.',
                 requiresVerification: true
             });
         }
+
+        logActivity({
+            userId: user.id, userName: user.name, userRole: user.role,
+            action: 'login_success', category: 'auth', details: null, req
+        });
 
         // Return full user details for profile state
         res.status(200).json({
@@ -148,6 +174,23 @@ const login = async (req, res) => {
     }
 };
 
+// JWTs are stateless — this doesn't invalidate anything server-side. It exists
+// purely so the security log can distinguish a normal sign-out from the
+// 15-minute inactivity auto-logout (see the `reason` field).
+const logout = async (req, res) => {
+    try {
+        const user = await User.findByPk(req.user.id);
+        const reason = req.body?.reason === 'inactivity' ? 'Auto-logged out after 15 minutes of inactivity' : 'Manual sign-out';
+        logActivity({
+            userId: req.user.id, userName: user?.name, userRole: user?.role,
+            action: 'logout', category: 'auth', details: reason, req
+        });
+        res.status(200).json({ message: 'Logged out' });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
 const updateProfile = async (req, res) => {
     try {
         const { id } = req.params;
@@ -163,6 +206,10 @@ const updateProfile = async (req, res) => {
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
         }
+
+        const oldRole = user.role;
+        const oldStatus = user.status;
+        const targetEmail = user.email;
 
         // Password change handling
         let passwordChanged = false;
@@ -192,6 +239,31 @@ const updateProfile = async (req, res) => {
         }
 
         await user.save();
+
+        if (passwordChanged) {
+            logActivity({
+                userId: user.id, userName: user.name, userRole: user.role,
+                action: 'password_changed', category: 'account', details: 'User changed their own password', req
+            });
+        }
+        if (isAdmin && !isSelf) {
+            const actor = await User.findByPk(req.user.id, { attributes: ['name'] });
+            const actorName = actor?.name || `admin #${req.user.id}`;
+            if (role && role !== oldRole) {
+                logActivity({
+                    userId: user.id, userName: user.name, userRole: user.role,
+                    action: 'role_changed', category: 'account',
+                    details: `${targetEmail}: ${oldRole} → ${role} (changed by ${actorName})`, req
+                });
+            }
+            if (status && status !== oldStatus) {
+                logActivity({
+                    userId: user.id, userName: user.name, userRole: user.role,
+                    action: 'account_status_changed', category: 'account',
+                    details: `${targetEmail}: ${oldStatus} → ${status} (changed by ${actorName})`, req
+                });
+            }
+        }
 
         res.status(200).json({
             message: 'Profile updated successfully',
@@ -287,6 +359,13 @@ const deleteUser = async (req, res) => {
             }
         }
 
+        const actor = await User.findByPk(req.user.id, { attributes: ['name'] });
+        logActivity({
+            userId: user.id, userName: user.name, userRole: user.role,
+            action: 'account_deleted', category: 'account',
+            details: `${user.email} (${user.role}) deleted by ${actor?.name || `admin #${req.user.id}`}`, req
+        });
+
         await user.destroy();
         res.status(200).json({ message: 'User deleted successfully' });
     } catch (error) {
@@ -320,6 +399,11 @@ const forgotPassword = async (req, res) => {
             } catch (emailError) {
                 console.error('Failed to send password reset email:', emailError);
             }
+
+            logActivity({
+                userId: user.id, userName: user.name, userRole: user.role,
+                action: 'password_reset_requested', category: 'account', details: null, req
+            });
         }
 
         res.status(200).json({ message: 'If an account exists for that email, a reset link has been sent.' });
@@ -347,6 +431,11 @@ const resetPassword = async (req, res) => {
         user.resetPasswordExpires = null;
         user.passwordChangedAt = Date.now();
         await user.save();
+
+        logActivity({
+            userId: user.id, userName: user.name, userRole: user.role,
+            action: 'password_reset_completed', category: 'account', details: null, req
+        });
 
         res.status(200).json({ message: 'Password reset successfully' });
     } catch (error) {
@@ -411,6 +500,7 @@ const resendVerification = async (req, res) => {
 module.exports = {
     register,
     login,
+    logout,
     updateProfile,
     getUserById,
     getUsers,

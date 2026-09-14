@@ -1,6 +1,8 @@
 const Module = require('../models/Module');
 const ModuleChunk = require('../models/ModuleChunk');
+const User = require('../models/User');
 const { chunkModuleContent, embedText } = require('../utils/embeddings');
+const { logActivity } = require('../utils/activityLog');
 const fs = require('fs');
 const path = require('path');
 const cloudinary = require('cloudinary').v2;
@@ -64,6 +66,13 @@ const createModule = async (req, res) => {
         } catch (embedError) {
             console.error('Embedding generation failed for new module:', embedError);
         }
+
+        const actor = await User.findByPk(req.user.id, { attributes: ['name', 'role'] });
+        logActivity({
+            userId: req.user.id, userName: actor?.name, userRole: actor?.role,
+            action: 'module_created', category: 'admin', details: `"${title}" created`, req
+        });
+
         res.status(201).json({ message: 'Module created successfully', module: moduleItem });
     } catch (error) {
         res.status(500).json({ message: 'Error creating module', error: error.message });
@@ -97,6 +106,12 @@ const updateModule = async (req, res) => {
             }
         }
 
+        const actor = await User.findByPk(req.user.id, { attributes: ['name', 'role'] });
+        logActivity({
+            userId: req.user.id, userName: actor?.name, userRole: actor?.role,
+            action: 'module_updated', category: 'admin', details: `"${moduleItem.title}" updated`, req
+        });
+
         res.status(200).json({ message: 'Module updated successfully', module: moduleItem });
     } catch (error) {
         res.status(500).json({ message: 'Error updating module', error: error.message });
@@ -109,6 +124,12 @@ const deleteModule = async (req, res) => {
         const { id } = req.params;
         const moduleItem = await Module.findByPk(id);
         if (!moduleItem) return res.status(404).json({ message: 'Module not found' });
+
+        const actor = await User.findByPk(req.user.id, { attributes: ['name', 'role'] });
+        logActivity({
+            userId: req.user.id, userName: actor?.name, userRole: actor?.role,
+            action: 'module_deleted', category: 'admin', details: `"${moduleItem.title}" deleted`, req
+        });
 
         await ModuleChunk.destroy({ where: { moduleId: id } });
         await moduleItem.destroy();

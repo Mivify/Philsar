@@ -123,6 +123,25 @@ interface SystemSettings {
   certAttendanceThresholdMinutes: string;
 }
 
+interface ActivityLogEntry {
+  id: number;
+  userId: number | null;
+  userName: string | null;
+  userRole: string | null;
+  action: string;
+  category: string;
+  details: string | null;
+  ipAddress: string | null;
+  createdAt: string;
+}
+
+interface ActivitySummary {
+  failedLogins: { accounts: number; attempts: number };
+  lockouts: number;
+  roleOrStatusChanges: number;
+  deletions: number;
+}
+
 function isValidImageUrl(url?: string): boolean {
   if (!url) return false;
   const trimmed = url.trim();
@@ -176,6 +195,52 @@ function parseLessons(content: string): { title: string; content: string }[] {
   }
   
   return lessons;
+}
+
+// Human-readable labels for ActivityLog.action values (see backend/utils/activityLog.js
+// for where each of these gets written). New action strings just fall back to
+// themselves rather than needing this map updated in lockstep.
+const ACTIVITY_ACTION_LABELS: Record<string, string> = {
+  login_success: 'Login',
+  login_failed: 'Failed Login',
+  login_blocked: 'Login Blocked',
+  account_locked: 'Account Locked',
+  logout: 'Logout',
+  account_registered: 'Account Registered',
+  password_changed: 'Password Changed',
+  password_reset_requested: 'Password Reset Requested',
+  password_reset_completed: 'Password Reset Completed',
+  role_changed: 'Role Changed',
+  account_status_changed: 'Status Changed',
+  account_deleted: 'Account Deleted',
+  dss_assessment_run: 'DSS Assessment',
+  meeting_joined: 'Joined Seminar',
+  meeting_left: 'Left Seminar',
+  meeting_created: 'Seminar Created',
+  meeting_updated: 'Seminar Updated',
+  meeting_deleted: 'Seminar Deleted',
+  certificate_granted: 'Certificate Granted',
+  certificate_revoked: 'Certificate Revoked',
+  module_created: 'Module Created',
+  module_updated: 'Module Updated',
+  module_deleted: 'Module Deleted',
+  settings_updated: 'Settings Updated',
+};
+
+// Rough at-a-glance severity so the table reads like a security log, not a
+// plain activity feed — 'high' flags the events most worth a second look.
+const ACTIVITY_SEVERITY: Record<string, 'high' | 'medium' | 'low'> = {
+  login_failed: 'high',
+  account_locked: 'high',
+  login_blocked: 'medium',
+  role_changed: 'high',
+  account_status_changed: 'medium',
+  account_deleted: 'high',
+  certificate_revoked: 'medium',
+};
+
+function getActivitySeverity(action: string): 'high' | 'medium' | 'low' {
+  return ACTIVITY_SEVERITY[action] || 'low';
 }
 
 type Tab = 'home' | 'about' | 'dashboard' | 'learning' | 'chatbot' | 'dss' | 'meetings' | 'profile' | 'admin';
@@ -392,7 +457,7 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
 export default function App() {
   // Navigation & UI States
   const [activeTab, setActiveTab] = useState<Tab>(() => tabFromPath(window.location.pathname));
-  const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'modules' | 'meetings' | 'home' | 'settings'>('users');
+  const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'modules' | 'meetings' | 'home' | 'settings' | 'activity'>('users');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [language, setLanguage] = useState<Language>(() => {
@@ -538,6 +603,16 @@ export default function App() {
   const [savingMeeting, setSavingMeeting] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
 
+  // Activity Log (Admin Panel > Activity Log) — System Admin only
+  const [activityLogs, setActivityLogs] = useState<ActivityLogEntry[]>([]);
+  const [activityLogsLoading, setActivityLogsLoading] = useState(false);
+  const [activityLogCategory, setActivityLogCategory] = useState('all');
+  const [activityLogSearch, setActivityLogSearch] = useState('');
+  const [activityLogSearchInput, setActivityLogSearchInput] = useState('');
+  const [activityLogPage, setActivityLogPage] = useState(1);
+  const [activityLogTotalPages, setActivityLogTotalPages] = useState(1);
+  const [activitySummary, setActivitySummary] = useState<ActivitySummary | null>(null);
+
   // Image Uploading States for Admin Panel Modules
   const [uploadingImage, setUploadingImage] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -675,12 +750,14 @@ export default function App() {
             lastPingAt = Date.now();
             sendHeartbeat();
             attendanceIntervalRef.current = window.setInterval(sendHeartbeat, 30000);
+            axios.post(`${API_BASE}/meetings/${meetingId}/attendance/join`).catch(() => {});
           });
           jitsiApiRef.current.addEventListener('videoConferenceLeft', () => {
             if (attendanceIntervalRef.current) {
               clearInterval(attendanceIntervalRef.current);
               attendanceIntervalRef.current = null;
             }
+            axios.post(`${API_BASE}/meetings/${meetingId}/attendance/leave`).catch(() => {});
           });
         }
       }, 150);
@@ -739,7 +816,7 @@ export default function App() {
 
     const intervalId = window.setInterval(() => {
       if (Date.now() - lastActivityAt >= INACTIVITY_LIMIT_MS) {
-        handleLogout();
+        handleLogout('inactivity');
         showToast("You've been signed out due to inactivity.", 'info');
       }
     }, CHECK_INTERVAL_MS);
@@ -1103,7 +1180,14 @@ export default function App() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = (reason: 'manual' | 'inactivity' = 'manual') => {
+    // Fire-and-forget, purely for the security log (JWTs are stateless — this
+    // doesn't invalidate anything). Sent before the Authorization header is
+    // cleared below; axios merges that header into the request synchronously
+    // at call time, so it's already attached even though the header gets
+    // deleted immediately after in this same function.
+    axios.post(`${API_BASE}/auth/logout`, { reason }).catch(() => {});
+
     // Chat is persisted to localStorage per-user (see the chatMessages effect below) —
     // remove it here so logging out actually restarts the conversation, rather than
     // just resetting the in-memory copy while a stale one lingers in storage for the
@@ -2148,6 +2232,49 @@ export default function App() {
     }
   };
 
+  const fetchActivityLogs = async () => {
+    setActivityLogsLoading(true);
+    try {
+      const response = await axios.get(`${API_BASE}/activity-logs`, {
+        params: { category: activityLogCategory, search: activityLogSearch || undefined, page: activityLogPage, limit: 50 }
+      });
+      setActivityLogs(response.data.logs);
+      setActivityLogTotalPages(response.data.totalPages);
+    } catch (error) {
+      console.error('Error fetching activity logs:', error);
+    } finally {
+      setActivityLogsLoading(false);
+    }
+  };
+
+  // Debounce the free-text search so every keystroke doesn't fire a request —
+  // only the settled value (300ms after typing stops) feeds the actual fetch.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setActivityLogSearch(activityLogSearchInput);
+      setActivityLogPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [activityLogSearchInput]);
+
+  useEffect(() => {
+    if (activeTab === 'admin' && activeAdminTab === 'activity' && isSystemAdmin) {
+      fetchActivityLogs();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, activeAdminTab, isSystemAdmin, activityLogCategory, activityLogSearch, activityLogPage]);
+
+  // Independent of the filtered table above — this answers "should I be
+  // worried right now?" so it stays fixed to a real 24h window regardless of
+  // whatever category/search the admin currently has the table filtered to.
+  useEffect(() => {
+    if (activeTab === 'admin' && activeAdminTab === 'activity' && isSystemAdmin) {
+      axios.get(`${API_BASE}/activity-logs/summary`)
+        .then(res => setActivitySummary(res.data))
+        .catch(err => console.error('Error fetching activity summary:', err));
+    }
+  }, [activeTab, activeAdminTab, isSystemAdmin]);
+
   const handleMarkLessonComplete = async (mod: LearningModule) => {
     if (!mod || !currentUser) return;
     const currentCompleted = completedLessonsMap[mod.id] || [];
@@ -2798,7 +2925,7 @@ export default function App() {
         </nav>
 
         <div className="sidebar-footer">
-          <button className="logout-btn" onClick={handleLogout}>
+          <button className="logout-btn" onClick={() => handleLogout()}>
             <span>🚪</span> {t('nav.signOut')}
           </button>
         </div>
@@ -4051,6 +4178,14 @@ export default function App() {
                     {t('admin.tabSettings')}
                   </button>
                 )}
+                {isSystemAdmin && (
+                  <button
+                    className={`admin-tab ${activeAdminTab === 'activity' ? 'active' : ''}`}
+                    onClick={() => setActiveAdminTab('activity')}
+                  >
+                    🛡️ Activity Log
+                  </button>
+                )}
               </div>
 
               {/* TAB CONTENT: USERS */}
@@ -5032,6 +5167,159 @@ export default function App() {
                           </button>
                         </div>
                       </form>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB CONTENT: ACTIVITY LOG */}
+              {activeAdminTab === 'activity' && isSystemAdmin && (
+                <div id="admin-activity">
+                  <div className="card">
+                    <div className="card-header" style={{ flexWrap: 'wrap', gap: '10px' }}>
+                      <div className="card-title">🛡️ Security &amp; Activity Log</div>
+                      <input
+                        className="form-control"
+                        style={{ maxWidth: '260px' }}
+                        type="text"
+                        placeholder="Search by user or details…"
+                        value={activityLogSearchInput}
+                        onChange={e => setActivityLogSearchInput(e.target.value)}
+                      />
+                    </div>
+                    <div className="card-body">
+                      {activitySummary && (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '20px' }}>
+                          {[
+                            {
+                              key: 'failedLogins', icon: '🔑', label: 'Failed Logins (24h)',
+                              value: activitySummary.failedLogins.attempts,
+                              sub: `across ${activitySummary.failedLogins.accounts} account${activitySummary.failedLogins.accounts === 1 ? '' : 's'}`
+                            },
+                            { key: 'lockouts', icon: '⛔', label: 'Account Lockouts (24h)', value: activitySummary.lockouts, sub: null },
+                            { key: 'roleChanges', icon: '🛡️', label: 'Role / Status Changes (24h)', value: activitySummary.roleOrStatusChanges, sub: null },
+                            { key: 'deletions', icon: '🗑️', label: 'Accounts Deleted (24h)', value: activitySummary.deletions, sub: null },
+                          ].map(tile => {
+                            const isAlert = tile.value > 0;
+                            return (
+                              <div
+                                key={tile.key}
+                                style={{
+                                  padding: '14px 16px', borderRadius: '10px',
+                                  background: isAlert ? 'rgba(207,19,34,0.06)' : 'var(--cream)',
+                                  border: `1px solid ${isAlert ? 'rgba(207,19,34,0.3)' : 'var(--border)'}`,
+                                }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                                  <span>{tile.icon}</span> {tile.label}
+                                </div>
+                                <div style={{ fontSize: '26px', fontWeight: 800, marginTop: '4px', color: isAlert ? '#cf1322' : 'var(--text-primary)' }}>
+                                  {tile.value}
+                                </div>
+                                <div style={{ fontSize: '11px', marginTop: '2px', color: isAlert ? '#cf1322' : 'var(--green-mid)' }}>
+                                  {isAlert ? (tile.sub || 'Needs a look') : '✓ All clear'}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
+                        {[
+                          { key: 'all', label: 'All' },
+                          { key: 'auth', label: 'Login & Auth' },
+                          { key: 'account', label: 'Accounts' },
+                          { key: 'dss', label: 'DSS' },
+                          { key: 'meeting', label: 'Seminars' },
+                          { key: 'admin', label: 'Admin Actions' },
+                        ].map(c => (
+                          <button
+                            key={c.key}
+                            className={`filter-chip ${activityLogCategory === c.key ? 'active' : ''}`}
+                            onClick={() => { setActivityLogCategory(c.key); setActivityLogPage(1); }}
+                          >
+                            {c.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {activityLogsLoading ? (
+                        <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                          <Loader2 size={20} className="animate-spin" />
+                        </div>
+                      ) : activityLogs.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)', fontSize: '13px' }}>
+                          No activity recorded for this filter yet.
+                        </div>
+                      ) : (
+                        <div className="data-table-wrapper">
+                          <table className="data-table">
+                            <thead>
+                              <tr>
+                                <th>Time</th>
+                                <th>User</th>
+                                <th>Action</th>
+                                <th>Details</th>
+                                <th>IP Address</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {activityLogs.map(log => {
+                                const severity = getActivitySeverity(log.action);
+                                const badgeColor = severity === 'high' ? '#cf1322' : severity === 'medium' ? 'var(--amber)' : 'var(--text-muted)';
+                                return (
+                                  <tr key={log.id}>
+                                    <td style={{ whiteSpace: 'nowrap', fontSize: '12.5px', color: 'var(--text-muted)' }}>
+                                      {new Date(log.createdAt).toLocaleDateString('en-US')}{' '}
+                                      {new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    </td>
+                                    <td>
+                                      <div style={{ fontWeight: 600, fontSize: '13px' }}>{log.userName || 'Unknown'}</div>
+                                      {log.userRole && <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{log.userRole}</div>}
+                                    </td>
+                                    <td>
+                                      <span
+                                        style={{
+                                          display: 'inline-block', fontSize: '11px', fontWeight: 700,
+                                          padding: '3px 9px', borderRadius: '999px',
+                                          color: severity === 'low' ? 'var(--text-primary)' : 'white',
+                                          background: severity === 'low' ? 'var(--border)' : badgeColor,
+                                        }}
+                                      >
+                                        {ACTIVITY_ACTION_LABELS[log.action] || log.action}
+                                      </span>
+                                    </td>
+                                    <td style={{ fontSize: '12.5px', maxWidth: '360px' }}>{log.details || '—'}</td>
+                                    <td style={{ fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>{log.ipAddress || '—'}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+
+                      {activityLogTotalPages > 1 && (
+                        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '14px', marginTop: '16px' }}>
+                          <button
+                            className="btn"
+                            disabled={activityLogPage <= 1}
+                            onClick={() => setActivityLogPage(p => Math.max(p - 1, 1))}
+                          >
+                            <ChevronLeft size={14} />
+                          </button>
+                          <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                            Page {activityLogPage} of {activityLogTotalPages}
+                          </span>
+                          <button
+                            className="btn"
+                            disabled={activityLogPage >= activityLogTotalPages}
+                            onClick={() => setActivityLogPage(p => Math.min(p + 1, activityLogTotalPages))}
+                          >
+                            <ChevronRight size={14} />
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

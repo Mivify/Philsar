@@ -12,7 +12,9 @@ const {
     getMeetingAttendance,
     grantCertificate,
     revokeCertificate,
-    getJaasToken
+    getJaasToken,
+    logMeetingJoin,
+    logMeetingLeave
 } = require('../controllers/meetingController');
 const { requireAuth, requireSubAdmin, requireMinutesAccess } = require('../middleware/auth');
 
@@ -22,6 +24,8 @@ router.get('/attendance/:userId', requireAuth, getMyAttendance);
 router.post('/:id/rsvp', requireAuth, rsvpMeeting);
 router.post('/:id/attendance/ping', requireAuth, pingAttendance);
 router.get('/:id/jaas-token', requireAuth, getJaasToken);
+router.post('/:id/attendance/join', requireAuth, logMeetingJoin);
+router.post('/:id/attendance/leave', requireAuth, logMeetingLeave);
 
 // Admin or Secretary: writing/editing minutes only — nothing else about the
 // meeting. Kept as its own route (rather than folding into the general

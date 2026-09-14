@@ -3,6 +3,7 @@ const User = require('../models/User');
 const MeetingAttendance = require('../models/MeetingAttendance');
 const Setting = require('../models/Setting');
 const { generateJaasToken } = require('../utils/jaasToken');
+const { logActivity } = require('../utils/activityLog');
 
 const HEARTBEAT_SECONDS = 30;
 const MAX_ELAPSED_PER_PING_SECONDS = 5 * 60;
@@ -84,6 +85,13 @@ const createMeeting = async (req, res) => {
             videoLink: videoLink && videoLink.trim() ? videoLink.trim() : undefined,
             recordingUrl: recordingUrl && recordingUrl.trim() ? recordingUrl.trim() : undefined
         });
+
+        const actor = await User.findByPk(req.user.id, { attributes: ['name', 'role'] });
+        logActivity({
+            userId: req.user.id, userName: actor?.name, userRole: actor?.role,
+            action: 'meeting_created', category: 'admin', details: `"${title}" scheduled`, req
+        });
+
         res.status(201).json({ message: 'Meeting created successfully', meeting });
     } catch (error) {
         res.status(500).json({ message: 'Error creating meeting', error: error.message });
@@ -110,6 +118,13 @@ const updateMeeting = async (req, res) => {
         if (recordingUrl !== undefined) meeting.recordingUrl = recordingUrl;
 
         await meeting.save();
+
+        const actor = await User.findByPk(req.user.id, { attributes: ['name', 'role'] });
+        logActivity({
+            userId: req.user.id, userName: actor?.name, userRole: actor?.role,
+            action: 'meeting_updated', category: 'admin', details: `"${meeting.title}" updated`, req
+        });
+
         res.status(200).json({ message: 'Meeting updated successfully', meeting });
     } catch (error) {
         res.status(500).json({ message: 'Error updating meeting', error: error.message });
@@ -144,6 +159,12 @@ const deleteMeeting = async (req, res) => {
         if (!meeting) {
             return res.status(404).json({ message: 'Meeting not found' });
         }
+
+        const actor = await User.findByPk(req.user.id, { attributes: ['name', 'role'] });
+        logActivity({
+            userId: req.user.id, userName: actor?.name, userRole: actor?.role,
+            action: 'meeting_deleted', category: 'admin', details: `"${meeting.title}" deleted`, req
+        });
 
         await meeting.destroy();
         res.status(200).json({ message: 'Meeting deleted successfully' });
@@ -250,6 +271,17 @@ const grantCertificate = async (req, res) => {
         record.granted = true;
         await record.save();
 
+        const [actor, target, meeting] = await Promise.all([
+            User.findByPk(req.user.id, { attributes: ['name', 'role'] }),
+            User.findByPk(userId, { attributes: ['name'] }),
+            Meeting.findByPk(id, { attributes: ['title'] })
+        ]);
+        logActivity({
+            userId: req.user.id, userName: actor?.name, userRole: actor?.role,
+            action: 'certificate_granted', category: 'admin',
+            details: `Certificate granted to ${target?.name || `user #${userId}`} for "${meeting?.title || `seminar #${id}`}"`, req
+        });
+
         const thresholdSeconds = await getCertificateThresholdSeconds();
         res.status(200).json({
             secondsAttended: record.secondsAttended,
@@ -275,6 +307,17 @@ const revokeCertificate = async (req, res) => {
         });
         record.granted = false;
         await record.save();
+
+        const [actor, target, meeting] = await Promise.all([
+            User.findByPk(req.user.id, { attributes: ['name', 'role'] }),
+            User.findByPk(userId, { attributes: ['name'] }),
+            Meeting.findByPk(id, { attributes: ['title'] })
+        ]);
+        logActivity({
+            userId: req.user.id, userName: actor?.name, userRole: actor?.role,
+            action: 'certificate_revoked', category: 'admin',
+            details: `Certificate revoked from ${target?.name || `user #${userId}`} for "${meeting?.title || `seminar #${id}`}"`, req
+        });
 
         const thresholdSeconds = await getCertificateThresholdSeconds();
         res.status(200).json({
@@ -326,6 +369,47 @@ const getJaasToken = async (req, res) => {
     }
 };
 
+// These two exist purely for the security log — attendance itself is already
+// tracked via the ping heartbeat, but a ping doesn't tell you the moment
+// someone actually joined or left, which is exactly what "did this account
+// join a seminar at 2am" style monitoring needs. Called from the frontend's
+// Jitsi videoConferenceJoined/videoConferenceLeft event handlers.
+const logMeetingJoin = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [meeting, user] = await Promise.all([
+            Meeting.findByPk(id, { attributes: ['title'] }),
+            User.findByPk(req.user.id, { attributes: ['name', 'role'] })
+        ]);
+        logActivity({
+            userId: req.user.id, userName: user?.name, userRole: user?.role,
+            action: 'meeting_joined', category: 'meeting',
+            details: `Joined "${meeting?.title || `seminar #${id}`}"`, req
+        });
+        res.status(204).end();
+    } catch (error) {
+        res.status(500).json({ message: 'Error logging meeting join', error: error.message });
+    }
+};
+
+const logMeetingLeave = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [meeting, user] = await Promise.all([
+            Meeting.findByPk(id, { attributes: ['title'] }),
+            User.findByPk(req.user.id, { attributes: ['name', 'role'] })
+        ]);
+        logActivity({
+            userId: req.user.id, userName: user?.name, userRole: user?.role,
+            action: 'meeting_left', category: 'meeting',
+            details: `Left "${meeting?.title || `seminar #${id}`}"`, req
+        });
+        res.status(204).end();
+    } catch (error) {
+        res.status(500).json({ message: 'Error logging meeting leave', error: error.message });
+    }
+};
+
 module.exports = {
     getMeetings,
     rsvpMeeting,
@@ -338,5 +422,7 @@ module.exports = {
     getMeetingAttendance,
     grantCertificate,
     revokeCertificate,
-    getJaasToken
+    getJaasToken,
+    logMeetingJoin,
+    logMeetingLeave
 };

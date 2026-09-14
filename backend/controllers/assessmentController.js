@@ -3,6 +3,7 @@ const User = require('../models/User');
 const Cattle = require('../models/Cattle');
 const { GoogleGenAI } = require('@google/genai');
 const { retrieveRelevantChunks } = require('../utils/ragRetrieval');
+const { logActivity } = require('../utils/activityLog');
 require('dotenv').config();
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -145,6 +146,12 @@ const createAssessment = async (req, res) => {
             user.dssAssessmentsRun += 1;
             await user.save();
         }
+
+        logActivity({
+            userId, userName: user?.name, userRole: user?.role,
+            action: 'dss_assessment_run', category: 'dss',
+            details: `Cattle #${cattleId}: ${isReady ? 'Ready' : 'Not Ready'} — ${recommendation}`, req
+        });
 
         res.status(201).json({
             message: 'Assessment completed and saved successfully',

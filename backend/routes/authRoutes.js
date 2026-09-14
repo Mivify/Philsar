@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const rateLimit = require('express-rate-limit');
-const { register, login, updateProfile, getUserById, getUsers, deleteUser, forgotPassword, resetPassword, verifyEmail, resendVerification } = require('../controllers/authController');
+const { register, login, logout, updateProfile, getUserById, getUsers, deleteUser, forgotPassword, resetPassword, verifyEmail, resendVerification } = require('../controllers/authController');
 const { uploadImage } = require('../controllers/moduleController');
 const { optionalAuth, requireAuth, requireAdmin, requireSubAdmin } = require('../middleware/auth');
+const { logActivity } = require('../utils/activityLog');
 
 // Login is the sensitive one — caps brute-force attempts per IP. Only failed
 // attempts count (skipSuccessfulRequests) so a legitimate user isn't
@@ -15,7 +16,14 @@ const loginLimiter = rateLimit({
     skipSuccessfulRequests: true,
     standardHeaders: true,
     legacyHeaders: false,
-    message: { message: 'Too many attempts. Please wait a few minutes and try again.' }
+    message: { message: 'Too many attempts. Please wait a few minutes and try again.' },
+    handler: (req, res) => {
+        logActivity({
+            userName: req.body?.email || 'unknown', action: 'account_locked', category: 'auth',
+            details: '5 failed login attempts in 5 minutes — locked out', req
+        });
+        res.status(429).json({ message: 'Too many attempts. Please wait a few minutes and try again.' });
+    }
 });
 const registerLimiter = rateLimit({
     windowMs: 60 * 60 * 1000,
@@ -54,6 +62,7 @@ const resendVerificationLimiter = rateLimit({
 
 router.post('/register', registerLimiter, optionalAuth, register);
 router.post('/login', loginLimiter, login);
+router.post('/logout', requireAuth, logout);
 router.post('/forgot-password', forgotPasswordLimiter, forgotPassword);
 router.post('/reset-password', resetPasswordLimiter, resetPassword);
 router.post('/verify-email', resetPasswordLimiter, verifyEmail);
