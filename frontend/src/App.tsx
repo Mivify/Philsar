@@ -262,12 +262,20 @@ function isPasswordStrong(password: string): boolean {
 
 function PasswordChecklist({ password }: { password: string }) {
   return (
-    <div style={{ marginTop: '8px', padding: '10px 12px', background: 'var(--cream)', border: '1px solid var(--border)', borderRadius: '8px' }}>
+    <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
       {PASSWORD_RULES.map(rule => {
         const met = rule.test(password);
         return (
-          <div key={rule.key} style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px', padding: '2px 0', color: met ? 'var(--green-mid, #2d6a4f)' : 'var(--text-muted)' }}>
-            <span style={{ fontWeight: 700 }}>{met ? '✓' : '○'}</span>
+          <div
+            key={rule.key}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px', fontWeight: 600,
+              padding: '5px 10px', borderRadius: '6px',
+              background: met ? 'rgba(45,106,79,0.12)' : 'rgba(207,19,34,0.08)',
+              color: met ? '#1d5a3a' : '#a01722',
+            }}
+          >
+            <span style={{ fontWeight: 700 }}>{met ? '✓' : '✗'}</span>
             {rule.label}
           </div>
         );
