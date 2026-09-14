@@ -1626,11 +1626,25 @@ body {
    exactly what looked like overlapping/detached cells. border-collapse also
    matters here (collapse doesn't reliably keep sticky cell borders/backgrounds
    intact while scrolling in Chrome), hence the switch to separate below.
-   Verified this time with an actual browser screenshot, not just guessing. */
+   Verified this time with an actual browser screenshot, not just guessing.
+
+   FOLLOW-UP FIX: this wrapper doubles as `.card-body` on most of these
+   tables, which carries its own 20px top padding. Overflow clipping in CSS
+   happens at the padding edge, not the content edge — so that 20px strip
+   sits INSIDE the visible scrollport, and rows scrolling past can pass
+   through it and stay visible there, while the sticky <th> (top: 0) sits
+   below that strip, at its natural unscrolled position. The result: a
+   sliver of whatever row just scrolled past shows in the gap above the
+   header. Zeroing the top padding here removes that gap entirely — the
+   <th>'s own padding already gives the header breathing room. Confirmed via
+   getBoundingClientRect() in a real browser: before this, the sticky <th>
+   stayed pinned at (wrapper top + 20px) instead of at the wrapper's actual
+   visible top edge. */
 .data-table-wrapper {
   overflow-x: auto;
   overflow-y: auto;
   max-height: 520px;
+  padding-top: 0;
 }
 
 .admin-users-search {
