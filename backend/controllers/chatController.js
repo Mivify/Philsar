@@ -1,8 +1,14 @@
 const { GoogleGenAI } = require('@google/genai');
 const { retrieveRelevantChunks } = require('../utils/ragRetrieval');
+const User = require('../models/User');
+const { logActivity } = require('../utils/activityLog');
 require('dotenv').config();
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+// Truncated so a long question doesn't bloat the log table — enough to see
+// what was actually asked without storing the full conversation.
+const MAX_LOGGED_MESSAGE_LENGTH = 200;
 
 const handleChat = async (req, res) => {
     try {
@@ -11,6 +17,19 @@ const handleChat = async (req, res) => {
         if (!message) {
             return res.status(400).json({ message: 'No chat message provided' });
         }
+
+        // Logged as soon as the message is known valid — mirrors the DSS
+        // assessment log (every run gets recorded regardless of whether the
+        // Gemini call itself succeeds), so admins can see chatbot usage even
+        // when a reply later falls back to the generic error message below.
+        const actor = await User.findByPk(req.user.id, { attributes: ['name', 'role'] });
+        const truncatedMessage = message.length > MAX_LOGGED_MESSAGE_LENGTH
+            ? `${message.slice(0, MAX_LOGGED_MESSAGE_LENGTH)}…`
+            : message;
+        logActivity({
+            userId: req.user.id, userName: actor?.name, userRole: actor?.role,
+            action: 'chatbot_message', category: 'chatbot', details: `Asked: "${truncatedMessage}"`, req
+        });
 
         let userContext = '';
         if (user && user.name) {

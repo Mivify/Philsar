@@ -214,6 +214,7 @@ const ACTIVITY_ACTION_LABELS: Record<string, string> = {
   account_status_changed: 'Status Changed',
   account_deleted: 'Account Deleted',
   dss_assessment_run: 'DSS Assessment',
+  chatbot_message: 'Chatbot Message',
   meeting_joined: 'Joined Seminar',
   meeting_left: 'Left Seminar',
   meeting_created: 'Seminar Created',
@@ -5291,6 +5292,7 @@ export default function App() {
                           { key: 'auth', label: 'Login & Auth' },
                           { key: 'account', label: 'Accounts' },
                           { key: 'dss', label: 'DSS' },
+                          { key: 'chatbot', label: 'Chatbot' },
                           { key: 'meeting', label: 'Seminars' },
                           { key: 'admin', label: 'Admin Actions' },
                         ].map(c => (
