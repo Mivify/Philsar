@@ -3,10 +3,6 @@ const User = require('../models/User');
 const { logActivity } = require('../utils/activityLog');
 
 const DEFAULT_SETTINGS = {
-    portalName: 'PHILSAR — Cattle Reproductive Management Portal',
-    aiProvider: 'Gemini API (Google)',
-    videoProvider: 'Jitsi Meet (Open Source)',
-    dssVersion: 'v2.1 — AI-Assisted Rule-Based',
     certTitleText: 'Certificate of Attendance',
     certBodyText: 'has successfully attended the virtual seminar',
     certClosingText: 'PHILSAR Cattle Reproductive Portal',

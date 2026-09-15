@@ -110,10 +110,6 @@ interface Assessment {
 }
 
 interface SystemSettings {
-  portalName: string;
-  aiProvider: string;
-  videoProvider: string;
-  dssVersion: string;
   certTitleText: string;
   certBodyText: string;
   certClosingText: string;
@@ -559,10 +555,6 @@ export default function App() {
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [herdStats, setHerdStats] = useState({ totalCattle: 0, readyForBreeding: 0, newThisMonth: 0 });
   const [settings, setSettings] = useState<SystemSettings>({
-    portalName: 'PHILSAR — Cattle Reproductive Management Portal',
-    aiProvider: 'Gemini API (Google)',
-    videoProvider: 'Jitsi Meet (Open Source)',
-    dssVersion: 'v2.1 — AI-Assisted Rule-Based',
     certTitleText: 'Certificate of Attendance',
     certBodyText: 'has successfully attended the virtual seminar',
     certClosingText: 'PHILSAR Cattle Reproductive Portal',
@@ -5070,51 +5062,7 @@ export default function App() {
                     <div className="card-header"><div className="card-title">System Settings</div></div>
                     <div className="card-body">
                       <form onSubmit={handleUpdateSettings}>
-                        <div className="form-group">
-                          <label className="form-label">Portal Application Title</label>
-                          <input
-                            className="form-control"
-                            type="text"
-                            value={settings.portalName}
-                            onChange={e => setSettings({ ...settings, portalName: e.target.value })}
-                          />
-                        </div>
-                        <div className="form-group">
-                          <label className="form-label">AI Service Integration Provider</label>
-                          <select
-                            className="form-control"
-                            value={settings.aiProvider}
-                            onChange={e => setSettings({ ...settings, aiProvider: e.target.value })}
-                          >
-                            <option>Gemini API (Google)</option>
-                            <option>Claude API (Anthropic)</option>
-                            <option>OpenAI GPT Integration</option>
-                          </select>
-                        </div>
-                        <div className="form-group">
-                          <label className="form-label">Video Teleconference Service</label>
-                          <select
-                            className="form-control"
-                            value={settings.videoProvider}
-                            onChange={e => setSettings({ ...settings, videoProvider: e.target.value })}
-                          >
-                            <option>Jitsi Meet (Open Source)</option>
-                            <option>Zoom Video SDK</option>
-                            <option>Google Meet Integration</option>
-                          </select>
-                        </div>
-                        <div className="form-group">
-                          <label className="form-label">DSS Algorithm Revision Version</label>
-                          <select
-                            className="form-control"
-                            value={settings.dssVersion}
-                            onChange={e => setSettings({ ...settings, dssVersion: e.target.value })}
-                          >
-                            <option>v2.1 — AI-Assisted Rule-Based</option>
-                            <option>v1.0 — Rule-Based Only</option>
-                          </select>
-                        </div>
-                        <div style={{ borderTop: '1px solid var(--border)', margin: '20px 0 16px', paddingTop: '16px', fontWeight: 700, fontSize: '14px' }}>
+                        <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '16px' }}>
                           ⏱ Attendance & Certification
                         </div>
                         <div className="form-group">
