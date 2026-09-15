@@ -245,6 +245,18 @@ const updateProfile = async (req, res) => {
         // role/status are account-management fields — only an Admin may change them,
         // even when editing their own account, to close the self-escalation path.
         if (isAdmin) {
+            // Mirrors the same guard deleteUser already has: demoting or deactivating
+            // the last remaining Admin is just as much of a lockout as deleting them,
+            // and previously had no protection at all on this path.
+            const effectiveRole = role || oldRole;
+            const losingAdminRole = oldRole === 'Admin' && effectiveRole !== 'Admin';
+            const deactivatingAdmin = effectiveRole === 'Admin' && status === 'Inactive' && oldStatus !== 'Inactive';
+            if (losingAdminRole || deactivatingAdmin) {
+                const adminCount = await User.count({ where: { role: 'Admin' } });
+                if (adminCount <= 1) {
+                    return res.status(400).json({ message: 'Cannot make this change — it would leave the system with no remaining Admin account.' });
+                }
+            }
             if (role) user.role = role;
             if (status) user.status = status;
         }
@@ -339,7 +351,7 @@ const getUserById = async (req, res) => {
 const getUsers = async (req, res) => {
     try {
         const users = await User.findAll({
-            attributes: { exclude: ['password'] },
+            attributes: { exclude: ['password', 'emailVerificationTokenHash', 'emailVerificationExpires', 'resetPasswordTokenHash', 'resetPasswordExpires'] },
             order: [['createdAt', 'DESC']]
         });
         res.status(200).json(users);
