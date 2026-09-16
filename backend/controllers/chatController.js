@@ -10,22 +10,17 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 // what was actually asked without storing the full conversation.
 const MAX_LOGGED_MESSAGE_LENGTH = 200;
 
-// User-selectable per chat message (see the model dropdown in the AI
-// Assistant view) — but never trust the client's string directly. Whitelisted
-// against models actually verified with a real generateContent() call against
-// this API key/tier — Pro-class models are excluded because they return a 429
-// quota-exceeded error on the free tier, and any retired model ID (Google
-// occasionally retires one even though it stays listed by the models-list
-// endpoint) would otherwise silently break the option until caught here. The
-// DSS's guidance generation intentionally does NOT use this — it stays fixed
-// to DEFAULT_CHAT_MODEL.
-const ALLOWED_CHAT_MODELS = ['gemini-2.5-flash', 'gemini-3.5-flash-lite', 'gemini-flash-latest'];
-const DEFAULT_CHAT_MODEL = 'gemini-2.5-flash';
+// Fixed model, no user choice — kept simple. gemini-3.5-flash-lite specifically:
+// its free-tier daily quota (500 requests/day, confirmed via the AI Studio
+// rate-limit dashboard) is 25x higher than the regular Flash models (20/day),
+// and it was verified reliable across repeated real test calls, unlike
+// gemini-3.5-flash which returned empty responses or 503 "high demand" errors
+// under the same testing.
+const CHAT_MODEL = 'gemini-3.5-flash-lite';
 
 const handleChat = async (req, res) => {
     try {
-        const { message, user, model } = req.body;
-        const selectedModel = ALLOWED_CHAT_MODELS.includes(model) ? model : DEFAULT_CHAT_MODEL;
+        const { message, user } = req.body;
 
         if (!message) {
             return res.status(400).json({ message: 'No chat message provided' });
@@ -41,7 +36,7 @@ const handleChat = async (req, res) => {
             : message;
         logActivity({
             userId: req.user.id, userName: actor?.name, userRole: actor?.role,
-            action: 'chatbot_message', category: 'chatbot', details: `Asked (${selectedModel}): "${truncatedMessage}"`, req
+            action: 'chatbot_message', category: 'chatbot', details: `Asked: "${truncatedMessage}"`, req
         });
 
         let userContext = '';
@@ -75,7 +70,7 @@ Please answer the following user query accurately and educationally:
 User Query: ${message}`;
 
         const response = await ai.models.generateContent({
-            model: selectedModel,
+            model: CHAT_MODEL,
             contents: promptContext
         });
 

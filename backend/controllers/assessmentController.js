@@ -52,8 +52,12 @@ ${checklistSummary}${referenceContext}
 
 Write actionable guidance specific to this cattle's data above.`;
 
+        // gemini-3.1-flash-lite: same reasoning as the chatbot's fixed model —
+        // Flash-Lite tier free-tier quota (500 requests/day) is 25x the regular
+        // Flash tier's (20/day), and it was verified reliable across repeated
+        // real test calls with this exact guidance-style prompt.
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3.1-flash-lite',
             contents: prompt
         });
 
