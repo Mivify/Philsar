@@ -296,13 +296,16 @@ const CHAT_GREETING: { role: 'assistant'; content: string } = {
 
 // Curated, user-selectable models for the chatbot only — the DSS's AI-narrated
 // guidance stays on a fixed model (gemini-2.5-flash) regardless of this choice.
-// Kept short and to real, current model IDs (verified against Google's own
-// model-listing API) rather than exposing the dozens of preview/image/audio/
-// research-agent models the same API key also has access to.
+// Every option here was verified with a real generateContent() call against
+// the actual API key, not just Google's model-listing endpoint — that list
+// still includes retired/Pro-tier models that fail on a real call (retired
+// models 404; Pro-tier models 429 quota-exceeded on the free tier). Only
+// Flash-family models are included since Pro-class models aren't usable on
+// the free tier at all.
 const CHAT_MODEL_OPTIONS = [
-  { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash — Fast (default)' },
-  { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro — Higher quality, slower' },
-  { value: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite — Fastest' },
+  { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash (default)' },
+  { value: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite — Fastest' },
+  { value: 'gemini-flash-latest', label: 'Gemini Flash (newest — auto-updates)' },
 ];
 const DEFAULT_CHAT_MODEL = CHAT_MODEL_OPTIONS[0].value;
 

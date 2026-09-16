@@ -12,10 +12,14 @@ const MAX_LOGGED_MESSAGE_LENGTH = 200;
 
 // User-selectable per chat message (see the model dropdown in the AI
 // Assistant view) — but never trust the client's string directly. Whitelisted
-// against real, current model IDs so a request can't pass through an
-// arbitrary/invalid model name to Google's API. The DSS's guidance generation
-// intentionally does NOT use this — it stays fixed to DEFAULT_CHAT_MODEL.
-const ALLOWED_CHAT_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite'];
+// against models actually verified with a real generateContent() call against
+// this API key/tier — Pro-class models are excluded because they return a 429
+// quota-exceeded error on the free tier, and any retired model ID (Google
+// occasionally retires one even though it stays listed by the models-list
+// endpoint) would otherwise silently break the option until caught here. The
+// DSS's guidance generation intentionally does NOT use this — it stays fixed
+// to DEFAULT_CHAT_MODEL.
+const ALLOWED_CHAT_MODELS = ['gemini-2.5-flash', 'gemini-3.5-flash-lite', 'gemini-flash-latest'];
 const DEFAULT_CHAT_MODEL = 'gemini-2.5-flash';
 
 const handleChat = async (req, res) => {
