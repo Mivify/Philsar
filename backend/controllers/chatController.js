@@ -10,9 +10,18 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 // what was actually asked without storing the full conversation.
 const MAX_LOGGED_MESSAGE_LENGTH = 200;
 
+// User-selectable per chat message (see the model dropdown in the AI
+// Assistant view) — but never trust the client's string directly. Whitelisted
+// against real, current model IDs so a request can't pass through an
+// arbitrary/invalid model name to Google's API. The DSS's guidance generation
+// intentionally does NOT use this — it stays fixed to DEFAULT_CHAT_MODEL.
+const ALLOWED_CHAT_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite'];
+const DEFAULT_CHAT_MODEL = 'gemini-2.5-flash';
+
 const handleChat = async (req, res) => {
     try {
-        const { message, user } = req.body;
+        const { message, user, model } = req.body;
+        const selectedModel = ALLOWED_CHAT_MODELS.includes(model) ? model : DEFAULT_CHAT_MODEL;
 
         if (!message) {
             return res.status(400).json({ message: 'No chat message provided' });
@@ -28,7 +37,7 @@ const handleChat = async (req, res) => {
             : message;
         logActivity({
             userId: req.user.id, userName: actor?.name, userRole: actor?.role,
-            action: 'chatbot_message', category: 'chatbot', details: `Asked: "${truncatedMessage}"`, req
+            action: 'chatbot_message', category: 'chatbot', details: `Asked (${selectedModel}): "${truncatedMessage}"`, req
         });
 
         let userContext = '';
@@ -62,7 +71,7 @@ Please answer the following user query accurately and educationally:
 User Query: ${message}`;
 
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: selectedModel,
             contents: promptContext
         });
 

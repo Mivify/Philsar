@@ -294,6 +294,18 @@ const CHAT_GREETING: { role: 'assistant'; content: string } = {
   content: 'Hello! I am **PHILSARBot**, your AI assistant for cattle reproductive management. I can help you understand estrus cycles, AI procedures, breeding techniques, and more. What would you like to know today?'
 };
 
+// Curated, user-selectable models for the chatbot only — the DSS's AI-narrated
+// guidance stays on a fixed model (gemini-2.5-flash) regardless of this choice.
+// Kept short and to real, current model IDs (verified against Google's own
+// model-listing API) rather than exposing the dozens of preview/image/audio/
+// research-agent models the same API key also has access to.
+const CHAT_MODEL_OPTIONS = [
+  { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash — Fast (default)' },
+  { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro — Higher quality, slower' },
+  { value: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite — Fastest' },
+];
+const DEFAULT_CHAT_MODEL = CHAT_MODEL_OPTIONS[0].value;
+
 // Themed replacement for window.confirm() on destructive actions — styled to match
 // the portal's Royal Blue theme instead of the browser's default confirm dialog.
 const confirmDelete = (text: string, title = 'Are you sure?', confirmButtonText = 'Yes, delete it'): Promise<boolean> => {
@@ -609,6 +621,15 @@ export default function App() {
   const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'assistant'; content: string; sources?: { moduleId: number; moduleTitle: string }[] }[]>([CHAT_GREETING]);
   const [inputMessage, setInputMessage] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
+  // A per-browser preference (like a UI setting), not per-user account data —
+  // deliberately a single shared key rather than tied to currentUser.id.
+  const [chatModel, setChatModel] = useState<string>(() => {
+    try {
+      return localStorage.getItem('philsar_chat_model') || DEFAULT_CHAT_MODEL;
+    } catch {
+      return DEFAULT_CHAT_MODEL;
+    }
+  });
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // DSS State
@@ -691,6 +712,15 @@ export default function App() {
     if (!currentUser?.id) return;
     localStorage.setItem(`philsar_chat_${currentUser.id}`, JSON.stringify(chatMessages));
   }, [chatMessages, currentUser?.id]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('philsar_chat_model', chatModel);
+    } catch {
+      // Best-effort — a private browsing session or blocked storage just
+      // means the choice won't survive a refresh, nothing more.
+    }
+  }, [chatModel]);
 
   // Jitsi Meet External API reference
   const jitsiApiRef = useRef<any>(null);
@@ -1369,6 +1399,7 @@ export default function App() {
     try {
       const response = await axios.post(`${API_BASE}/chat/ask`, {
         message: text,
+        model: chatModel,
         user: currentUser ? {
           name: currentUser.name,
           role: currentUser.role,
@@ -3594,10 +3625,21 @@ export default function App() {
                 <div className="chat-window">
                   <div className="chat-header">
                     <div className="ai-avatar">🤖</div>
-                    <div>
+                    <div style={{ flex: 1 }}>
                       <div className="ai-name">PHILSARBot</div>
-                      <div className="ai-status">● Online — powered by Gemini 2.5</div>
+                      <div className="ai-status">● Online</div>
                     </div>
+                    <select
+                      className="form-control"
+                      style={{ width: 'auto', maxWidth: '220px', fontSize: '12px', padding: '6px 10px' }}
+                      value={chatModel}
+                      onChange={e => setChatModel(e.target.value)}
+                      title="Choose which Gemini model answers your questions"
+                    >
+                      {CHAT_MODEL_OPTIONS.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
                   </div>
 
                   <div className="chat-messages" id="chatMessages">
