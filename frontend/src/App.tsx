@@ -610,6 +610,11 @@ export default function App() {
   const [inputMessage, setInputMessage] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  // Floating chathead — lets the user chat from any tab without navigating to
+  // the full AI Assistant view. Shares the same chatMessages/handleSendMessage
+  // as that view, so it's one continuous conversation either way.
+  const [chatheadOpen, setChatheadOpen] = useState(false);
+  const [chatheadSeenCount, setChatheadSeenCount] = useState(1); // CHAT_GREETING counts as already seen
 
   // DSS State
   const [dssForm, setDssForm] = useState({
@@ -685,9 +690,18 @@ export default function App() {
   // back — without this dependency, returning to the tab showed the very
   // first message instead of where the conversation actually left off.
   useEffect(() => {
-    if (activeTab !== 'chatbot') return;
+    if (activeTab !== 'chatbot' && !chatheadOpen) return;
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMessages, isChatLoading, activeTab]);
+  }, [chatMessages, isChatLoading, activeTab, chatheadOpen]);
+
+  // Marks messages as "seen" whenever the full chat view or the open chathead
+  // is actually visible, so the unread badge only counts messages that
+  // arrived while neither was showing.
+  useEffect(() => {
+    if (activeTab === 'chatbot' || chatheadOpen) {
+      setChatheadSeenCount(chatMessages.length);
+    }
+  }, [chatMessages.length, activeTab, chatheadOpen]);
 
   // Persist the chatbot conversation per-user so it survives page refreshes and
   // tab navigation — cleared explicitly on logout (see handleLogout) rather than
@@ -5833,6 +5847,73 @@ export default function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Floating Chathead — quick chatbot access from any tab. Hidden on the
+          full AI Assistant view (redundant) and during an active meeting
+          (avoids clashing with the "meeting in progress" pill in the same
+          corner). */}
+      {activeTab !== 'chatbot' && !activeMeeting && (
+        chatheadOpen ? (
+          <div className="chathead-panel">
+            <div className="chat-window">
+              <div className="chathead-panel-header">
+                <div className="ai-avatar" style={{ width: '32px', height: '32px', fontSize: '16px' }}>🤖</div>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '13px' }}>PHILSARBot</div>
+                  <div style={{ fontSize: '11px', opacity: 0.8 }}>● Online</div>
+                </div>
+                <button className="chathead-close-btn" onClick={() => setChatheadOpen(false)} title="Close">✕</button>
+              </div>
+
+              <div className="chat-messages">
+                {chatMessages.map((msg, i) => (
+                  <div key={i} className={`msg ${msg.role === 'user' ? 'user' : 'bot'}`}>
+                    <div className="msg-avatar">{msg.role === 'user' ? '🧑' : '🤖'}</div>
+                    <div className="msg-bubble">
+                      <ReactMarkdown>{msg.content}</ReactMarkdown>
+                    </div>
+                  </div>
+                ))}
+                {isChatLoading && (
+                  <div className="typing-bubble show">
+                    <div className="msg-avatar" style={{ background: 'var(--green-pale)' }}>🤖</div>
+                    <div className="typing-dots">
+                      <div className="dot"></div><div className="dot"></div><div className="dot"></div>
+                    </div>
+                  </div>
+                )}
+                <div ref={chatEndRef} />
+              </div>
+
+              <div className="chat-input-area" style={{ padding: '10px 12px' }}>
+                <div className="chat-input-row">
+                  <textarea
+                    className="chat-input"
+                    placeholder="Ask about cattle reproduction…"
+                    rows={1}
+                    value={inputMessage}
+                    onChange={e => setInputMessage(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendMessage();
+                      }
+                    }}
+                  ></textarea>
+                  <button className="send-btn" onClick={() => handleSendMessage()}>➤</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <button className="chathead-bubble" onClick={() => setChatheadOpen(true)} title="Chat with PHILSARBot">
+            🤖
+            {chatMessages.length > chatheadSeenCount && (
+              <span className="chathead-badge">{Math.min(chatMessages.length - chatheadSeenCount, 9)}{chatMessages.length - chatheadSeenCount > 9 ? '+' : ''}</span>
+            )}
+          </button>
+        )
       )}
     </div>
   </div>
