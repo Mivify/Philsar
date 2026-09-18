@@ -127,17 +127,17 @@ const createAssessment = async (req, res) => {
 
         // "History of Infertility" maps to the veterinary concept of a "repeat
         // breeder": a clinically normal, regularly-cycling cow that has failed
-        // to conceive after repeated services (Ball & Peters, 2004, as
-        // summarized in DAIReXNET's "Improving Fertility in the Repeat
-        // Breeder"). The standard recommendation for these cows is a
-        // veterinary reproductive exam (ultrasonography, progesterone assay)
-        // BEFORE another service — undiagnosed causes like bilateral oviduct
-        // occlusion (found in ~20% of repeat breeders per Level, TAMU Bovine
-        // Practitioner) make any further AI or natural service attempt likely
-        // to fail again regardless of timing. So this doesn't try to decide
-        // between AI and natural mating for these cows — it withholds a
-        // "Ready" verdict entirely and defers to a vet, same as an unresolved
-        // health condition does.
+        // to conceive after repeated services (DAIReXNET, 2019, "Improving
+        // Fertility in the Repeat Breeder"). The standard recommendation for
+        // these cows is a veterinary reproductive exam (ultrasonography,
+        // progesterone assay) BEFORE another service — undiagnosed causes
+        // like bilateral oviduct occlusion (found in ~20% of repeat breeders
+        // per Levine, 1999, The Bovine Practitioner 33(2):97-105) make any
+        // further AI or natural service attempt likely to fail again
+        // regardless of timing. So this doesn't try to decide between AI and
+        // natural mating for these cows — it withholds a "Ready" verdict
+        // entirely and defers to a vet, same as an unresolved health
+        // condition does.
         const historyOk = history !== 'History of Infertility';
 
         const isReady = ageOk && bcsOk && isHealthClear && vwpOk && hasEstrusSign && historyOk;

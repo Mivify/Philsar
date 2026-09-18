@@ -3832,13 +3832,13 @@ export default function App() {
                         >
                           <option>1 — Emaciated</option>
                           <option>2 — Very thin</option>
-                          <option>3 — Thin</option>
+                          <option>3 — Poor</option>
                           <option>4 — Borderline</option>
                           <option>5 — Moderate</option>
-                          <option>6 — Good</option>
-                          <option>7 — Very good</option>
+                          <option>6 — High Moderate</option>
+                          <option>7 — Good</option>
                           <option>8 — Fat</option>
-                          <option>9 — Obese</option>
+                          <option>9 — Extremely Fat</option>
                         </select>
                       </div>
                       <div className="form-group">
