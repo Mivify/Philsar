@@ -29,7 +29,10 @@ import {
   Minimize2,
   Users,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Radio,
+  Clock,
+  CheckCircle2
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import axios from 'axios';
@@ -2250,16 +2253,65 @@ export default function App() {
     }
   };
 
+  const MEETING_MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+  // Meeting.dateTime is stored as a plain "Month Day, h:mm AM/PM" display string
+  // (no year — see the split(', ') based parsing used elsewhere for session cards),
+  // so the calendar/clock picker's native "datetime-local" value is converted to
+  // that exact format right at submit time, keeping every other consumer of
+  // dateTime (home page cards, PDF certificates, the admin table) untouched.
+  const formatMeetingDateTime = (localValue: string): string => {
+    if (!localValue) return '';
+    const d = new Date(localValue);
+    if (isNaN(d.getTime())) return '';
+    const month = MEETING_MONTH_NAMES[d.getMonth()];
+    const day = d.getDate();
+    let hours = d.getHours();
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12 || 12;
+    return `${month} ${day}, ${hours}:${minutes} ${ampm}`;
+  };
+
+  // The reverse conversion, used only to pre-populate the picker when opening
+  // Edit. Deliberately strict: native Date parsing of these display strings is
+  // unreliable (some valid-looking strings throw, and at least one shape — a
+  // relative "Today, ..." string — silently parses to the wrong date with no
+  // error at all), so this only accepts the exact format formatMeetingDateTime
+  // produces and returns '' otherwise. An empty result leaves the picker blank
+  // rather than risk silently showing an incorrect date/time; the admin then
+  // just picks a fresh one. The year isn't stored in the string, so it's assumed
+  // to be the current year — fine for the near-term seminars this field is for.
+  const parseMeetingDateTimeForInput = (display: string): string => {
+    const match = /^([A-Za-z]+)\s+(\d{1,2}),\s*(\d{1,2}):(\d{2})\s*([AaPp][Mm])$/.exec((display || '').trim());
+    if (!match) return '';
+    const [, monthName, dayStr, hourStr, minuteStr, ampm] = match;
+    const monthIndex = MEETING_MONTH_NAMES.findIndex(m => m.toLowerCase() === monthName.toLowerCase());
+    if (monthIndex === -1) return '';
+    let hour = parseInt(hourStr, 10);
+    if (hour < 1 || hour > 12) return '';
+    const minute = parseInt(minuteStr, 10);
+    if (minute < 0 || minute > 59) return '';
+    const day = parseInt(dayStr, 10);
+    if (day < 1 || day > 31) return '';
+    if (ampm.toLowerCase() === 'pm' && hour !== 12) hour += 12;
+    if (ampm.toLowerCase() === 'am' && hour === 12) hour = 0;
+    const year = new Date().getFullYear();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${year}-${pad(monthIndex + 1)}-${pad(day)}T${pad(hour)}:${pad(minute)}`;
+  };
+
   const handleAddMeeting = async (e: React.FormEvent) => {
     e.preventDefault();
     setSavingMeeting(true);
     try {
+      const payload = { ...newMeetingForm, dateTime: formatMeetingDateTime(newMeetingForm.dateTime) };
       if (editingMeeting) {
-        await axios.put(`${API_BASE}/meetings/${editingMeeting.id}`, newMeetingForm);
+        await axios.put(`${API_BASE}/meetings/${editingMeeting.id}`, payload);
         showToast('Seminar updated successfully!', 'success');
         setEditingMeeting(null);
       } else {
-        await axios.post(`${API_BASE}/meetings`, newMeetingForm);
+        await axios.post(`${API_BASE}/meetings`, payload);
         showToast('Seminar scheduled successfully!', 'success');
       }
       setNewMeetingForm({ title: '', host: '', dateTime: '', status: 'Upcoming', videoLink: '', recordingUrl: '' });
@@ -2269,6 +2321,17 @@ export default function App() {
       showToast(editingMeeting ? 'Error updating meeting.' : 'Error scheduling meeting.', 'error');
     } finally {
       setSavingMeeting(false);
+    }
+  };
+
+  const handleSetMeetingStatus = async (meetingId: number, status: 'Live' | 'Upcoming' | 'Ended') => {
+    try {
+      await axios.put(`${API_BASE}/meetings/${meetingId}`, { status });
+      showToast(`Seminar marked as ${status}.`, 'success');
+      fetchGlobalData();
+    } catch (error) {
+      console.error(error);
+      showToast('Error updating seminar status.', 'error');
     }
   };
 
@@ -4748,8 +4811,7 @@ export default function App() {
                             <label className="form-label">Date & Time</label>
                             <input
                               className="form-control"
-                              type="text"
-                              placeholder="e.g., May 28, 2:00 PM"
+                              type="datetime-local"
                               value={newMeetingForm.dateTime}
                               onChange={e => setNewMeetingForm({ ...newMeetingForm, dateTime: e.target.value })}
                               required
@@ -4839,7 +4901,34 @@ export default function App() {
                                 </td>
                                 <td>{m.registrants}</td>
                                 <td>
-                                  <div style={{ display: 'flex', gap: '8px' }}>
+                                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                    <button
+                                      className="table-action"
+                                      title="Mark as Live"
+                                      disabled={m.status === 'Live'}
+                                      onClick={() => handleSetMeetingStatus(m.id, 'Live')}
+                                      style={{ opacity: m.status === 'Live' ? 0.35 : 1 }}
+                                    >
+                                      <Radio size={14} style={{ color: '#cf1322' }} />
+                                    </button>
+                                    <button
+                                      className="table-action"
+                                      title="Mark as Upcoming"
+                                      disabled={m.status === 'Upcoming'}
+                                      onClick={() => handleSetMeetingStatus(m.id, 'Upcoming')}
+                                      style={{ opacity: m.status === 'Upcoming' ? 0.35 : 1 }}
+                                    >
+                                      <Clock size={14} style={{ color: 'var(--amber)' }} />
+                                    </button>
+                                    <button
+                                      className="table-action"
+                                      title="Mark as Ended"
+                                      disabled={m.status === 'Ended'}
+                                      onClick={() => handleSetMeetingStatus(m.id, 'Ended')}
+                                      style={{ opacity: m.status === 'Ended' ? 0.35 : 1 }}
+                                    >
+                                      <CheckCircle2 size={14} style={{ color: 'var(--text-muted)' }} />
+                                    </button>
                                     <button
                                       className="table-action"
                                       title="Edit meeting"
@@ -4848,7 +4937,7 @@ export default function App() {
                                         setNewMeetingForm({
                                           title: m.title,
                                           host: m.host,
-                                          dateTime: m.dateTime,
+                                          dateTime: parseMeetingDateTimeForInput(m.dateTime),
                                           status: m.status,
                                           videoLink: m.videoLink || '',
                                           recordingUrl: m.recordingUrl || ''
