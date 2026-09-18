@@ -72,6 +72,20 @@ const requireSubAdmin = (req, res, next) => {
     });
 };
 
+// Exactly Sub Admin — not Admin too. Used only for approving/rejecting an
+// account-deletion request: that step is deliberately gated to a different
+// role than the one that requested it (System Admin requests, Sub Admin
+// approves), so a single System Admin account can't unilaterally remove
+// other accounts.
+const requireSubAdminOnly = (req, res, next) => {
+    requireAuth(req, res, () => {
+        if (req.user.role !== 'Sub Admin') {
+            return res.status(403).json({ message: 'Sub Admin approval is required for this action.' });
+        }
+        next();
+    });
+};
+
 // Admin, Sub Admin, or Secretary — specifically for writing/editing meeting
 // minutes. Secretary otherwise has ordinary user-level access everywhere
 // else in the app; this is its one added power.
@@ -84,4 +98,4 @@ const requireMinutesAccess = (req, res, next) => {
     });
 };
 
-module.exports = { optionalAuth, requireAuth, requireAdmin, requireSubAdmin, requireMinutesAccess };
+module.exports = { optionalAuth, requireAuth, requireAdmin, requireSubAdmin, requireSubAdminOnly, requireMinutesAccess };

@@ -87,6 +87,20 @@ const User = sequelize.define('User', {
     passwordChangedAt: {
         type: DataTypes.BIGINT,
         allowNull: true,
+    },
+    // Two-person control on account removal: an Admin (System Admin) can only
+    // flag an account for deletion, not delete it outright — a Sub Admin has
+    // to separately approve (or reject) it. Denormalized name (not just the
+    // requester's id) so the pending-approval UI can show who asked without
+    // an extra join, same convention as activityLog's userName.
+    pendingDeletion: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+    },
+    pendingDeletionRequestedByName: {
+        type: DataTypes.STRING,
+        allowNull: true,
     }
 }, {
     timestamps: true,

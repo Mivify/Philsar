@@ -51,6 +51,8 @@ interface User {
   modulesCompleted: number;
   seminarsAttended: number;
   dssAssessmentsRun: number;
+  pendingDeletion?: boolean;
+  pendingDeletionRequestedByName?: string | null;
   token?: string;
 }
 
@@ -212,6 +214,9 @@ const ACTIVITY_ACTION_LABELS: Record<string, string> = {
   role_changed: 'Role Changed',
   account_status_changed: 'Status Changed',
   account_deleted: 'Account Deleted',
+  account_deletion_requested: 'Deletion Requested',
+  account_deletion_approved: 'Deletion Approved',
+  account_deletion_rejected: 'Deletion Rejected',
   dss_assessment_run: 'DSS Assessment',
   chatbot_message: 'Chatbot Message',
   meeting_joined: 'Joined Seminar',
@@ -236,6 +241,8 @@ const ACTIVITY_SEVERITY: Record<string, 'high' | 'medium' | 'low'> = {
   role_changed: 'high',
   account_status_changed: 'medium',
   account_deleted: 'high',
+  account_deletion_requested: 'high',
+  account_deletion_approved: 'high',
   certificate_revoked: 'medium',
 };
 
@@ -1095,15 +1102,6 @@ export default function App() {
     // leaving the Users table empty until logging out and back in.
   }, [activeTab, currentUser?.role]);
 
-  // Sub Admin has no Users tab (activeAdminTab's 'users' default), so on
-  // opening the Admin Panel they'd otherwise land on a tab whose content
-  // block never renders for them — bounce to Modules instead.
-  useEffect(() => {
-    if (activeTab === 'admin' && activeAdminTab === 'users' && !isSystemAdmin && isModuleOrMeetingAdmin) {
-      setActiveAdminTab('modules');
-    }
-  }, [activeTab, activeAdminTab, isSystemAdmin, isModuleOrMeetingAdmin]);
-
   // Re-check certificate eligibility whenever the user opens Virtual Meetings —
   // covers certificates an admin granted manually since the last page load.
   // currentUser?.id is deliberately included: on a hard refresh landing directly
@@ -1887,14 +1885,52 @@ export default function App() {
     }
   };
 
-  const handleDeleteUser = async (userId: number) => {
-    if (!(await confirmDelete('Are you sure you want to remove this user?'))) return;
+  // Doesn't delete outright — a System Admin can only request removal; a Sub
+  // Admin has to separately approve it (see handleApproveUserDeletion below).
+  const handleRequestUserDeletion = async (userId: number) => {
+    if (!(await confirmDelete(
+      "This won't delete the account right away — it sends a deletion request that a Sub Admin must approve first.",
+      'Request account deletion?',
+      'Yes, request deletion'
+    ))) return;
     try {
-      await axios.delete(`${API_BASE}/auth/users/${userId}`);
-      setAllUsers(prev => prev.filter(u => u.id !== userId));
+      const res = await axios.delete(`${API_BASE}/auth/users/${userId}`);
+      setAllUsers(prev => prev.map(u => u.id === userId
+        ? { ...u, pendingDeletion: true, pendingDeletionRequestedByName: res.data.pendingDeletionRequestedByName }
+        : u));
+      showToast('Deletion request submitted — awaiting Sub Admin approval.', 'success');
     } catch (error: any) {
       console.error(error);
-      showToast(error.response?.data?.message || 'Error deleting user.', 'error');
+      showToast(error.response?.data?.message || 'Error requesting user deletion.', 'error');
+    }
+  };
+
+  const handleApproveUserDeletion = async (user: User) => {
+    if (!(await confirmDelete(
+      `Approve deleting ${user.name}'s account? This cannot be undone.`,
+      'Approve this deletion?',
+      'Yes, delete permanently'
+    ))) return;
+    try {
+      await axios.post(`${API_BASE}/auth/users/${user.id}/approve-deletion`);
+      setAllUsers(prev => prev.filter(u => u.id !== user.id));
+      showToast(`${user.name}'s account has been deleted.`, 'success');
+    } catch (error: any) {
+      console.error(error);
+      showToast(error.response?.data?.message || 'Error approving deletion.', 'error');
+    }
+  };
+
+  const handleRejectUserDeletion = async (user: User) => {
+    try {
+      await axios.post(`${API_BASE}/auth/users/${user.id}/reject-deletion`);
+      setAllUsers(prev => prev.map(u => u.id === user.id
+        ? { ...u, pendingDeletion: false, pendingDeletionRequestedByName: null }
+        : u));
+      showToast(`Deletion request for ${user.name} was rejected.`, 'success');
+    } catch (error: any) {
+      console.error(error);
+      showToast(error.response?.data?.message || 'Error rejecting deletion.', 'error');
     }
   };
 
@@ -4279,7 +4315,7 @@ export default function App() {
 
               {/* ADMIN INTERNAL TABS */}
               <div className="admin-tabs">
-                {isSystemAdmin && (
+                {isModuleOrMeetingAdmin && (
                   <button
                     className={`admin-tab ${activeAdminTab === 'users' ? 'active' : ''}`}
                     onClick={() => setActiveAdminTab('users')}
@@ -4326,87 +4362,90 @@ export default function App() {
               </div>
 
               {/* TAB CONTENT: USERS */}
-              {activeAdminTab === 'users' && isSystemAdmin && (
+              {activeAdminTab === 'users' && isModuleOrMeetingAdmin && (
                 <div id="admin-users">
                   <div className="admin-header-row">
                     <div className="card-title">Registered Portal Accounts</div>
+                    {!isSystemAdmin && <span className="view-only-badge">View only</span>}
                   </div>
-                  <div className="grid-2 admin-form-grid">
-                    <div className="card" style={{ height: 'fit-content' }}>
-                      <div className="card-header"><div className="card-title">Add New User Account</div></div>
-                      <div className="card-body">
-                        <form onSubmit={handleAddUser}>
-                          <div className="form-group">
-                            <label className="form-label">Full Name</label>
-                            <input
-                              className="form-control"
-                              type="text"
-                              value={newUserForm.name}
-                              onChange={e => setNewUserForm({ ...newUserForm, name: e.target.value })}
-                              required
-                            />
-                          </div>
-                          <div className="form-group">
-                            <label className="form-label">Email Address</label>
-                            <input
-                              className="form-control"
-                              type="email"
-                              value={newUserForm.email}
-                              onChange={e => setNewUserForm({ ...newUserForm, email: e.target.value })}
-                              required
-                            />
-                          </div>
-                          <div className="form-group">
-                            <label className="form-label">Password</label>
-                            <div className="password-input-wrap">
+                  <div className={isSystemAdmin ? 'grid-2 admin-form-grid' : undefined}>
+                    {isSystemAdmin && (
+                      <div className="card" style={{ height: 'fit-content' }}>
+                        <div className="card-header"><div className="card-title">Add New User Account</div></div>
+                        <div className="card-body">
+                          <form onSubmit={handleAddUser}>
+                            <div className="form-group">
+                              <label className="form-label">Full Name</label>
                               <input
                                 className="form-control"
-                                type={showNewUserPassword ? 'text' : 'password'}
-                                value={newUserForm.password}
-                                onChange={e => setNewUserForm({ ...newUserForm, password: e.target.value })}
+                                type="text"
+                                value={newUserForm.name}
+                                onChange={e => setNewUserForm({ ...newUserForm, name: e.target.value })}
                                 required
                               />
-                              <button
-                                type="button"
-                                className="password-eye-btn"
-                                onClick={() => setShowNewUserPassword(p => !p)}
-                                tabIndex={-1}
-                              >
-                                {showNewUserPassword ? '🙈' : '👁️'}
-                              </button>
                             </div>
-                          </div>
-                          <div className="form-group">
-                            <label className="form-label">Role</label>
-                            <select
-                              className="form-control"
-                              value={newUserForm.role}
-                              onChange={e => setNewUserForm({ ...newUserForm, role: e.target.value })}
-                            >
-                              <option>Livestock Manager</option>
-                              <option>Farmer</option>
-                              <option>Veterinarian</option>
-                              <option>Extension Worker</option>
-                              <option>Secretary</option>
-                              <option>Sub Admin</option>
-                              <option>Admin</option>
-                            </select>
-                          </div>
-                          <div className="form-group">
-                            <label className="form-label">Farm / Organization</label>
-                            <input
-                              className="form-control"
-                              type="text"
-                              value={newUserForm.organization}
-                              onChange={e => setNewUserForm({ ...newUserForm, organization: e.target.value })}
-                            />
-                          </div>
-                          <button className="submit-btn" type="submit" disabled={savingUser} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                            {savingUser ? <><Loader2 size={16} className="animate-spin" /> Saving…</> : '+ Save Account'}
-                          </button>
-                        </form>
+                            <div className="form-group">
+                              <label className="form-label">Email Address</label>
+                              <input
+                                className="form-control"
+                                type="email"
+                                value={newUserForm.email}
+                                onChange={e => setNewUserForm({ ...newUserForm, email: e.target.value })}
+                                required
+                              />
+                            </div>
+                            <div className="form-group">
+                              <label className="form-label">Password</label>
+                              <div className="password-input-wrap">
+                                <input
+                                  className="form-control"
+                                  type={showNewUserPassword ? 'text' : 'password'}
+                                  value={newUserForm.password}
+                                  onChange={e => setNewUserForm({ ...newUserForm, password: e.target.value })}
+                                  required
+                                />
+                                <button
+                                  type="button"
+                                  className="password-eye-btn"
+                                  onClick={() => setShowNewUserPassword(p => !p)}
+                                  tabIndex={-1}
+                                >
+                                  {showNewUserPassword ? '🙈' : '👁️'}
+                                </button>
+                              </div>
+                            </div>
+                            <div className="form-group">
+                              <label className="form-label">Role</label>
+                              <select
+                                className="form-control"
+                                value={newUserForm.role}
+                                onChange={e => setNewUserForm({ ...newUserForm, role: e.target.value })}
+                              >
+                                <option>Livestock Manager</option>
+                                <option>Farmer</option>
+                                <option>Veterinarian</option>
+                                <option>Extension Worker</option>
+                                <option>Secretary</option>
+                                <option>Sub Admin</option>
+                                <option>Admin</option>
+                              </select>
+                            </div>
+                            <div className="form-group">
+                              <label className="form-label">Farm / Organization</label>
+                              <input
+                                className="form-control"
+                                type="text"
+                                value={newUserForm.organization}
+                                onChange={e => setNewUserForm({ ...newUserForm, organization: e.target.value })}
+                              />
+                            </div>
+                            <button className="submit-btn" type="submit" disabled={savingUser} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                              {savingUser ? <><Loader2 size={16} className="animate-spin" /> Saving…</> : '+ Save Account'}
+                            </button>
+                          </form>
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                     <div className="card">
                       <div className="card-header">
@@ -4474,16 +4513,48 @@ export default function App() {
                                   <span className={`status-pill ${u.status === 'Active' ? 'active' : 'inactive'}`}>
                                     {u.status}
                                   </span>
+                                  {u.pendingDeletion && (
+                                    <div
+                                      className="pending-deletion-badge"
+                                      title={`Requested by ${u.pendingDeletionRequestedByName || 'an Admin'}`}
+                                    >
+                                      Pending deletion approval
+                                    </div>
+                                  )}
                                 </td>
                                 <td>
-                                  <button className="table-action" onClick={() => handleToggleUserStatus(u)} title={u.status === 'Active' ? 'Deactivate' : 'Activate'}>
-                                    {u.status === 'Active'
-                                      ? <Ban size={14} style={{ color: '#d48806' }} />
-                                      : <UserCheck size={14} style={{ color: '#2D6A4F' }} />}
-                                  </button>
-                                  <button className="table-action" onClick={() => handleDeleteUser(u.id)}>
-                                    <Trash size={14} style={{ color: '#cf1322' }} />
-                                  </button>
+                                  {isSystemAdmin && (
+                                    u.pendingDeletion ? (
+                                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Awaiting Sub Admin approval</span>
+                                    ) : (
+                                      <>
+                                        <button className="table-action" onClick={() => handleToggleUserStatus(u)} title={u.status === 'Active' ? 'Deactivate' : 'Activate'}>
+                                          {u.status === 'Active'
+                                            ? <Ban size={14} style={{ color: '#d48806' }} />
+                                            : <UserCheck size={14} style={{ color: '#2D6A4F' }} />}
+                                        </button>
+                                        <button className="table-action" onClick={() => handleRequestUserDeletion(u.id)} title="Request deletion">
+                                          <Trash size={14} style={{ color: '#cf1322' }} />
+                                        </button>
+                                      </>
+                                    )
+                                  )}
+                                  {/* Only Admin and Sub Admin ever reach this tab (isModuleOrMeetingAdmin),
+                                      so !isSystemAdmin here always means Sub Admin. */}
+                                  {!isSystemAdmin && (
+                                    u.pendingDeletion ? (
+                                      <>
+                                        <button className="table-action" onClick={() => handleApproveUserDeletion(u)} title="Approve deletion">
+                                          <Check size={14} style={{ color: '#2D6A4F' }} />
+                                        </button>
+                                        <button className="table-action" onClick={() => handleRejectUserDeletion(u)} title="Reject deletion">
+                                          <X size={14} style={{ color: '#cf1322' }} />
+                                        </button>
+                                      </>
+                                    ) : (
+                                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>—</span>
+                                    )
+                                  )}
                                 </td>
                               </tr>
                             ))}

@@ -1,9 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const rateLimit = require('express-rate-limit');
-const { register, login, logout, updateProfile, getUserById, getUsers, deleteUser, forgotPassword, resetPassword, verifyEmail, resendVerification } = require('../controllers/authController');
+const { register, login, logout, updateProfile, getUserById, getUsers, deleteUser, approveUserDeletion, rejectUserDeletion, forgotPassword, resetPassword, verifyEmail, resendVerification } = require('../controllers/authController');
 const { uploadImage } = require('../controllers/moduleController');
-const { optionalAuth, requireAuth, requireAdmin, requireSubAdmin } = require('../middleware/auth');
+const { optionalAuth, requireAuth, requireAdmin, requireSubAdmin, requireSubAdminOnly } = require('../middleware/auth');
 const { logActivity } = require('../utils/activityLog');
 
 // Login is the sensitive one — caps brute-force attempts per IP. Only failed
@@ -69,11 +69,16 @@ router.post('/verify-email', resetPasswordLimiter, verifyEmail);
 router.post('/resend-verification', resendVerificationLimiter, resendVerification);
 router.get('/profile/:id', requireAuth, getUserById);
 router.put('/profile/:id', requireAuth, updateProfile);
-// Sub Admin needs the roster too — the Meetings/certificates panel matches
-// attendees against it — but never the write side (account deletion stays
-// strictly System-Admin-only, same as the Users tab itself).
+// Sub Admin can see the full roster (the Users tab is view-only for them,
+// plus approving/rejecting pending deletions below) — the Meetings/
+// certificates panel also matches attendees against this same list.
 router.get('/users', requireSubAdmin, getUsers);
+// Admin can only request a deletion, never perform one directly — see
+// deleteUser's comment. Approve/reject is Sub-Admin-only, deliberately a
+// different role than the requester.
 router.delete('/users/:id', requireAdmin, deleteUser);
+router.post('/users/:id/approve-deletion', requireSubAdminOnly, approveUserDeletion);
+router.post('/users/:id/reject-deletion', requireSubAdminOnly, rejectUserDeletion);
 router.post('/upload-avatar', requireAuth, uploadImage);
 
 module.exports = router;

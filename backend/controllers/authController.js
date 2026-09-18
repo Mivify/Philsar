@@ -360,6 +360,10 @@ const getUsers = async (req, res) => {
     }
 };
 
+// Doesn't actually delete — flags the account for deletion, pending a Sub
+// Admin's approval (see approveUserDeletion/rejectUserDeletion below). Kept
+// on the same route/method a plain delete used to use, since from the
+// System Admin's side "requesting" is the only delete action they have.
 const deleteUser = async (req, res) => {
     try {
         const { id } = req.params;
@@ -370,6 +374,10 @@ const deleteUser = async (req, res) => {
 
         if (req.user.id === user.id) {
             return res.status(400).json({ message: "You can't delete your own account." });
+        }
+
+        if (user.pendingDeletion) {
+            return res.status(400).json({ message: 'A deletion request for this account is already pending Sub Admin approval.' });
         }
 
         // Only an Admin can grant the Admin role to anyone else, so losing the
@@ -383,16 +391,84 @@ const deleteUser = async (req, res) => {
         }
 
         const actor = await User.findByPk(req.user.id, { attributes: ['name'] });
+        user.pendingDeletion = true;
+        user.pendingDeletionRequestedByName = actor?.name || `Admin #${req.user.id}`;
+        await user.save();
+
         logActivity({
             userId: user.id, userName: user.name, userRole: user.role,
-            action: 'account_deleted', category: 'account',
-            details: `${user.email} (${user.role}) deleted by ${actor?.name || `admin #${req.user.id}`}`, req
+            action: 'account_deletion_requested', category: 'account',
+            details: `Deletion of ${user.email} (${user.role}) requested by ${actor?.name || `admin #${req.user.id}`} — awaiting Sub Admin approval`, req
+        });
+
+        res.status(200).json({ message: 'Deletion request submitted — awaiting Sub Admin approval.', pendingDeletion: true, pendingDeletionRequestedByName: user.pendingDeletionRequestedByName });
+    } catch (error) {
+        res.status(500).json({ message: 'Error requesting user deletion', error: error.message });
+    }
+};
+
+const approveUserDeletion = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const user = await User.findByPk(id);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        if (!user.pendingDeletion) {
+            return res.status(400).json({ message: 'This account has no pending deletion request.' });
+        }
+
+        // Re-checked here, not just at request time — the admin count could
+        // have changed since the request was made, and this is the actual
+        // point of no return.
+        if (user.role === 'Admin') {
+            const adminCount = await User.count({ where: { role: 'Admin' } });
+            if (adminCount <= 1) {
+                return res.status(400).json({ message: 'Cannot delete the last remaining Admin account.' });
+            }
+        }
+
+        const approver = await User.findByPk(req.user.id, { attributes: ['name'] });
+        logActivity({
+            userId: user.id, userName: user.name, userRole: user.role,
+            action: 'account_deletion_approved', category: 'account',
+            details: `${user.email} (${user.role}) deletion approved by ${approver?.name || `Sub Admin #${req.user.id}`} — originally requested by ${user.pendingDeletionRequestedByName || 'unknown'}`, req
         });
 
         await user.destroy();
-        res.status(200).json({ message: 'User deleted successfully' });
+        res.status(200).json({ message: 'Deletion approved — account removed.' });
     } catch (error) {
-        res.status(500).json({ message: 'Error deleting user', error: error.message });
+        res.status(500).json({ message: 'Error approving user deletion', error: error.message });
+    }
+};
+
+const rejectUserDeletion = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const user = await User.findByPk(id);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        if (!user.pendingDeletion) {
+            return res.status(400).json({ message: 'This account has no pending deletion request.' });
+        }
+
+        const rejector = await User.findByPk(req.user.id, { attributes: ['name'] });
+        logActivity({
+            userId: user.id, userName: user.name, userRole: user.role,
+            action: 'account_deletion_rejected', category: 'account',
+            details: `Deletion of ${user.email} (${user.role}) rejected by ${rejector?.name || `Sub Admin #${req.user.id}`} — originally requested by ${user.pendingDeletionRequestedByName || 'unknown'}`, req
+        });
+
+        user.pendingDeletion = false;
+        user.pendingDeletionRequestedByName = null;
+        await user.save();
+
+        res.status(200).json({ message: 'Deletion request rejected.' });
+    } catch (error) {
+        res.status(500).json({ message: 'Error rejecting user deletion', error: error.message });
     }
 };
 
@@ -531,6 +607,8 @@ module.exports = {
     getUserById,
     getUsers,
     deleteUser,
+    approveUserDeletion,
+    rejectUserDeletion,
     forgotPassword,
     resetPassword,
     verifyEmail,
