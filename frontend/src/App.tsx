@@ -3958,8 +3958,8 @@ export default function App() {
                             Age is within optimal breeding parameters (2–8 years)
                           </li>
                           <li className="criteria-item">
-                            <div className="criteria-icon">{parseInt(dssForm.bcs.split(' ')[0]) >= 4 && parseInt(dssForm.bcs.split(' ')[0]) <= 7 ? '✅' : '❌'}</div>
-                            Body condition score (BCS) indicates reproductive readiness (BCS 4-7)
+                            <div className="criteria-icon">{parseInt(dssForm.bcs.split(' ')[0]) >= 5 && parseInt(dssForm.bcs.split(' ')[0]) <= 7 ? '✅' : '❌'}</div>
+                            Body condition score (BCS) indicates reproductive readiness (BCS 5-7)
                           </li>
                           <li className="criteria-item">
                             <div className="criteria-icon">{dssForm.estrusIndicators.length > 0 && !dssForm.estrusIndicators.includes('None Observed') ? '✅' : '❌'}</div>
@@ -3972,6 +3972,10 @@ export default function App() {
                           <li className="criteria-item">
                             <div className="criteria-icon">{(dssForm.healthStatus === 'Healthy — no issues' || dssForm.healthStatus === 'Minor health issue — treated') ? '✅' : '❌'}</div>
                             Clear of untreated ongoing reproductive or general health conditions
+                          </li>
+                          <li className="criteria-item">
+                            <div className="criteria-icon">{dssForm.history !== 'History of Infertility' ? '✅' : '❌'}</div>
+                            No unresolved repeat-breeder history
                           </li>
                         </ul>
                       </div>

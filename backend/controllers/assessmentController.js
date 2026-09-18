@@ -24,7 +24,7 @@ const generateBreedingGuidance = async (data, fallback) => {
 
         // Without this, the model forms its own opinion from the raw numbers alone —
         // e.g. flagging a BCS of 4 as a concern because the UI itself labels it
-        // "Borderline", even though this system's own rule treats 4-7 as acceptable.
+        // "Borderline", even though this system's own rule treats 5-7 as acceptable.
         // That produced guidance that contradicted the checklist shown right next to
         // it (checklist ✅ on BCS, guidance text citing BCS as a reason to postpone).
         // Telling the model exactly which criteria this system already decided met/
@@ -32,10 +32,11 @@ const generateBreedingGuidance = async (data, fallback) => {
         const checklistSummary = `
 System Checklist Results (already evaluated by this system's rules — do not contradict these; only explain the verdict using criteria marked NOT MET, even if a MET value might seem non-ideal by general standards):
 - Age within 2-8 years: ${data.checklist.ageOk ? 'MET' : 'NOT MET'}
-- Body Condition Score within 4-7: ${data.checklist.bcsOk ? 'MET' : 'NOT MET'}
+- Body Condition Score within 5-7: ${data.checklist.bcsOk ? 'MET' : 'NOT MET'}
 - Health status clear of untreated/ongoing conditions: ${data.checklist.healthOk ? 'MET' : 'NOT MET'}
 - Voluntary waiting period (>=45 days since calving): ${data.checklist.vwpOk ? 'MET' : 'NOT MET'}
-- Estrus/heat signs observed: ${data.checklist.estrusOk ? 'MET' : 'NOT MET'}`;
+- Estrus/heat signs observed: ${data.checklist.estrusOk ? 'MET' : 'NOT MET'}
+- No unresolved repeat-breeder history: ${data.checklist.historyOk ? 'MET' : 'NOT MET'}`;
 
         const prompt = `You are a livestock reproduction advisor for the PHILSAR Cattle Reproductive Portal. Based on the following breeding assessment, write a short, practical guidance paragraph (2-4 sentences, no headers or bullet points) for the farmer.
 
@@ -97,13 +98,73 @@ const createAssessment = async (req, res) => {
         // recovery as a reason to postpone breeding.
         const isHealthClear = healthStatus === 'Healthy — no issues' || healthStatus === 'Minor health issue — treated';
 
+        // Age 2-8: cows 4-10 yrs old had the highest conception rate (86.5%) vs.
+        // 60.4% for cows >10 yrs old in Samkange et al. (2019, Trop. Anim. Health
+        // Prod. 51(7):1829-1837); 2 as the lower bound matches the ~22-25-month
+        // optimal age at first calving found in Kusaka et al. (2023, J. Reprod.
+        // Dev. 69(5):291-297). 8 is used (not 10) to stay inside the
+        // highest-performing band rather than right at its edge.
         const ageOk = ageNum >= 2 && ageNum <= 8;
-        const bcsOk = bcsNum >= 4 && bcsNum <= 7;
+
+        // BCS 5-7 — all figures here are on the same 1-9 scale this form uses
+        // (not the 1-5 Canadian/UK scale some sources use, which would need
+        // very different numbers). Brandão et al. (2021, J. Anim. Sci. 99(Suppl
+        // 3):48) found cows at BCS >=5.0 had substantially higher pregnancy
+        // (82.7% vs 67.9%) and calving rates than BCS <5.0 — so 4 ("Borderline"
+        // in this form's own scale) is excluded, not treated as adequate.
+        // Selk et al. (1988, J. Anim. Sci. 66:3153) similarly found 91% of cows
+        // calving at BCS >5 were cycling again within 60 days postpartum, vs.
+        // 61% at BCS 4 and 46% at BCS <3. 7 is the ceiling because BCS 8-9
+        // (overconditioned) is linked to dystocia from pelvic fat accumulation
+        // (Vedovatto & Ferreira, 2025, LSU AgCenter Pub. 3951-C).
+        const bcsOk = bcsNum >= 5 && bcsNum <= 7;
+
+        // >=45 days: Inchaisri et al. (2011, J. Dairy Sci. 94(8):3811-3823)
+        // found an economically optimal voluntary waiting period of roughly
+        // 6-8 weeks (42-56 days) for most cows; 45 days sits at the low end of
+        // the 45-60-day range SDSU Extension (Villamediana, 2023) recommends.
         const vwpOk = daysNum >= 45;
 
-        const isReady = ageOk && bcsOk && isHealthClear && vwpOk && hasEstrusSign;
+        // "History of Infertility" maps to the veterinary concept of a "repeat
+        // breeder": a clinically normal, regularly-cycling cow that has failed
+        // to conceive after repeated services (Ball & Peters, 2004, as
+        // summarized in DAIReXNET's "Improving Fertility in the Repeat
+        // Breeder"). The standard recommendation for these cows is a
+        // veterinary reproductive exam (ultrasonography, progesterone assay)
+        // BEFORE another service — undiagnosed causes like bilateral oviduct
+        // occlusion (found in ~20% of repeat breeders per Level, TAMU Bovine
+        // Practitioner) make any further AI or natural service attempt likely
+        // to fail again regardless of timing. So this doesn't try to decide
+        // between AI and natural mating for these cows — it withholds a
+        // "Ready" verdict entirely and defers to a vet, same as an unresolved
+        // health condition does.
+        const historyOk = history !== 'History of Infertility';
 
-        const useAI = isReady && (indicatorList.includes('Standing Heat') || indicatorList.includes('Clear Discharge'));
+        const isReady = ageOk && bcsOk && isHealthClear && vwpOk && hasEstrusSign && historyOk;
+
+        // AI is recommended only for signs that give a precise ovulation-timing
+        // anchor:
+        // - Standing Heat is the classic anchor for the AM-PM rule (inseminate
+        //   ~12h after onset) — but Gaude et al. (2021, Livestock Science
+        //   245:104449) found it's seen in only ~22% of actual estrus events,
+        //   so it can't be the only trigger.
+        // - Clear Discharge and Swollen Vulva are grouped with it because Layek
+        //   et al. (2011, Anim. Reprod. Sci. 129(3-4):140-145) found mucus
+        //   discharge and vulvar tumefaction/reddening are comparably strong,
+        //   early predictors of ovulation timing (~30-31h out) in Zebu cattle —
+        //   there's no research basis for treating discharge as AI-qualifying
+        //   but vulvar swelling as not, which the previous version did.
+        // Mounting Others is left out of the AI trigger: Gaude et al. (2021)
+        // and the 2026 Frontiers review (Sankarganesh et al., 13:1807199) both
+        // treat it as a reliable sign that estrus is happening, but — unlike
+        // standing heat — it doesn't anchor a precise insemination window, so
+        // it falls back to natural mating instead, which tolerates looser
+        // timing.
+        const useAI = isReady && (
+            indicatorList.includes('Standing Heat') ||
+            indicatorList.includes('Clear Discharge') ||
+            indicatorList.includes('Swollen Vulva')
+        );
 
         const recommendation = isReady
             ? (useAI ? 'Artificial Insemination (AI)' : 'Natural Mating')
@@ -111,14 +172,16 @@ const createAssessment = async (req, res) => {
 
         const fallbackGuidance = isReady
             ? (useAI
-                ? 'Proceed with AI within 6–12 hours of confirmed standing heat. Thaw semen at 35–37°C for 30–45 seconds. Use clean equipment and proper rectal-cervical technique. Record insemination date for pregnancy checking in 60–90 days.'
+                ? 'If standing heat was directly observed, inseminate about 12 hours after its onset (the AM-PM rule). If relying on clear discharge or vulvar swelling without directly observed standing heat, inseminate promptly and monitor closely, as timing is less precise. Thaw semen at 35–37°C for 30–45 seconds. Use clean equipment and proper rectal-cervical technique. Record insemination date for pregnancy checking in 60–90 days.'
                 : 'Introduce a proven bull at a ratio of 1:20–30. Monitor closely and keep breeding records. Observe for return to heat in 21 days to confirm breeding success.')
-            : 'Improve body condition through improved nutrition if BCS is below 5. Treat any health conditions with veterinary guidance. Re-evaluate in 2–4 weeks.';
+            : (!historyOk
+                ? 'This cow has a documented history of infertility (repeat breeding). Schedule a veterinary reproductive exam (e.g. ultrasonography or progesterone testing) to check for an underlying cause before attempting another service, since retiming alone often will not resolve repeat-breeder cases. Address any other flagged issues (body condition, health, waiting period) in the meantime.'
+                : 'Improve body condition through improved nutrition if BCS is below 5. Treat any health conditions with veterinary guidance. Re-evaluate in 2–4 weeks.');
 
         const { text: guidance, sources } = await generateBreedingGuidance(
             {
                 cattleId, age: ageNum, bcs: bcsNum, daysSinceCalving: daysNum, estrusIndicators, history, healthStatus, isReady, recommendation,
-                checklist: { ageOk, bcsOk, healthOk: isHealthClear, vwpOk, estrusOk: hasEstrusSign }
+                checklist: { ageOk, bcsOk, healthOk: isHealthClear, vwpOk, estrusOk: hasEstrusSign, historyOk }
             },
             fallbackGuidance
         );
