@@ -679,9 +679,15 @@ export default function App() {
   const API_BASE = import.meta.env.VITE_API_BASE || (import.meta.env.DEV ? 'http://localhost:5000/api' : '/api');
 
   // Core Hooks & Effects
+  // Also re-fires on activeTab: the chatbot view fully unmounts when you
+  // navigate away (conditional render, not just hidden via CSS), so the
+  // scrollable message list remounts at scrollTop 0 every time you come
+  // back — without this dependency, returning to the tab showed the very
+  // first message instead of where the conversation actually left off.
   useEffect(() => {
+    if (activeTab !== 'chatbot') return;
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMessages, isChatLoading]);
+  }, [chatMessages, isChatLoading, activeTab]);
 
   // Persist the chatbot conversation per-user so it survives page refreshes and
   // tab navigation — cleared explicitly on logout (see handleLogout) rather than
