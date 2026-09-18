@@ -791,6 +791,72 @@ body {
   }
 }
 
+.content-editor-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+@media (max-width: 700px) {
+  .content-editor-row {
+    flex-direction: column;
+  }
+}
+
+.markdown-legend {
+  flex: 0 0 210px;
+  width: 210px;
+  margin-top: 6px;
+  padding: 12px 14px;
+  background: var(--cream);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  position: sticky;
+  top: 20px;
+}
+
+@media (max-width: 700px) {
+  .markdown-legend {
+    width: 100%;
+    flex: 1 1 auto;
+    position: static;
+  }
+}
+
+.markdown-legend-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--brown-mid);
+  margin-bottom: 8px;
+}
+
+.markdown-legend-row {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  line-height: 1.5;
+}
+
+.markdown-legend-row code {
+  display: inline-block;
+  padding: 1px 5px;
+  background: var(--warm-white);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 10.5px;
+  color: var(--brown-dark);
+  word-break: break-word;
+}
+
+.markdown-legend-hint {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+  line-height: 1.4;
+}
+
 .grid-3 {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

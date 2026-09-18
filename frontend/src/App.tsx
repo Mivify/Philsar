@@ -4628,83 +4628,108 @@ export default function App() {
                               onChange={handleContentFileChange}
                             />
 
-                            {/* Content Editor Toolbar */}
-                            <div style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '8px',
-                              padding: '8px 12px',
-                              background: 'var(--cream)',
-                              border: '1px solid var(--border)',
-                              borderBottom: 'none',
-                              borderRadius: 'var(--radius-sm) var(--radius-sm) 0 0',
-                              marginTop: '6px'
-                            }}>
-                              <button
-                                type="button"
-                                disabled={uploadingContentImage}
-                                onClick={() => contentFileInputRef.current?.click()}
-                                style={{
-                                  display: 'inline-flex',
+                            <div className="content-editor-row">
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                {/* Content Editor Toolbar */}
+                                <div style={{
+                                  display: 'flex',
                                   alignItems: 'center',
-                                  gap: '6px',
-                                  padding: '5px 12px',
-                                  fontSize: '12px',
-                                  fontWeight: 600,
-                                  fontFamily: 'inherit',
-                                  color: uploadingContentImage ? 'var(--text-muted)' : 'var(--brown-mid)',
-                                  background: uploadingContentImage ? 'rgba(0,0,0,0.04)' : 'var(--warm-white)',
+                                  gap: '8px',
+                                  padding: '8px 12px',
+                                  background: 'var(--cream)',
                                   border: '1px solid var(--border)',
-                                  borderRadius: '6px',
-                                  cursor: uploadingContentImage ? 'not-allowed' : 'pointer',
-                                  transition: 'all 0.2s'
-                                }}
-                              >
-                                {uploadingContentImage ? (
-                                  <><Loader2 size={14} className="animate-spin" /> Uploading…</>
-                                ) : (
-                                  <><Upload size={14} /> Insert Image</>
-                                )}
-                              </button>
-                              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                                Images appear as Markdown in content
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => setContentEditorExpanded(e => !e)}
-                                style={{
-                                  marginLeft: 'auto',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '6px',
-                                  padding: '5px 12px',
-                                  fontSize: '12px',
-                                  fontWeight: 600,
-                                  fontFamily: 'inherit',
-                                  color: 'var(--brown-mid)',
-                                  background: 'var(--warm-white)',
-                                  border: '1px solid var(--border)',
-                                  borderRadius: '6px',
-                                  cursor: 'pointer'
-                                }}
-                              >
-                                {contentEditorExpanded ? <><Minimize2 size={14} /> Collapse</> : <><Maximize2 size={14} /> Expand</>}
-                              </button>
-                            </div>
+                                  borderBottom: 'none',
+                                  borderRadius: 'var(--radius-sm) var(--radius-sm) 0 0',
+                                  marginTop: '6px'
+                                }}>
+                                  <button
+                                    type="button"
+                                    disabled={uploadingContentImage}
+                                    onClick={() => contentFileInputRef.current?.click()}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '6px',
+                                      padding: '5px 12px',
+                                      fontSize: '12px',
+                                      fontWeight: 600,
+                                      fontFamily: 'inherit',
+                                      color: uploadingContentImage ? 'var(--text-muted)' : 'var(--brown-mid)',
+                                      background: uploadingContentImage ? 'rgba(0,0,0,0.04)' : 'var(--warm-white)',
+                                      border: '1px solid var(--border)',
+                                      borderRadius: '6px',
+                                      cursor: uploadingContentImage ? 'not-allowed' : 'pointer',
+                                      transition: 'all 0.2s'
+                                    }}
+                                  >
+                                    {uploadingContentImage ? (
+                                      <><Loader2 size={14} className="animate-spin" /> Uploading…</>
+                                    ) : (
+                                      <><Upload size={14} /> Insert Image</>
+                                    )}
+                                  </button>
+                                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                                    Images appear as Markdown in content
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setContentEditorExpanded(e => !e)}
+                                    style={{
+                                      marginLeft: 'auto',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '6px',
+                                      padding: '5px 12px',
+                                      fontSize: '12px',
+                                      fontWeight: 600,
+                                      fontFamily: 'inherit',
+                                      color: 'var(--brown-mid)',
+                                      background: 'var(--warm-white)',
+                                      border: '1px solid var(--border)',
+                                      borderRadius: '6px',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    {contentEditorExpanded ? <><Minimize2 size={14} /> Collapse</> : <><Maximize2 size={14} /> Expand</>}
+                                  </button>
+                                </div>
 
-                            <textarea
-                              ref={contentTextareaRef}
-                              className="form-control"
-                              style={{
-                                minHeight: contentEditorExpanded ? '70vh' : '180px',
-                                borderTopLeftRadius: 0,
-                                borderTopRightRadius: 0,
-                                borderTop: 'none'
-                              }}
-                              value={newModuleForm.content}
-                              onChange={e => setNewModuleForm({ ...newModuleForm, content: e.target.value })}
-                              required
-                            ></textarea>
+                                <textarea
+                                  ref={contentTextareaRef}
+                                  className="form-control"
+                                  style={{
+                                    minHeight: contentEditorExpanded ? '70vh' : '180px',
+                                    borderTopLeftRadius: 0,
+                                    borderTopRightRadius: 0,
+                                    borderTop: 'none'
+                                  }}
+                                  value={newModuleForm.content}
+                                  onChange={e => setNewModuleForm({ ...newModuleForm, content: e.target.value })}
+                                  required
+                                ></textarea>
+                              </div>
+
+                              {/* Markdown quick-reference legend — kept in sync with what
+                                  ReactMarkdown actually renders here (plain CommonMark, no
+                                  remark-gfm), so it never lists syntax that would just show
+                                  up as literal text instead of rendering, like tables or
+                                  strikethrough. */}
+                              <div className="markdown-legend">
+                                <div className="markdown-legend-title">Markdown Guide</div>
+                                <div className="markdown-legend-row"><code># Heading 1</code></div>
+                                <div className="markdown-legend-row"><code>## Heading 2</code></div>
+                                <div className="markdown-legend-row"><code>**bold text**</code></div>
+                                <div className="markdown-legend-row"><code>*italic text*</code></div>
+                                <div className="markdown-legend-row"><code>- bullet item</code></div>
+                                <div className="markdown-legend-row"><code>1. numbered item</code></div>
+                                <div className="markdown-legend-row"><code>[link text](https://…)</code></div>
+                                <div className="markdown-legend-row"><code>![alt text](image-url)</code></div>
+                                <div className="markdown-legend-row"><code>&gt; blockquote</code></div>
+                                <div className="markdown-legend-row"><code>`inline code`</code></div>
+                                <div className="markdown-legend-row"><code>---</code> horizontal rule</div>
+                                <div className="markdown-legend-hint">Use "Insert Image" above to add images — it writes the Markdown for you.</div>
+                              </div>
+                            </div>
                           </div>
                           <div style={{ display: 'flex', gap: '10px' }}>
                             <button className="submit-btn" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }} type="submit" disabled={savingModule}>
