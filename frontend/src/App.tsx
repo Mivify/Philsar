@@ -75,6 +75,7 @@ interface Meeting {
   videoLink: string;
   minutes: string;
   recordingUrl: string;
+  meetingType: 'Seminar' | 'Regular Meeting';
 }
 
 interface LandingImage {
@@ -645,7 +646,7 @@ export default function App() {
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [newModuleForm, setNewModuleForm] = useState({ title: '', description: '', content: '', imageUrl: '', topic: '' });
   const [topicFilter, setTopicFilter] = useState('All Topics');
-  const [newMeetingForm, setNewMeetingForm] = useState({ title: '', host: '', dateTime: '', status: 'Upcoming' as any, videoLink: '', recordingUrl: '' });
+  const [newMeetingForm, setNewMeetingForm] = useState({ title: '', host: '', dateTime: '', status: 'Upcoming' as any, videoLink: '', recordingUrl: '', meetingType: 'Seminar' as any });
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
   const [savingUser, setSavingUser] = useState(false);
   const [savingModule, setSavingModule] = useState(false);
@@ -2350,7 +2351,7 @@ export default function App() {
         await axios.post(`${API_BASE}/meetings`, payload);
         showToast('Seminar scheduled successfully!', 'success');
       }
-      setNewMeetingForm({ title: '', host: '', dateTime: '', status: 'Upcoming', videoLink: '', recordingUrl: '' });
+      setNewMeetingForm({ title: '', host: '', dateTime: '', status: 'Upcoming', videoLink: '', recordingUrl: '', meetingType: 'Seminar' });
       fetchGlobalData();
     } catch (error) {
       console.error(error);
@@ -4041,7 +4042,7 @@ export default function App() {
                       <div className="meeting-info">
                         <div className="meeting-name">{session.title}</div>
                         <div className="meeting-meta">
-                          {session.host} · {session.dateTime} · {session.registrants} registered
+                          {session.meetingType || 'Seminar'} · {session.host} · {session.dateTime} · {session.registrants} registered
                         </div>
                       </div>
                       {session.status === 'Live' ? (
@@ -4952,6 +4953,22 @@ export default function App() {
                             />
                           </div>
                           <div className="form-group">
+                            <label className="form-label">Meeting Type</label>
+                            <select
+                              className="form-control"
+                              value={newMeetingForm.meetingType}
+                              onChange={e => setNewMeetingForm({ ...newMeetingForm, meetingType: e.target.value as any })}
+                            >
+                              <option value="Seminar">Seminar</option>
+                              <option value="Regular Meeting">Regular Meeting</option>
+                            </select>
+                            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                              {newMeetingForm.meetingType === 'Regular Meeting'
+                                ? "Regular meetings aren't eligible for the automatic attendance certificate."
+                                : 'Seminars are eligible for the automatic attendance certificate.'}
+                            </div>
+                          </div>
+                          <div className="form-group">
                             <label className="form-label">Date & Time</label>
                             <input
                               className="form-control"
@@ -5008,7 +5025,7 @@ export default function App() {
                                 type="button"
                                 onClick={() => {
                                   setEditingMeeting(null);
-                                  setNewMeetingForm({ title: '', host: '', dateTime: '', status: 'Upcoming', videoLink: '', recordingUrl: '' });
+                                  setNewMeetingForm({ title: '', host: '', dateTime: '', status: 'Upcoming', videoLink: '', recordingUrl: '', meetingType: 'Seminar' });
                                 }}
                               >
                                 Cancel
@@ -5035,7 +5052,12 @@ export default function App() {
                           <tbody>
                             {meetings.map(m => (
                               <tr key={m.id}>
-                                <td style={{ fontWeight: 600 }}>{m.title}</td>
+                                <td>
+                                  <div style={{ fontWeight: 600 }}>{m.title}</div>
+                                  <div className={`meeting-type-badge ${m.meetingType === 'Regular Meeting' ? 'regular' : 'seminar'}`}>
+                                    {m.meetingType || 'Seminar'}
+                                  </div>
+                                </td>
                                 <td>{m.host.split(' · ')[0]}</td>
                                 <td>{m.dateTime}</td>
                                 <td>
@@ -5084,7 +5106,8 @@ export default function App() {
                                           dateTime: parseMeetingDateTimeForInput(m.dateTime),
                                           status: m.status,
                                           videoLink: m.videoLink || '',
-                                          recordingUrl: m.recordingUrl || ''
+                                          recordingUrl: m.recordingUrl || '',
+                                          meetingType: m.meetingType || 'Seminar'
                                         });
                                       }}
                                     >
@@ -5096,7 +5119,7 @@ export default function App() {
                                     <button className="table-action" onClick={() => openCertModal(m)} title="Manage certificates">
                                       <Award size={14} style={{ color: 'var(--amber)' }} />
                                     </button>
-                                    <button className="table-action" onClick={() => handleDeleteMeeting(m.id)}>
+                                    <button className="table-action" onClick={() => handleDeleteMeeting(m.id)} title="Delete meeting">
                                       <Trash size={14} style={{ color: '#cf1322' }} />
                                     </button>
                                   </div>
@@ -5105,6 +5128,19 @@ export default function App() {
                             ))}
                           </tbody>
                         </table>
+                      </div>
+
+                      <div className="action-legend">
+                        <div className="action-legend-title">Actions Legend</div>
+                        <div className="action-legend-grid">
+                          <div className="action-legend-item"><Radio size={13} style={{ color: '#cf1322' }} /> Mark as Live</div>
+                          <div className="action-legend-item"><Clock size={13} style={{ color: 'var(--amber)' }} /> Mark as Upcoming</div>
+                          <div className="action-legend-item"><CheckCircle2 size={13} style={{ color: 'var(--text-muted)' }} /> Mark as Ended</div>
+                          <div className="action-legend-item"><Pencil size={13} /> Edit seminar details</div>
+                          <div className="action-legend-item"><Users size={13} style={{ color: 'var(--green-mid)' }} /> View registrants</div>
+                          <div className="action-legend-item"><Award size={13} style={{ color: 'var(--amber)' }} /> Manage certificates</div>
+                          <div className="action-legend-item"><Trash size={13} style={{ color: '#cf1322' }} /> Delete seminar</div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -5422,7 +5458,7 @@ export default function App() {
                             type="button"
                             className="btn"
                             onClick={() => {
-                              const sampleMeeting: Meeting = { id: 0, title: 'Sample Seminar', host: 'Dr. Jane Doe', dateTime: '', status: 'Ended', registrants: 0, videoLink: '', minutes: '', recordingUrl: '' };
+                              const sampleMeeting: Meeting = { id: 0, title: 'Sample Seminar', host: 'Dr. Jane Doe', dateTime: '', status: 'Ended', registrants: 0, videoLink: '', minutes: '', recordingUrl: '', meetingType: 'Seminar' };
                               handleDownloadCertificate(sampleMeeting, currentUser?.name || 'Preview User', settings);
                             }}
                           >

@@ -17,7 +17,12 @@ const getCertificateThresholdSeconds = async () => {
     return (Number.isFinite(minutes) && minutes > 0 ? minutes : DEFAULT_CERTIFICATE_THRESHOLD_MINUTES) * 60;
 };
 
-const isEligible = (record, thresholdSeconds) => record.secondsAttended >= thresholdSeconds || record.granted;
+// Automatic (threshold-based) eligibility is Seminar-only — a Regular
+// Meeting never auto-qualifies for a certificate, regardless of how long
+// someone stayed. `record.granted` (a manual admin override) still works
+// for either type, so an admin can still hand-grant one as an exception.
+const isEligible = (record, thresholdSeconds, meetingType) =>
+    (meetingType === 'Seminar' && record.secondsAttended >= thresholdSeconds) || record.granted;
 
 const getMeetings = async (req, res) => {
     try {
@@ -72,7 +77,7 @@ const rsvpMeeting = async (req, res) => {
 
 const createMeeting = async (req, res) => {
     try {
-        const { title, host, dateTime, status, videoLink, recordingUrl } = req.body;
+        const { title, host, dateTime, status, videoLink, recordingUrl, meetingType } = req.body;
         if (!title || !host || !dateTime) {
             return res.status(400).json({ message: 'Missing required meeting details' });
         }
@@ -83,7 +88,8 @@ const createMeeting = async (req, res) => {
             dateTime,
             status,
             videoLink: videoLink && videoLink.trim() ? videoLink.trim() : undefined,
-            recordingUrl: recordingUrl && recordingUrl.trim() ? recordingUrl.trim() : undefined
+            recordingUrl: recordingUrl && recordingUrl.trim() ? recordingUrl.trim() : undefined,
+            meetingType: meetingType || undefined
         });
 
         const actor = await User.findByPk(req.user.id, { attributes: ['name', 'role'] });
@@ -101,7 +107,7 @@ const createMeeting = async (req, res) => {
 const updateMeeting = async (req, res) => {
     try {
         const { id } = req.params;
-        const { title, host, dateTime, status, videoLink, registrants, minutes, recordingUrl } = req.body;
+        const { title, host, dateTime, status, videoLink, registrants, minutes, recordingUrl, meetingType } = req.body;
 
         const meeting = await Meeting.findByPk(id);
         if (!meeting) {
@@ -116,6 +122,7 @@ const updateMeeting = async (req, res) => {
         if (registrants !== undefined) meeting.registrants = parseInt(registrants);
         if (minutes !== undefined) meeting.minutes = minutes;
         if (recordingUrl !== undefined) meeting.recordingUrl = recordingUrl;
+        if (meetingType) meeting.meetingType = meetingType;
 
         await meeting.save();
 
@@ -206,7 +213,7 @@ const pingAttendance = async (req, res) => {
         const thresholdSeconds = await getCertificateThresholdSeconds();
         res.status(200).json({
             secondsAttended: record.secondsAttended,
-            eligible: isEligible(record, thresholdSeconds),
+            eligible: isEligible(record, thresholdSeconds, meeting.meetingType),
             status: meeting.status,
             rsvped: record.rsvped
         });
@@ -223,11 +230,17 @@ const getMyAttendance = async (req, res) => {
         const rows = await MeetingAttendance.findAll({ where: { userId } });
         const thresholdSeconds = await getCertificateThresholdSeconds();
 
+        const meetings = await Meeting.findAll({
+            where: { id: rows.map(r => r.meetingId) },
+            attributes: ['id', 'meetingType']
+        });
+        const typeById = Object.fromEntries(meetings.map(m => [m.id, m.meetingType]));
+
         const map = {};
         for (const row of rows) {
             map[row.meetingId] = {
                 secondsAttended: row.secondsAttended,
-                eligible: isEligible(row, thresholdSeconds),
+                eligible: isEligible(row, thresholdSeconds, typeById[row.meetingId]),
                 rsvped: row.rsvped
             };
         }
@@ -241,6 +254,7 @@ const getMyAttendance = async (req, res) => {
 const getMeetingAttendance = async (req, res) => {
     try {
         const { id } = req.params;
+        const meeting = await Meeting.findByPk(id, { attributes: ['meetingType'] });
         const rows = await MeetingAttendance.findAll({ where: { meetingId: id } });
         const thresholdSeconds = await getCertificateThresholdSeconds();
 
@@ -248,7 +262,7 @@ const getMeetingAttendance = async (req, res) => {
             userId: row.userId,
             secondsAttended: row.secondsAttended,
             granted: row.granted,
-            eligible: isEligible(row, thresholdSeconds),
+            eligible: isEligible(row, thresholdSeconds, meeting?.meetingType),
             rsvped: row.rsvped
         })));
     } catch (error) {

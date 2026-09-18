@@ -38,6 +38,15 @@ const Meeting = sequelize.define('Meeting', {
     recordingUrl: {
         type: DataTypes.STRING,
         defaultValue: '',
+    },
+    // Regular Meeting exists so ordinary internal meetings can be logged in the
+    // same list without being eligible for the automatic attendance-based
+    // certificate — that feature stays Seminar-only. Defaults to Seminar so
+    // every meeting created before this field existed keeps behaving exactly
+    // as it did (auto-certificate eligible).
+    meetingType: {
+        type: DataTypes.ENUM('Seminar', 'Regular Meeting'),
+        defaultValue: 'Seminar',
     }
 }, {
     timestamps: true,
