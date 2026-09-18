@@ -2528,6 +2528,11 @@ export default function App() {
       })
     : allUsers;
 
+  // Surfaced in its own panel above the full roster so a Sub Admin doesn't
+  // have to scroll the whole Users list to find the handful of accounts
+  // actually waiting on them.
+  const pendingDeletionUsers = allUsers.filter(u => u.pendingDeletion);
+
   // Password visibility toggle
   const [showPassword, setShowPassword] = useState(false);
 
@@ -4368,6 +4373,47 @@ export default function App() {
                     <div className="card-title">Registered Portal Accounts</div>
                     {!isSystemAdmin && <span className="view-only-badge">View only</span>}
                   </div>
+
+                  {pendingDeletionUsers.length > 0 && (
+                    <div className="pending-approvals-panel">
+                      <div className="pending-approvals-header">
+                        <Trash size={15} style={{ color: '#cf1322' }} />
+                        {isSystemAdmin
+                          ? `${pendingDeletionUsers.length} deletion request${pendingDeletionUsers.length > 1 ? 's' : ''} awaiting Sub Admin approval`
+                          : `${pendingDeletionUsers.length} account${pendingDeletionUsers.length > 1 ? 's' : ''} awaiting your approval to delete`}
+                      </div>
+                      {pendingDeletionUsers.map(u => (
+                        <div className="pending-approval-row" key={u.id}>
+                          <div className="user-chip">
+                            <div className="chip-avatar" style={{ background: 'var(--green-mid)' }}>
+                              {isValidImageUrl(u.profilePicture) ? (
+                                <img src={u.profilePicture} alt={u.name} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+                              ) : (
+                                u.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
+                              )}
+                            </div>
+                            <div>
+                              <div style={{ fontWeight: 600 }}>{u.name} <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>({u.role})</span></div>
+                              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                                {u.email} · Requested by {u.pendingDeletionRequestedByName || 'an Admin'}
+                              </div>
+                            </div>
+                          </div>
+                          {!isSystemAdmin && (
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                              <button className="table-action" onClick={() => handleApproveUserDeletion(u)} title="Approve deletion">
+                                <Check size={14} style={{ color: '#2D6A4F' }} />
+                              </button>
+                              <button className="table-action" onClick={() => handleRejectUserDeletion(u)} title="Reject deletion">
+                                <X size={14} style={{ color: '#cf1322' }} />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   <div className={isSystemAdmin ? 'grid-2 admin-form-grid' : undefined}>
                     {isSystemAdmin && (
                       <div className="card" style={{ height: 'fit-content' }}>
