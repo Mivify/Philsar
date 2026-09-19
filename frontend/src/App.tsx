@@ -559,7 +559,10 @@ export default function App() {
   const [registrantsModalOpen, setRegistrantsModalOpen] = useState(false);
   const [registrantsModalMeeting, setRegistrantsModalMeeting] = useState<Meeting | null>(null);
   const [cattleModalOpen, setCattleModalOpen] = useState(false);
+  const [cattleModalFilter, setCattleModalFilter] = useState<'all' | 'ready'>('all');
   const [cattleList, setCattleList] = useState<CattleRecord[]>([]);
+  const [modulesCompletedModalOpen, setModulesCompletedModalOpen] = useState(false);
+  const [seminarsAttendedModalOpen, setSeminarsAttendedModalOpen] = useState(false);
   const [newCattleForm, setNewCattleForm] = useState({ tagId: '', breed: '', notes: '' });
   const [editingCattleId, setEditingCattleId] = useState<number | null>(null);
   const [assessments, setAssessments] = useState<Assessment[]>([]);
@@ -1147,8 +1150,12 @@ export default function App() {
         currentPassword: ''
       });
 
-      // Refetch stats and activity logs
-      fetchGlobalData();
+      // Refetch stats, activity logs, and lesson-completion progress — a plain
+      // fetchGlobalData() call here left completedLessonsMap empty for the rest
+      // of a freshly-logged-in session (it's only ever populated by the mount/
+      // visibility-regain paths below), so "Modules Completed" looked wrong
+      // until the tab was refreshed or backgrounded and refocused.
+      refreshSessionData(user);
     } catch (error: any) {
       if (error.response?.data?.requiresVerification) {
         setPendingVerificationEmail(authForm.email);
@@ -1738,7 +1745,8 @@ export default function App() {
     }
   };
 
-  const openCattleModal = async () => {
+  const openCattleModal = async (filter: 'all' | 'ready' = 'all') => {
+    setCattleModalFilter(filter);
     setCattleModalOpen(true);
     try {
       const res = await axios.get(`${API_BASE}/cattle`, { params: { userId: currentUser?.id } });
@@ -3388,7 +3396,7 @@ export default function App() {
 
               {/* STATS CARDS */}
               <div className="stats-grid">
-                <div className="stat-card amber" style={{ cursor: 'pointer' }} onClick={openCattleModal}>
+                <div className="stat-card amber" style={{ cursor: 'pointer' }} onClick={() => openCattleModal('all')}>
                   <div className="stat-icon">🐄</div>
                   <div className="stat-value">{herdStats.totalCattle}</div>
                   <div className="stat-label">Total Cattle</div>
@@ -3399,25 +3407,28 @@ export default function App() {
                   )}
                   <div className="stat-card-hint">Click to view cattle →</div>
                 </div>
-                <div className="stat-card green">
+                <div className="stat-card green" style={{ cursor: 'pointer' }} onClick={() => openCattleModal('ready')}>
                   <div className="stat-icon">🌿</div>
                   <div className="stat-value">{herdStats.readyForBreeding}</div>
                   <div className="stat-label">Ready for Breeding</div>
                   <div className="stat-change neutral">
                     {herdStats.totalCattle > 0 ? Math.round((herdStats.readyForBreeding / herdStats.totalCattle) * 100) : 0}% of assessed herd
                   </div>
+                  <div className="stat-card-hint">Click to view cattle →</div>
                 </div>
-                <div className="stat-card brown">
+                <div className="stat-card brown" style={{ cursor: 'pointer' }} onClick={() => setModulesCompletedModalOpen(true)}>
                   <div className="stat-icon">📖</div>
                   <div className="stat-value">{currentUser?.modulesCompleted || 0}</div>
                   <div className="stat-label">Modules Completed</div>
                   <div className="stat-change neutral">Active learner</div>
+                  <div className="stat-card-hint">Click to view modules →</div>
                 </div>
-                <div className="stat-card sage">
+                <div className="stat-card sage" style={{ cursor: 'pointer' }} onClick={() => setSeminarsAttendedModalOpen(true)}>
                   <div className="stat-icon">🎓</div>
                   <div className="stat-value">{currentUser?.seminarsAttended || 0}</div>
                   <div className="stat-label">Seminars Attended</div>
                   <div className="stat-change up">↑ {currentUser?.seminarsAttended || 0} registered</div>
+                  <div className="stat-card-hint">Click to view seminars →</div>
                 </div>
               </div>
 
@@ -5907,6 +5918,22 @@ export default function App() {
             <div className="confirm-message" style={{ fontWeight: 700, marginBottom: '14px' }}>
               🐄 Herd Registry
             </div>
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
+              <button
+                type="button"
+                className={`filter-chip ${cattleModalFilter === 'all' ? 'active' : ''}`}
+                onClick={() => setCattleModalFilter('all')}
+              >
+                All Cattle
+              </button>
+              <button
+                type="button"
+                className={`filter-chip ${cattleModalFilter === 'ready' ? 'active' : ''}`}
+                onClick={() => setCattleModalFilter('ready')}
+              >
+                Ready for Breeding
+              </button>
+            </div>
             <form onSubmit={handleSaveCattle} style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
               <input
                 className="form-control"
@@ -5953,9 +5980,16 @@ export default function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {cattleList.length === 0 ? (
-                    <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>No cattle registered yet.</td></tr>
-                  ) : cattleList.map(c => (
+                  {(() => {
+                    const visibleCattle = cattleModalFilter === 'ready' ? cattleList.filter(c => c.isReady === true) : cattleList;
+                    if (visibleCattle.length === 0) {
+                      return (
+                        <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                          {cattleModalFilter === 'ready' ? 'No cattle are currently ready for breeding.' : 'No cattle registered yet.'}
+                        </td></tr>
+                      );
+                    }
+                    return visibleCattle.map(c => (
                     <tr key={c.id}>
                       <td style={{ fontWeight: 600 }}>{c.tagId}</td>
                       <td>{c.breed || '—'}</td>
@@ -5979,12 +6013,126 @@ export default function App() {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    ));
+                  })()}
                 </tbody>
               </table>
             </div>
             <div className="confirm-actions" style={{ marginTop: '16px' }}>
               <button className="confirm-btn confirm-btn-cancel" onClick={() => { setCattleModalOpen(false); resetCattleForm(); }}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modules Completed (Dashboard stat card) */}
+      {modulesCompletedModalOpen && (
+        <div className="confirm-overlay" onClick={() => setModulesCompletedModalOpen(false)}>
+          <div className="confirm-box" style={{ maxWidth: '560px' }} onClick={e => e.stopPropagation()}>
+            <div className="confirm-message" style={{ fontWeight: 700, marginBottom: '14px' }}>
+              📖 Completed Modules
+            </div>
+            <div style={{ maxHeight: '360px', overflowY: 'auto' }}>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Module</th>
+                    <th>Topic</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    const completedModules = modules.filter(m => {
+                      const total = parseLessons(m.content).length;
+                      return total > 0 && (completedLessonsMap[m.id] || []).length >= total;
+                    });
+                    if (completedModules.length === 0) {
+                      return (
+                        <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                          No modules completed yet — finish every lesson in a module to have it show up here.
+                        </td></tr>
+                      );
+                    }
+                    return completedModules.map(m => (
+                      <tr key={m.id}>
+                        <td style={{ fontWeight: 600 }}>{m.title}</td>
+                        <td>{m.topic || '—'}</td>
+                        <td>
+                          <button
+                            className="table-action"
+                            title="Open module"
+                            onClick={() => { setModulesCompletedModalOpen(false); handleSearchResultClick(m); }}
+                          >
+                            View →
+                          </button>
+                        </td>
+                      </tr>
+                    ));
+                  })()}
+                </tbody>
+              </table>
+            </div>
+            <div className="confirm-actions" style={{ marginTop: '16px' }}>
+              <button className="confirm-btn confirm-btn-cancel" onClick={() => setModulesCompletedModalOpen(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Seminars Attended (Dashboard stat card) */}
+      {seminarsAttendedModalOpen && (
+        <div className="confirm-overlay" onClick={() => setSeminarsAttendedModalOpen(false)}>
+          <div className="confirm-box" style={{ maxWidth: '560px' }} onClick={e => e.stopPropagation()}>
+            <div className="confirm-message" style={{ fontWeight: 700, marginBottom: '14px' }}>
+              🎓 Seminars Attended
+            </div>
+            <div style={{ maxHeight: '360px', overflowY: 'auto' }}>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Seminar</th>
+                    <th>Scheduled</th>
+                    <th>Status</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    const rsvpedMeetings = meetings.filter(m => myAttendance[m.id]?.rsvped);
+                    if (rsvpedMeetings.length === 0) {
+                      return (
+                        <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                          No seminars RSVP'd yet — register for one from Virtual Meetings.
+                        </td></tr>
+                      );
+                    }
+                    return rsvpedMeetings.map(m => (
+                      <tr key={m.id}>
+                        <td style={{ fontWeight: 600 }}>{m.title}</td>
+                        <td>{m.dateTime}</td>
+                        <td>
+                          <span className={`status-pill ${m.status === 'Live' ? 'active' : 'inactive'}`}>
+                            {m.status}
+                          </span>
+                        </td>
+                        <td>
+                          <button
+                            className="table-action"
+                            title="Open seminar"
+                            onClick={() => { setSeminarsAttendedModalOpen(false); handleJoinMeeting(m); }}
+                          >
+                            View →
+                          </button>
+                        </td>
+                      </tr>
+                    ));
+                  })()}
+                </tbody>
+              </table>
+            </div>
+            <div className="confirm-actions" style={{ marginTop: '16px' }}>
+              <button className="confirm-btn confirm-btn-cancel" onClick={() => setSeminarsAttendedModalOpen(false)}>Close</button>
             </div>
           </div>
         </div>
