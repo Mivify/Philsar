@@ -2523,6 +2523,19 @@ export default function App() {
       }).slice(0, 6)
     : [];
 
+  // Derived live from currently-existing modules/meetings, rather than trusting
+  // currentUser.modulesCompleted/seminarsAttended — those are counters that only
+  // ever go up (incremented once, at completion/RSVP time) and are never
+  // adjusted down when the underlying module or meeting is later deleted, so
+  // they drift upward over time. Deriving fresh every render keeps the number
+  // shown on the Dashboard/Profile always in sync with what these same lists
+  // show in their "click to view" modals.
+  const completedModulesList = modules.filter(m => {
+    const total = parseLessons(m.content).length;
+    return total > 0 && (completedLessonsMap[m.id] || []).length >= total;
+  });
+  const rsvpedMeetingsList = meetings.filter(m => myAttendance[m.id]?.rsvped);
+
   const handleSearchResultClick = (mod: LearningModule) => {
     handleTabNavigate('learning');
     setSelectedModule(mod);
@@ -3418,16 +3431,16 @@ export default function App() {
                 </div>
                 <div className="stat-card brown" style={{ cursor: 'pointer' }} onClick={() => setModulesCompletedModalOpen(true)}>
                   <div className="stat-icon">📖</div>
-                  <div className="stat-value">{currentUser?.modulesCompleted || 0}</div>
+                  <div className="stat-value">{completedModulesList.length}</div>
                   <div className="stat-label">Modules Completed</div>
                   <div className="stat-change neutral">Active learner</div>
                   <div className="stat-card-hint">Click to view modules →</div>
                 </div>
                 <div className="stat-card sage" style={{ cursor: 'pointer' }} onClick={() => setSeminarsAttendedModalOpen(true)}>
                   <div className="stat-icon">🎓</div>
-                  <div className="stat-value">{currentUser?.seminarsAttended || 0}</div>
+                  <div className="stat-value">{rsvpedMeetingsList.length}</div>
                   <div className="stat-label">Seminars Attended</div>
-                  <div className="stat-change up">↑ {currentUser?.seminarsAttended || 0} registered</div>
+                  <div className="stat-change up">↑ {rsvpedMeetingsList.length} registered</div>
                   <div className="stat-card-hint">Click to view seminars →</div>
                 </div>
               </div>
@@ -4277,13 +4290,13 @@ export default function App() {
                       <div className="progress-item">
                         <div className="progress-label">
                           <span className="progress-name">Modules Completed</span>
-                          <span className="progress-pct">{currentUser?.modulesCompleted || 0} / {modules.length}</span>
+                          <span className="progress-pct">{completedModulesList.length} / {modules.length}</span>
                         </div>
                         <div className="progress-bar">
                           <div
                             className="progress-fill"
                             style={{
-                              width: `${((currentUser?.modulesCompleted || 0) / Math.max(modules.length, 1)) * 100}%`,
+                              width: `${(completedModulesList.length / Math.max(modules.length, 1)) * 100}%`,
                               background: 'var(--green-light)'
                             }}
                           ></div>
@@ -4292,13 +4305,13 @@ export default function App() {
                       <div className="progress-item">
                         <div className="progress-label">
                           <span className="progress-name">Seminars Attended</span>
-                          <span className="progress-pct">{currentUser?.seminarsAttended || 0}</span>
+                          <span className="progress-pct">{rsvpedMeetingsList.length}</span>
                         </div>
                         <div className="progress-bar">
                           <div
                             className="progress-fill"
                             style={{
-                              width: `${Math.min((currentUser?.seminarsAttended || 0) * 10, 100)}%`,
+                              width: `${Math.min(rsvpedMeetingsList.length * 10, 100)}%`,
                               background: 'var(--amber)'
                             }}
                           ></div>
@@ -6043,18 +6056,14 @@ export default function App() {
                 </thead>
                 <tbody>
                   {(() => {
-                    const completedModules = modules.filter(m => {
-                      const total = parseLessons(m.content).length;
-                      return total > 0 && (completedLessonsMap[m.id] || []).length >= total;
-                    });
-                    if (completedModules.length === 0) {
+                    if (completedModulesList.length === 0) {
                       return (
                         <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
                           No modules completed yet — finish every lesson in a module to have it show up here.
                         </td></tr>
                       );
                     }
-                    return completedModules.map(m => (
+                    return completedModulesList.map(m => (
                       <tr key={m.id}>
                         <td style={{ fontWeight: 600 }}>{m.title}</td>
                         <td>{m.topic || '—'}</td>
@@ -6099,15 +6108,14 @@ export default function App() {
                 </thead>
                 <tbody>
                   {(() => {
-                    const rsvpedMeetings = meetings.filter(m => myAttendance[m.id]?.rsvped);
-                    if (rsvpedMeetings.length === 0) {
+                    if (rsvpedMeetingsList.length === 0) {
                       return (
                         <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
                           No seminars RSVP'd yet — register for one from Virtual Meetings.
                         </td></tr>
                       );
                     }
-                    return rsvpedMeetings.map(m => (
+                    return rsvpedMeetingsList.map(m => (
                       <tr key={m.id}>
                         <td style={{ fontWeight: 600 }}>{m.title}</td>
                         <td>{m.dateTime}</td>
