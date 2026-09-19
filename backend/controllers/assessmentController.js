@@ -95,7 +95,13 @@ const createAssessment = async (req, res) => {
         // Only these two of the 4 dropdown options count as clear — the previous
         // `!includes('ongoing')` check let "Recovering from illness" silently pass,
         // contradicting the AI guidance text which correctly treated active
-        // recovery as a reason to postpone breeding.
+        // recovery as a reason to postpone breeding. Untreated/ongoing conditions
+        // are excluded because postpartum uterine disease (metritis/endometritis)
+        // is well documented to cut first-service conception rates and delay
+        // return to cyclicity — Giuliodori et al. (2013, J. Dairy Sci. 96:3621-3631)
+        // found lower first-AI conception in cows with clinical metritis, and
+        // Várhidi et al. (2024, Vet. Sci. 11:66) reviews uterine disease as one of
+        // the leading causes of reproductive-related culling.
         const isHealthClear = healthStatus === 'Healthy — no issues' || healthStatus === 'Minor health issue — treated';
 
         // Age 2-8: cows 4-10 yrs old had the highest conception rate (86.5%) vs.
@@ -111,12 +117,10 @@ const createAssessment = async (req, res) => {
         // very different numbers). Brandão et al. (2021, J. Anim. Sci. 99(Suppl
         // 3):48) found cows at BCS >=5.0 had substantially higher pregnancy
         // (82.7% vs 67.9%) and calving rates than BCS <5.0 — so 4 ("Borderline"
-        // in this form's own scale) is excluded, not treated as adequate.
-        // Selk et al. (1988, J. Anim. Sci. 66:3153) similarly found 91% of cows
-        // calving at BCS >5 were cycling again within 60 days postpartum, vs.
-        // 61% at BCS 4 and 46% at BCS <3. 7 is the ceiling because BCS 8-9
-        // (overconditioned) is linked to dystocia from pelvic fat accumulation
-        // (Vedovatto & Ferreira, 2025, LSU AgCenter Pub. 3951-C).
+        // in this form's own scale) is excluded, not treated as adequate. 7 is
+        // the ceiling because BCS 8-9 (overconditioned) is linked to dystocia
+        // from pelvic fat accumulation (Vedovatto & Ferreira, 2025, LSU
+        // AgCenter Pub. 3951-C).
         const bcsOk = bcsNum >= 5 && bcsNum <= 7;
 
         // >=45 days: Inchaisri et al. (2011, J. Dairy Sci. 94(8):3811-3823)
@@ -127,17 +131,17 @@ const createAssessment = async (req, res) => {
 
         // "History of Infertility" maps to the veterinary concept of a "repeat
         // breeder": a clinically normal, regularly-cycling cow that has failed
-        // to conceive after repeated services (DAIReXNET, 2019, "Improving
-        // Fertility in the Repeat Breeder"). The standard recommendation for
-        // these cows is a veterinary reproductive exam (ultrasonography,
-        // progesterone assay) BEFORE another service — undiagnosed causes
-        // like bilateral oviduct occlusion (found in ~20% of repeat breeders
-        // per Levine, 1999, The Bovine Practitioner 33(2):97-105) make any
-        // further AI or natural service attempt likely to fail again
-        // regardless of timing. So this doesn't try to decide between AI and
-        // natural mating for these cows — it withholds a "Ready" verdict
-        // entirely and defers to a vet, same as an unresolved health
-        // condition does.
+        // to conceive after repeated services (Pérez-Marín & Quintela, 2023,
+        // Animals 13(13):2187). Villar et al. (2025, Animals 15:266) found a
+        // ~21% prevalence in dairy herds and identified reproductive
+        // pathologies (endometritis, dystocia) as leading risk factors — the
+        // standard recommendation is a veterinary reproductive exam
+        // (ultrasonography, progesterone assay) BEFORE another service, since
+        // an undiagnosed physical cause makes any further AI or natural
+        // service attempt likely to fail again regardless of timing. So this
+        // doesn't try to decide between AI and natural mating for these cows —
+        // it withholds a "Ready" verdict entirely and defers to a vet, same as
+        // an unresolved health condition does.
         const historyOk = history !== 'History of Infertility';
 
         const isReady = ageOk && bcsOk && isHealthClear && vwpOk && hasEstrusSign && historyOk;
@@ -148,12 +152,12 @@ const createAssessment = async (req, res) => {
         //   ~12h after onset) — but Gaude et al. (2021, Livestock Science
         //   245:104449) found it's seen in only ~22% of actual estrus events,
         //   so it can't be the only trigger.
-        // - Clear Discharge and Swollen Vulva are grouped with it because Layek
-        //   et al. (2011, Anim. Reprod. Sci. 129(3-4):140-145) found mucus
-        //   discharge and vulvar tumefaction/reddening are comparably strong,
-        //   early predictors of ovulation timing (~30-31h out) in Zebu cattle —
-        //   there's no research basis for treating discharge as AI-qualifying
-        //   but vulvar swelling as not, which the previous version did.
+        // - Clear Discharge and Swollen Vulva are grouped with it because
+        //   Widyastuti et al. (2025, Vet. World 18:1357-1364) tracked vulvar
+        //   swelling and mucus viscosity together against hormonal peak-estrus
+        //   timing and found both track the same fertile window — there's no
+        //   research basis for treating discharge as AI-qualifying but vulvar
+        //   swelling as not, which an earlier version of this logic did.
         // Mounting Others is left out of the AI trigger: Gaude et al. (2021)
         // and the 2026 Frontiers review (Sankarganesh et al., 13:1807199) both
         // treat it as a reliable sign that estrus is happening, but — unlike
