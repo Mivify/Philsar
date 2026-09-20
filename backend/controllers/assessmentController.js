@@ -146,28 +146,22 @@ const createAssessment = async (req, res) => {
 
         const isReady = ageOk && bcsOk && isHealthClear && vwpOk && hasEstrusSign && historyOk;
 
-        // AI is recommended only for signs that give a precise ovulation-timing
-        // anchor:
+        // AI is recommended only for Standing Heat or Clear Discharge — the two
+        // signs treated as precise ovulation-timing anchors:
         // - Standing Heat is the classic anchor for the AM-PM rule (inseminate
         //   ~12h after onset) — but Gaude et al. (2021, Livestock Science
         //   245:104449) found it's seen in only ~22% of actual estrus events,
         //   so it can't be the only trigger.
-        // - Clear Discharge and Swollen Vulva are grouped with it because
-        //   Widyastuti et al. (2025, Vet. World 18:1357-1364) tracked vulvar
-        //   swelling and mucus viscosity together against hormonal peak-estrus
-        //   timing and found both track the same fertile window — there's no
-        //   research basis for treating discharge as AI-qualifying but vulvar
-        //   swelling as not, which an earlier version of this logic did.
-        // Mounting Others is left out of the AI trigger: Gaude et al. (2021)
-        // and the 2026 Frontiers review (Sankarganesh et al., 13:1807199) both
-        // treat it as a reliable sign that estrus is happening, but — unlike
-        // standing heat — it doesn't anchor a precise insemination window, so
-        // it falls back to natural mating instead, which tolerates looser
-        // timing.
+        // - Clear Discharge is grouped with it as a secondary confirming sign.
+        // Swollen Vulva and Mounting Others are left out of the AI trigger and
+        // fall back to Natural Mating instead, which tolerates looser timing —
+        // deliberately kept narrower than research alone would strictly
+        // require (Widyastuti et al., 2025, Vet. World 18:1357-1364, found
+        // vulvar swelling tracks the same hormonal window as discharge), since
+        // this is the more conservative, established two-sign rule.
         const useAI = isReady && (
             indicatorList.includes('Standing Heat') ||
-            indicatorList.includes('Clear Discharge') ||
-            indicatorList.includes('Swollen Vulva')
+            indicatorList.includes('Clear Discharge')
         );
 
         const recommendation = isReady
@@ -176,7 +170,7 @@ const createAssessment = async (req, res) => {
 
         const fallbackGuidance = isReady
             ? (useAI
-                ? 'If standing heat was directly observed, inseminate about 12 hours after its onset (the AM-PM rule). If relying on clear discharge or vulvar swelling without directly observed standing heat, inseminate promptly and monitor closely, as timing is less precise. Thaw semen at 35–37°C for 30–45 seconds. Use clean equipment and proper rectal-cervical technique. Record insemination date for pregnancy checking in 60–90 days.'
+                ? 'If standing heat was directly observed, inseminate about 12 hours after its onset (the AM-PM rule). If relying on clear discharge without directly observed standing heat, inseminate promptly and monitor closely, as timing is less precise. Thaw semen at 35–37°C for 30–45 seconds. Use clean equipment and proper rectal-cervical technique. Record insemination date for pregnancy checking in 60–90 days.'
                 : 'Introduce a proven bull at a ratio of 1:20–30. Monitor closely and keep breeding records. Observe for return to heat in 21 days to confirm breeding success.')
             : (!historyOk
                 ? 'This cow has a documented history of infertility (repeat breeding). Schedule a veterinary reproductive exam (e.g. ultrasonography or progesterone testing) to check for an underlying cause before attempting another service, since retiming alone often will not resolve repeat-breeder cases. Address any other flagged issues (body condition, health, waiting period) in the meantime.'
