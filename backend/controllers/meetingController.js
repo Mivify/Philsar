@@ -24,12 +24,29 @@ const getCertificateThresholdSeconds = async () => {
 const isEligible = (record, thresholdSeconds, meetingType) =>
     (meetingType === 'Seminar' && record.secondsAttended >= thresholdSeconds) || record.granted;
 
+// A Regular Meeting can be limited to specific roles via `allowedRoles`.
+// Enforced here rather than only hidden in the UI, so a restricted meeting's
+// video link can't be reached by calling the API directly.
+//   - Admin/Sub Admin always pass: they manage meetings, and the Admin Panel
+//     reads this same endpoint, so filtering them would empty their table.
+//   - Seminars are never restricted.
+//   - allowedRoles === null means "never configured" → unrestricted, so every
+//     meeting that predates this feature keeps behaving as it did.
+//   - An explicitly empty string means the admin narrowed it all the way down,
+//     leaving it visible to admins only.
+const canViewMeeting = (meeting, role) => {
+    if (role === 'Admin' || role === 'Sub Admin') return true;
+    if (meeting.meetingType !== 'Regular Meeting') return true;
+    if (meeting.allowedRoles === null || meeting.allowedRoles === undefined) return true;
+    return meeting.allowedRoles.split(',').map(r => r.trim()).filter(Boolean).includes(role);
+};
+
 const getMeetings = async (req, res) => {
     try {
         const meetings = await Meeting.findAll({
             order: [['createdAt', 'DESC']]
         });
-        res.status(200).json(meetings);
+        res.status(200).json(meetings.filter(m => canViewMeeting(m, req.user.role)));
     } catch (error) {
         res.status(500).json({ message: 'Error retrieving meetings', error: error.message });
     }
@@ -43,6 +60,9 @@ const rsvpMeeting = async (req, res) => {
         const meeting = await Meeting.findByPk(id);
         if (!meeting) {
             return res.status(404).json({ message: 'Meeting not found' });
+        }
+        if (!canViewMeeting(meeting, req.user.role)) {
+            return res.status(403).json({ message: 'This meeting is not open to your role.' });
         }
 
         // Tracked per-user so re-calling this (double-click, revisit) doesn't keep
@@ -77,7 +97,7 @@ const rsvpMeeting = async (req, res) => {
 
 const createMeeting = async (req, res) => {
     try {
-        const { title, host, dateTime, status, videoLink, recordingUrl, meetingType } = req.body;
+        const { title, host, dateTime, status, videoLink, recordingUrl, meetingType, allowedRoles } = req.body;
         if (!title || !host || !dateTime) {
             return res.status(400).json({ message: 'Missing required meeting details' });
         }
@@ -89,7 +109,10 @@ const createMeeting = async (req, res) => {
             status,
             videoLink: videoLink && videoLink.trim() ? videoLink.trim() : undefined,
             recordingUrl: recordingUrl && recordingUrl.trim() ? recordingUrl.trim() : undefined,
-            meetingType: meetingType || undefined
+            meetingType: meetingType || undefined,
+            // Only a Regular Meeting carries a role restriction; a Seminar is
+            // always open, so it's stored as NULL rather than a stale list.
+            allowedRoles: meetingType === 'Regular Meeting' && allowedRoles !== undefined ? allowedRoles : null
         });
 
         const actor = await User.findByPk(req.user.id, { attributes: ['name', 'role'] });
@@ -107,7 +130,7 @@ const createMeeting = async (req, res) => {
 const updateMeeting = async (req, res) => {
     try {
         const { id } = req.params;
-        const { title, host, dateTime, status, videoLink, registrants, minutes, recordingUrl, meetingType } = req.body;
+        const { title, host, dateTime, status, videoLink, registrants, minutes, recordingUrl, meetingType, allowedRoles } = req.body;
 
         const meeting = await Meeting.findByPk(id);
         if (!meeting) {
@@ -123,6 +146,11 @@ const updateMeeting = async (req, res) => {
         if (minutes !== undefined) meeting.minutes = minutes;
         if (recordingUrl !== undefined) meeting.recordingUrl = recordingUrl;
         if (meetingType) meeting.meetingType = meetingType;
+        // `!== undefined` rather than a truthiness check so an empty list (admins
+        // only) can actually be saved. Switching a meeting back to Seminar clears
+        // the restriction outright, since Seminars are always open.
+        if (allowedRoles !== undefined) meeting.allowedRoles = allowedRoles;
+        if (meeting.meetingType === 'Seminar') meeting.allowedRoles = null;
 
         await meeting.save();
 
@@ -355,6 +383,9 @@ const getJaasToken = async (req, res) => {
         const user = await User.findByPk(req.user.id);
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
+        }
+        if (!canViewMeeting(meeting, user.role)) {
+            return res.status(403).json({ message: 'This meeting is not open to your role.' });
         }
 
         if (!process.env.JAAS_PRIVATE_KEY) {

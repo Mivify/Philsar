@@ -47,6 +47,17 @@ const Meeting = sequelize.define('Meeting', {
     meetingType: {
         type: DataTypes.ENUM('Seminar', 'Regular Meeting'),
         defaultValue: 'Seminar',
+    },
+    // Only meaningful for a Regular Meeting: comma-separated list of the roles
+    // allowed to see and join it. NULL means "no restriction", which is what
+    // every meeting created before this field existed carries — so none of them
+    // silently disappear for anyone. Seminars ignore this entirely and stay
+    // open to the whole portal. Admin/Sub Admin always see every meeting
+    // regardless, since they manage the list.
+    allowedRoles: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        defaultValue: null,
     }
 }, {
     timestamps: true,

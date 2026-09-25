@@ -76,6 +76,7 @@ interface Meeting {
   minutes: string;
   recordingUrl: string;
   meetingType: 'Seminar' | 'Regular Meeting';
+  allowedRoles?: string | null;
 }
 
 interface LandingImage {
@@ -198,6 +199,12 @@ function parseLessons(content: string): { title: string; content: string }[] {
   
   return lessons;
 }
+
+// Roles an admin can pick from when limiting who a Regular Meeting is for.
+// Admin and Sub Admin are deliberately absent: they always see every meeting
+// (they manage them, and the Admin Panel reads the same list), so offering
+// them as toggles would imply a restriction that doesn't actually apply.
+const MEETING_AUDIENCE_ROLES = ['Livestock Manager', 'Farmer', 'Veterinarian', 'Extension Worker', 'Secretary'];
 
 // Human-readable labels for ActivityLog.action values (see backend/utils/activityLog.js
 // for where each of these gets written). New action strings just fall back to
@@ -649,7 +656,7 @@ export default function App() {
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [newModuleForm, setNewModuleForm] = useState({ title: '', description: '', content: '', imageUrl: '', topic: '' });
   const [topicFilter, setTopicFilter] = useState('All Topics');
-  const [newMeetingForm, setNewMeetingForm] = useState({ title: '', host: '', dateTime: '', status: 'Upcoming' as any, videoLink: '', recordingUrl: '', meetingType: 'Seminar' as any });
+  const [newMeetingForm, setNewMeetingForm] = useState({ title: '', host: '', dateTime: '', status: 'Upcoming' as any, videoLink: '', recordingUrl: '', meetingType: 'Seminar' as any, allowedRoles: MEETING_AUDIENCE_ROLES.join(',') });
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
   const [savingUser, setSavingUser] = useState(false);
   const [savingModule, setSavingModule] = useState(false);
@@ -2350,7 +2357,13 @@ export default function App() {
     e.preventDefault();
     setSavingMeeting(true);
     try {
-      const payload = { ...newMeetingForm, dateTime: formatMeetingDateTime(newMeetingForm.dateTime) };
+      const payload = {
+        ...newMeetingForm,
+        dateTime: formatMeetingDateTime(newMeetingForm.dateTime),
+        // A Seminar is open to the whole portal, so it's saved with no role
+        // restriction rather than whatever the picker happened to be showing.
+        allowedRoles: newMeetingForm.meetingType === 'Regular Meeting' ? newMeetingForm.allowedRoles : null
+      };
       if (editingMeeting) {
         await axios.put(`${API_BASE}/meetings/${editingMeeting.id}`, payload);
         showToast('Seminar updated successfully!', 'success');
@@ -2359,7 +2372,7 @@ export default function App() {
         await axios.post(`${API_BASE}/meetings`, payload);
         showToast('Seminar scheduled successfully!', 'success');
       }
-      setNewMeetingForm({ title: '', host: '', dateTime: '', status: 'Upcoming', videoLink: '', recordingUrl: '', meetingType: 'Seminar' });
+      setNewMeetingForm({ title: '', host: '', dateTime: '', status: 'Upcoming', videoLink: '', recordingUrl: '', meetingType: 'Seminar', allowedRoles: MEETING_AUDIENCE_ROLES.join(',') });
       fetchGlobalData();
     } catch (error) {
       console.error(error);
@@ -4992,6 +5005,34 @@ export default function App() {
                                 : 'Seminars are eligible for the automatic attendance certificate.'}
                             </div>
                           </div>
+                          {newMeetingForm.meetingType === 'Regular Meeting' && (
+                            <div className="form-group">
+                              <label className="form-label">Who Can Join</label>
+                              <div className="radio-group">
+                                {MEETING_AUDIENCE_ROLES.map(role => {
+                                  const selected = newMeetingForm.allowedRoles.split(',').map(r => r.trim()).filter(Boolean);
+                                  const isOn = selected.includes(role);
+                                  return (
+                                    <div
+                                      key={role}
+                                      className={`radio-btn ${isOn ? 'selected' : ''}`}
+                                      onClick={() => {
+                                        const next = isOn ? selected.filter(r => r !== role) : [...selected, role];
+                                        setNewMeetingForm({ ...newMeetingForm, allowedRoles: next.join(',') });
+                                      }}
+                                    >
+                                      {role}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px' }}>
+                                {newMeetingForm.allowedRoles.split(',').filter(Boolean).length === 0
+                                  ? 'No roles selected — only Admin and Sub Admin will see this meeting.'
+                                  : 'Only the selected roles will see this meeting. Admin and Sub Admin always see every meeting.'}
+                              </div>
+                            </div>
+                          )}
                           <div className="form-group">
                             <label className="form-label">Date & Time</label>
                             <input
@@ -5049,7 +5090,7 @@ export default function App() {
                                 type="button"
                                 onClick={() => {
                                   setEditingMeeting(null);
-                                  setNewMeetingForm({ title: '', host: '', dateTime: '', status: 'Upcoming', videoLink: '', recordingUrl: '', meetingType: 'Seminar' });
+                                  setNewMeetingForm({ title: '', host: '', dateTime: '', status: 'Upcoming', videoLink: '', recordingUrl: '', meetingType: 'Seminar', allowedRoles: MEETING_AUDIENCE_ROLES.join(',') });
                                 }}
                               >
                                 Cancel
@@ -5081,6 +5122,13 @@ export default function App() {
                                   <div className={`meeting-type-badge ${m.meetingType === 'Regular Meeting' ? 'regular' : 'seminar'}`}>
                                     {m.meetingType || 'Seminar'}
                                   </div>
+                                  {m.meetingType === 'Regular Meeting' && m.allowedRoles != null && (
+                                    <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                                      {m.allowedRoles.split(',').filter(Boolean).length === 0
+                                        ? '🔒 Admins only'
+                                        : `🔒 ${m.allowedRoles.split(',').filter(Boolean).join(', ')}`}
+                                    </div>
+                                  )}
                                 </td>
                                 <td>{m.host.split(' · ')[0]}</td>
                                 <td>{m.dateTime}</td>
@@ -5131,7 +5179,10 @@ export default function App() {
                                           status: m.status,
                                           videoLink: m.videoLink || '',
                                           recordingUrl: m.recordingUrl || '',
-                                          meetingType: m.meetingType || 'Seminar'
+                                          meetingType: m.meetingType || 'Seminar',
+                                          // null means the meeting was never restricted (or predates
+                                          // this feature), which is the same as every role being allowed
+                                          allowedRoles: m.allowedRoles ?? MEETING_AUDIENCE_ROLES.join(',')
                                         });
                                       }}
                                     >
