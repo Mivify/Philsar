@@ -656,7 +656,10 @@ export default function App() {
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [newModuleForm, setNewModuleForm] = useState({ title: '', description: '', content: '', imageUrl: '', topic: '' });
   const [topicFilter, setTopicFilter] = useState('All Topics');
-  const [newMeetingForm, setNewMeetingForm] = useState({ title: '', host: '', dateTime: '', status: 'Upcoming' as any, videoLink: '', recordingUrl: '', meetingType: 'Seminar' as any, allowedRoles: MEETING_AUDIENCE_ROLES.join(',') });
+  // allowedRoles starts empty so a new Regular Meeting begins with nobody
+  // selected — the admin picks its audience deliberately rather than
+  // un-picking from a pre-filled list.
+  const [newMeetingForm, setNewMeetingForm] = useState({ title: '', host: '', dateTime: '', status: 'Upcoming' as any, videoLink: '', recordingUrl: '', meetingType: 'Seminar' as any, allowedRoles: '' });
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
   const [savingUser, setSavingUser] = useState(false);
   const [savingModule, setSavingModule] = useState(false);
@@ -2372,7 +2375,7 @@ export default function App() {
         await axios.post(`${API_BASE}/meetings`, payload);
         showToast('Seminar scheduled successfully!', 'success');
       }
-      setNewMeetingForm({ title: '', host: '', dateTime: '', status: 'Upcoming', videoLink: '', recordingUrl: '', meetingType: 'Seminar', allowedRoles: MEETING_AUDIENCE_ROLES.join(',') });
+      setNewMeetingForm({ title: '', host: '', dateTime: '', status: 'Upcoming', videoLink: '', recordingUrl: '', meetingType: 'Seminar', allowedRoles: '' });
       fetchGlobalData();
     } catch (error) {
       console.error(error);
@@ -5090,7 +5093,7 @@ export default function App() {
                                 type="button"
                                 onClick={() => {
                                   setEditingMeeting(null);
-                                  setNewMeetingForm({ title: '', host: '', dateTime: '', status: 'Upcoming', videoLink: '', recordingUrl: '', meetingType: 'Seminar', allowedRoles: MEETING_AUDIENCE_ROLES.join(',') });
+                                  setNewMeetingForm({ title: '', host: '', dateTime: '', status: 'Upcoming', videoLink: '', recordingUrl: '', meetingType: 'Seminar', allowedRoles: '' });
                                 }}
                               >
                                 Cancel
