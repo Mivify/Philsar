@@ -2,7 +2,7 @@ const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
-const { sendPasswordResetEmail, sendVerificationEmail } = require('../utils/email');
+const { sendPasswordResetEmail, sendVerificationEmail, sendEmailChangeConfirmation } = require('../utils/email');
 const { logActivity } = require('../utils/activityLog');
 const { isStrongPassword, WEAK_PASSWORD_MESSAGE } = require('../utils/passwordPolicy');
 
@@ -113,7 +113,8 @@ const register = async (req, res) => {
                 profilePicture: user.profilePicture,
                 modulesCompleted: user.modulesCompleted,
                 seminarsAttended: user.seminarsAttended,
-                dssAssessmentsRun: user.dssAssessmentsRun
+                dssAssessmentsRun: user.dssAssessmentsRun,
+                pendingEmail: user.pendingEmail
             }
         });
     } catch (error) {
@@ -174,7 +175,8 @@ const login = async (req, res) => {
                 profilePicture: user.profilePicture,
                 modulesCompleted: user.modulesCompleted,
                 seminarsAttended: user.seminarsAttended,
-                dssAssessmentsRun: user.dssAssessmentsRun
+                dssAssessmentsRun: user.dssAssessmentsRun,
+                pendingEmail: user.pendingEmail
             }
         });
     } catch (error) {
@@ -202,7 +204,7 @@ const logout = async (req, res) => {
 const updateProfile = async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, email, role, organization, status, profilePicture, password, currentPassword } = req.body;
+        const { name, role, organization, status, profilePicture, password, currentPassword } = req.body;
 
         const isSelf = req.user.id === parseInt(id, 10);
         const isAdmin = req.user.role === 'Admin';
@@ -235,7 +237,10 @@ const updateProfile = async (req, res) => {
         }
 
         if (name) user.name = name;
-        if (email) user.email = email;
+        // Email is deliberately not settable here — changing it now goes through
+        // changeEmail/verifyEmailChange below, which confirms the new address is
+        // actually reachable before it takes effect, the same way a brand-new
+        // signup can't log in until its own verification link is used.
         if (organization !== undefined) user.organization = organization;
         if (profilePicture !== undefined) user.profilePicture = profilePicture;
         // modulesCompleted is intentionally not settable here — it's always
@@ -305,7 +310,8 @@ const updateProfile = async (req, res) => {
                 profilePicture: user.profilePicture,
                 modulesCompleted: user.modulesCompleted,
                 seminarsAttended: user.seminarsAttended,
-                dssAssessmentsRun: user.dssAssessmentsRun
+                dssAssessmentsRun: user.dssAssessmentsRun,
+                pendingEmail: user.pendingEmail
             }
         });
     } catch (error) {
@@ -341,7 +347,8 @@ const getUserById = async (req, res) => {
             profilePicture: user.profilePicture,
             modulesCompleted: user.modulesCompleted,
             seminarsAttended: user.seminarsAttended,
-            dssAssessmentsRun: user.dssAssessmentsRun
+            dssAssessmentsRun: user.dssAssessmentsRun,
+            pendingEmail: user.pendingEmail
         });
     } catch (error) {
         res.status(500).json({ message: 'Error fetching user', error: error.message });
@@ -599,6 +606,118 @@ const resendVerification = async (req, res) => {
     }
 };
 
+// Step 1 of changing an account's email: stages the new address in
+// `pendingEmail` and emails a confirmation link to it — the account's
+// `email` field isn't touched until verifyEmailChange (below) succeeds.
+// Requires the current password so a hijacked session can't quietly redirect
+// the account to an attacker-controlled inbox.
+const changeEmail = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { newEmail, currentPassword } = req.body;
+
+        if (req.user.id !== parseInt(id, 10)) {
+            return res.status(403).json({ message: 'You can only change your own email.' });
+        }
+        if (!newEmail || !EMAIL_REGEX.test(newEmail)) {
+            return res.status(400).json({ message: 'Please enter a valid email address' });
+        }
+
+        const user = await User.findByPk(id);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        const currentMatches = await bcrypt.compare(currentPassword || '', user.password);
+        if (!currentMatches) {
+            return res.status(401).json({ message: 'Incorrect current password' });
+        }
+
+        if (newEmail.toLowerCase() === user.email.toLowerCase()) {
+            return res.status(400).json({ message: 'That is already your current email address.' });
+        }
+        const inUse = await User.findOne({ where: { email: newEmail } });
+        if (inUse) {
+            return res.status(400).json({ message: 'That email address is already in use.' });
+        }
+
+        const rawToken = crypto.randomBytes(32).toString('hex');
+        user.pendingEmail = newEmail;
+        user.emailChangeTokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+        user.emailChangeExpires = Date.now() + 24 * 60 * 60 * 1000;
+        await user.save();
+
+        logActivity({
+            userId: user.id, userName: user.name, userRole: user.role,
+            action: 'email_change_requested', category: 'account',
+            details: `${user.email} → ${newEmail} (awaiting confirmation)`, req
+        });
+
+        const baseUrl = process.env.BACKEND_URL || `https://${req.get('host')}`;
+        const link = `${baseUrl}/verify-email-change?token=${rawToken}`;
+        try {
+            await sendEmailChangeConfirmation(newEmail, link);
+        } catch (emailError) {
+            console.error('Failed to send email change confirmation:', emailError);
+        }
+
+        res.status(200).json({
+            message: `A confirmation link was sent to ${newEmail}. Your email won't change until you click it.`,
+            pendingEmail: newEmail
+        });
+    } catch (error) {
+        res.status(500).json({ message: 'Error requesting email change', error: error.message });
+    }
+};
+
+// Step 2: the link from the email above lands here. No auth required — it's
+// a bearer token proving control of the new inbox, the same trust model as
+// verifyEmail/resetPassword.
+const verifyEmailChange = async (req, res) => {
+    try {
+        const { token } = req.body;
+        if (!token) {
+            return res.status(400).json({ message: 'Missing confirmation token' });
+        }
+
+        const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+        const user = await User.findOne({ where: { emailChangeTokenHash: tokenHash } });
+
+        if (!user || !user.emailChangeExpires || Number(user.emailChangeExpires) < Date.now()) {
+            return res.status(400).json({ message: 'This confirmation link is invalid or has expired.' });
+        }
+
+        // Re-checked here, not just at request time — someone else could have
+        // registered or been assigned this exact address in the meantime.
+        const stillFree = await User.findOne({ where: { email: user.pendingEmail } });
+        if (stillFree && stillFree.id !== user.id) {
+            user.pendingEmail = null;
+            user.emailChangeTokenHash = null;
+            user.emailChangeExpires = null;
+            await user.save();
+            return res.status(400).json({ message: 'That email address is now in use by another account. Please request the change again with a different address.' });
+        }
+
+        const oldEmail = user.email;
+        const newEmail = user.pendingEmail;
+        user.email = newEmail;
+        user.pendingEmail = null;
+        user.emailChangeTokenHash = null;
+        user.emailChangeExpires = null;
+        await user.save();
+
+        logActivity({
+            userId: user.id, userName: user.name, userRole: user.role,
+            action: 'email_changed', category: 'account',
+            details: `${oldEmail} → ${newEmail}`, req
+        });
+
+        res.status(200).json({ message: 'Your email address has been updated. Please sign in with your new email.' });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
 module.exports = {
     register,
     login,
@@ -612,5 +731,7 @@ module.exports = {
     forgotPassword,
     resetPassword,
     verifyEmail,
-    resendVerification
+    resendVerification,
+    changeEmail,
+    verifyEmailChange
 };

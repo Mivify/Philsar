@@ -101,6 +101,22 @@ const User = sequelize.define('User', {
     pendingDeletionRequestedByName: {
         type: DataTypes.STRING,
         allowNull: true,
+    },
+    // Changing your email doesn't take effect immediately — it's staged here
+    // until the new address is confirmed via a link, the same way self-serve
+    // registration isn't verified until its own token is used. `email` itself
+    // is never touched until verifyEmailChange succeeds.
+    pendingEmail: {
+        type: DataTypes.STRING,
+        allowNull: true,
+    },
+    emailChangeTokenHash: {
+        type: DataTypes.STRING,
+        allowNull: true,
+    },
+    emailChangeExpires: {
+        type: DataTypes.BIGINT,
+        allowNull: true,
     }
 }, {
     timestamps: true,

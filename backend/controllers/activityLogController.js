@@ -50,7 +50,11 @@ const getActivitySummary = async (req, res) => {
             ActivityLog.findAll({ where: { ...inWindow, action: 'login_failed' }, attributes: ['userName'] }),
             ActivityLog.count({ where: { ...inWindow, action: 'account_locked' } }),
             ActivityLog.count({ where: { ...inWindow, action: { [Op.in]: ['role_changed', 'account_status_changed'] } } }),
-            ActivityLog.count({ where: { ...inWindow, action: 'account_deleted' } }),
+            // 'account_deleted' is never actually written — deletions now go
+            // through the two-person approval flow, which logs
+            // 'account_deletion_approved' at the point the account is actually
+            // removed (see authController.js's approveUserDeletion).
+            ActivityLog.count({ where: { ...inWindow, action: 'account_deletion_approved' } }),
         ]);
 
         // Distinct targeted accounts matter more than raw attempt count here —

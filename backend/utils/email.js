@@ -59,4 +59,17 @@ const sendVerificationEmail = async (to, link) => {
     `);
 };
 
-module.exports = { sendPasswordResetEmail, sendVerificationEmail };
+const sendEmailChangeConfirmation = async (to, link) => {
+    if (!emailEnabled) {
+        console.log(`[email disabled] Email change confirmation link for ${to}: ${link}`);
+        return;
+    }
+
+    await sendEmail(to, 'Confirm your new PHILSAR email address', `
+        <p>You (or someone with access to your PHILSAR Cattle Reproductive Portal account) requested to change the email address on this account to this one.</p>
+        <p><a href="${link}">Click here to confirm this email address</a></p>
+        <p>This link expires in 24 hours. Until confirmed, your account keeps signing in with its current email address. If you didn't request this, you can safely ignore this email — no change will be made.</p>
+    `);
+};
+
+module.exports = { sendPasswordResetEmail, sendVerificationEmail, sendEmailChangeConfirmation };

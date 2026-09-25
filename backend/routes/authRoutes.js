@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const rateLimit = require('express-rate-limit');
-const { register, login, logout, updateProfile, getUserById, getUsers, deleteUser, approveUserDeletion, rejectUserDeletion, forgotPassword, resetPassword, verifyEmail, resendVerification } = require('../controllers/authController');
+const { register, login, logout, updateProfile, getUserById, getUsers, deleteUser, approveUserDeletion, rejectUserDeletion, forgotPassword, resetPassword, verifyEmail, resendVerification, changeEmail, verifyEmailChange } = require('../controllers/authController');
 const { uploadImage } = require('../controllers/moduleController');
 const { optionalAuth, requireAuth, requireAdmin, requireSubAdmin, requireSubAdminOnly } = require('../middleware/auth');
 const { logActivity } = require('../utils/activityLog');
@@ -69,6 +69,10 @@ router.post('/verify-email', resetPasswordLimiter, verifyEmail);
 router.post('/resend-verification', resendVerificationLimiter, resendVerification);
 router.get('/profile/:id', requireAuth, getUserById);
 router.put('/profile/:id', requireAuth, updateProfile);
+router.post('/profile/:id/change-email', requireAuth, changeEmail);
+// Reuses resetPasswordLimiter, matching /verify-email above — same trust
+// model (a bearer token from an email link), no dedicated limiter needed.
+router.post('/verify-email-change', resetPasswordLimiter, verifyEmailChange);
 // Sub Admin can see the full roster (the Users tab is view-only for them,
 // plus approving/rejecting pending deletions below) — the Meetings/
 // certificates panel also matches attendees against this same list.

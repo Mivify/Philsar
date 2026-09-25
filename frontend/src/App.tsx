@@ -25,6 +25,7 @@ import {
   Pencil,
   Ban,
   UserCheck,
+  UserCog,
   Maximize2,
   Minimize2,
   Users,
@@ -53,6 +54,7 @@ interface User {
   dssAssessmentsRun: number;
   pendingDeletion?: boolean;
   pendingDeletionRequestedByName?: string | null;
+  pendingEmail?: string | null;
   token?: string;
 }
 
@@ -221,10 +223,11 @@ const ACTIVITY_ACTION_LABELS: Record<string, string> = {
   password_reset_completed: 'Password Reset Completed',
   role_changed: 'Role Changed',
   account_status_changed: 'Status Changed',
-  account_deleted: 'Account Deleted',
   account_deletion_requested: 'Deletion Requested',
   account_deletion_approved: 'Deletion Approved',
   account_deletion_rejected: 'Deletion Rejected',
+  email_change_requested: 'Email Change Requested',
+  email_changed: 'Email Changed',
   dss_assessment_run: 'DSS Assessment',
   chatbot_message: 'Chatbot Message',
   meeting_joined: 'Joined Seminar',
@@ -248,9 +251,10 @@ const ACTIVITY_SEVERITY: Record<string, 'high' | 'medium' | 'low'> = {
   login_blocked: 'medium',
   role_changed: 'high',
   account_status_changed: 'medium',
-  account_deleted: 'high',
   account_deletion_requested: 'high',
   account_deletion_approved: 'high',
+  email_change_requested: 'medium',
+  email_changed: 'high',
   certificate_revoked: 'medium',
 };
 
@@ -565,6 +569,9 @@ export default function App() {
   const [certAttendanceRows, setCertAttendanceRows] = useState<Record<number, { secondsAttended: number; eligible: boolean; granted: boolean; rsvped: boolean }>>({});
   const [registrantsModalOpen, setRegistrantsModalOpen] = useState(false);
   const [registrantsModalMeeting, setRegistrantsModalMeeting] = useState<Meeting | null>(null);
+  const [roleChangeUser, setRoleChangeUser] = useState<User | null>(null);
+  const [roleChangeSelection, setRoleChangeSelection] = useState<string>('');
+  const [roleChangeLoading, setRoleChangeLoading] = useState(false);
   const [cattleModalOpen, setCattleModalOpen] = useState(false);
   const [cattleModalFilter, setCattleModalFilter] = useState<'all' | 'ready'>('all');
   const [cattleList, setCattleList] = useState<CattleRecord[]>([]);
@@ -589,10 +596,11 @@ export default function App() {
   const [authForm, setAuthForm] = useState({ name: '', email: '', password: '', role: 'Farmer', organization: '' });
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
-  const [authView, setAuthView] = useState<'login' | 'register' | 'forgot' | 'reset' | 'verify' | 'verify-pending'>(() => {
+  const [authView, setAuthView] = useState<'login' | 'register' | 'forgot' | 'reset' | 'verify' | 'verify-pending' | 'verify-email-change'>(() => {
     const hasToken = !!new URLSearchParams(window.location.search).get('token');
     if (window.location.pathname === '/reset-password' && hasToken) return 'reset';
     if (window.location.pathname === '/verify-email' && hasToken) return 'verify';
+    if (window.location.pathname === '/verify-email-change' && hasToken) return 'verify-email-change';
     return 'login';
   });
   const [resetToken] = useState(() => new URLSearchParams(window.location.search).get('token') || '');
@@ -607,16 +615,22 @@ export default function App() {
   const [pendingVerificationEmail, setPendingVerificationEmail] = useState('');
   const [resendingVerification, setResendingVerification] = useState(false);
   const [resendSent, setResendSent] = useState(false);
+  // Same "read once at mount" approach as verifyToken above.
+  const [verifyEmailChangeToken] = useState(() => new URLSearchParams(window.location.search).get('token') || '');
+  const [verifyEmailChangeStatus, setVerifyEmailChangeStatus] = useState<'pending' | 'success' | 'error'>('pending');
+  const [verifyEmailChangeErrorMsg, setVerifyEmailChangeErrorMsg] = useState('');
 
-  // Profile Form State
+  // Profile Form State. Email and role aren't editable here — a role change is
+  // an Admin-only action (see the Users tab's Change Role button) and an email
+  // change goes through its own verify-before-it-takes-effect flow below.
   const [profileForm, setProfileForm] = useState({
     name: '',
-    email: '',
     organization: '',
-    role: 'Farmer',
     password: '',
     currentPassword: ''
   });
+  const [emailChangeForm, setEmailChangeForm] = useState({ newEmail: '', currentPassword: '' });
+  const [emailChangeLoading, setEmailChangeLoading] = useState(false);
 
   // Profile Avatar Upload State
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -917,9 +931,7 @@ export default function App() {
       setIsAuthenticated(true);
       setProfileForm({
         name: parsedUser.name,
-        email: parsedUser.email,
         organization: parsedUser.organization || '',
-        role: parsedUser.role,
         password: '',
         currentPassword: ''
       });
@@ -943,10 +955,14 @@ export default function App() {
     logoImgRef.current = logoImg;
 
     // Normalize the landing URL so it always reflects the active tab — but leave
-    // a reset-password or verify-email link alone, since their token lives in
-    // the query string and tabFromPath would otherwise coerce it straight to
-    // /dashboard.
-    if (window.location.pathname !== '/reset-password' && window.location.pathname !== '/verify-email') {
+    // a reset-password, verify-email, or verify-email-change link alone, since
+    // their token lives in the query string and tabFromPath would otherwise
+    // coerce it straight to /dashboard.
+    if (
+      window.location.pathname !== '/reset-password' &&
+      window.location.pathname !== '/verify-email' &&
+      window.location.pathname !== '/verify-email-change'
+    ) {
       window.history.replaceState({}, '', `/${tabFromPath(window.location.pathname)}`);
     }
   }, []);
@@ -967,6 +983,36 @@ export default function App() {
       .catch(err => {
         setVerifyStatus('error');
         setVerifyErrorMsg(err.response?.data?.message || 'This verification link is invalid or has expired.');
+      });
+  }, []);
+
+  // Mirrors the /verify-email effect above — fires once on landing directly on
+  // a /verify-email-change?token=... link. This works whether or not the
+  // clicking browser is currently signed in, since the token alone identifies
+  // the account server-side.
+  useEffect(() => {
+    if (authView !== 'verify-email-change') return;
+    if (!verifyEmailChangeToken) {
+      setVerifyEmailChangeStatus('error');
+      setVerifyEmailChangeErrorMsg('This confirmation link is missing its token. Please request a new one from your Profile page.');
+      return;
+    }
+    axios.post(`${API_BASE}/auth/verify-email-change`, { token: verifyEmailChangeToken })
+      .then(() => {
+        setVerifyEmailChangeStatus('success');
+        // If this browser happens to be signed in as the account that just
+        // changed its email, sync the local copy so the UI doesn't keep
+        // showing the old address until next login.
+        setCurrentUser(prev => {
+          if (!prev || !prev.pendingEmail) return prev;
+          const updated = { ...prev, email: prev.pendingEmail, pendingEmail: null };
+          localStorage.setItem('philsar_user', JSON.stringify(updated));
+          return updated;
+        });
+      })
+      .catch(err => {
+        setVerifyEmailChangeStatus('error');
+        setVerifyEmailChangeErrorMsg(err.response?.data?.message || 'This confirmation link is invalid or has expired.');
       });
   }, []);
 
@@ -1153,9 +1199,7 @@ export default function App() {
       // Prepopulate profile form
       setProfileForm({
         name: user.name,
-        email: user.email,
         organization: user.organization || '',
-        role: user.role,
         password: '',
         currentPassword: ''
       });
@@ -1300,8 +1344,6 @@ export default function App() {
     try {
       const response = await axios.put(`${API_BASE}/auth/profile/${currentUser.id}`, {
         name: profileForm.name,
-        email: profileForm.email,
-        role: profileForm.role,
         organization: profileForm.organization,
         password: profileForm.password || undefined,
         currentPassword: profileForm.password ? profileForm.currentPassword : undefined
@@ -1320,6 +1362,34 @@ export default function App() {
       setProfileForm(prev => ({ ...prev, password: '', currentPassword: '' }));
     } catch (error: any) {
       showToast(error.response?.data?.message || 'Failed to update profile.', 'error');
+    }
+  };
+
+  // Separate from handleProfileSubmit above — this doesn't change anything on
+  // the account by itself, it only sends a confirmation link to the new
+  // address. The account keeps using its current email until that link is
+  // clicked (see the /verify-email-change gatekeeper view).
+  const handleChangeEmailSubmit = async () => {
+    if (!currentUser) return;
+    if (!emailChangeForm.newEmail || !emailChangeForm.currentPassword) {
+      showToast('Enter a new email address and your current password.', 'warning');
+      return;
+    }
+    setEmailChangeLoading(true);
+    try {
+      const response = await axios.post(`${API_BASE}/auth/profile/${currentUser.id}/change-email`, {
+        newEmail: emailChangeForm.newEmail,
+        currentPassword: emailChangeForm.currentPassword
+      });
+      const updated = { ...currentUser, pendingEmail: response.data.pendingEmail };
+      localStorage.setItem('philsar_user', JSON.stringify(updated));
+      setCurrentUser(updated);
+      setEmailChangeForm({ newEmail: '', currentPassword: '' });
+      showToast(response.data.message, 'success');
+    } catch (error: any) {
+      showToast(error.response?.data?.message || 'Failed to request email change.', 'error');
+    } finally {
+      setEmailChangeLoading(false);
     }
   };
 
@@ -1953,6 +2023,29 @@ export default function App() {
     }
   };
 
+  // A System Admin changing their own role wouldn't be logged (updateProfile's
+  // role_changed log is guarded by isAdmin && !isSelf, to distinguish a genuine
+  // admin action from ordinary self-service), so this modal is never opened for
+  // the admin's own row in the first place — see the Actions column below.
+  const handleConfirmRoleChange = async () => {
+    if (!roleChangeUser || !roleChangeSelection) return;
+    if (roleChangeSelection === roleChangeUser.role) {
+      setRoleChangeUser(null);
+      return;
+    }
+    setRoleChangeLoading(true);
+    try {
+      await axios.put(`${API_BASE}/auth/profile/${roleChangeUser.id}`, { role: roleChangeSelection });
+      setAllUsers(prev => prev.map(u => u.id === roleChangeUser.id ? { ...u, role: roleChangeSelection as User['role'] } : u));
+      showToast(`${roleChangeUser.name}'s role is now ${roleChangeSelection}.`, 'success');
+      setRoleChangeUser(null);
+    } catch (error: any) {
+      showToast(error.response?.data?.message || 'Error changing role.', 'error');
+    } finally {
+      setRoleChangeLoading(false);
+    }
+  };
+
   const handleImageFileUpload = async (file: File) => {
     if (!file) return;
 
@@ -2576,7 +2669,7 @@ export default function App() {
 
   // Render Auth Screen (Gatekeeper) — a reset-password or verify-email link
   // must show its screen even if this browser already has an active session.
-  if (!isAuthenticated || authView === 'reset' || authView === 'verify') {
+  if (!isAuthenticated || authView === 'reset' || authView === 'verify' || authView === 'verify-email-change') {
     return (
       <div className="auth-wrapper">
         <div className="auth-card">
@@ -2915,6 +3008,46 @@ export default function App() {
                   {verifyStatus === 'error' && (
                     <>
                       <div className="auth-error-box">{verifyErrorMsg}</div>
+                      <button
+                        className="auth-submit-btn"
+                        type="button"
+                        onClick={() => { window.history.replaceState({}, '', '/'); setAuthView('login'); }}
+                      >
+                        <span>→</span>
+                        Back to Sign In
+                      </button>
+                    </>
+                  )}
+                </>
+              ) : authView === 'verify-email-change' ? (
+                <>
+                  <div className="auth-form-header">
+                    <h2 className="auth-form-title">Confirm new email address</h2>
+                  </div>
+
+                  {verifyEmailChangeStatus === 'pending' && (
+                    <div className="auth-error-box">Confirming your new email address…</div>
+                  )}
+
+                  {verifyEmailChangeStatus === 'success' && (
+                    <>
+                      <div className="auth-error-box" style={{ background: 'rgba(34,139,34,0.08)', borderColor: 'rgba(34,139,34,0.3)', color: '#2e7d32' }}>
+                        Your email address has been updated. {isAuthenticated ? 'You can keep using this session.' : 'Please sign in with your new email.'}
+                      </div>
+                      <button
+                        className="auth-submit-btn"
+                        type="button"
+                        onClick={() => { window.history.replaceState({}, '', '/'); setAuthView('login'); }}
+                      >
+                        <span>→</span>
+                        {isAuthenticated ? 'Continue' : 'Go to Sign In'}
+                      </button>
+                    </>
+                  )}
+
+                  {verifyEmailChangeStatus === 'error' && (
+                    <>
+                      <div className="auth-error-box">{verifyEmailChangeErrorMsg}</div>
                       <button
                         className="auth-submit-btn"
                         type="button"
@@ -4228,13 +4361,10 @@ export default function App() {
                       </div>
                       <div className="form-group">
                         <label className="form-label">Email Address</label>
-                        <input
-                          className="form-control"
-                          type="email"
-                          value={profileForm.email}
-                          onChange={e => setProfileForm({ ...profileForm, email: e.target.value })}
-                          required
-                        />
+                        <input className="form-control" type="email" value={currentUser?.email || ''} disabled />
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                          Use "Change Email Address" below to update this.
+                        </div>
                       </div>
                       <div className="form-group">
                         <label className="form-label">Organization / Farm Address</label>
@@ -4244,22 +4374,6 @@ export default function App() {
                           value={profileForm.organization}
                           onChange={e => setProfileForm({ ...profileForm, organization: e.target.value })}
                         />
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label">Role</label>
-                        <select
-                          className="form-control"
-                          value={profileForm.role}
-                          onChange={e => setProfileForm({ ...profileForm, role: e.target.value as any })}
-                        >
-                          <option>Livestock Manager</option>
-                          <option>Farmer</option>
-                          <option>Veterinarian</option>
-                          <option>Extension Worker</option>
-                          {currentUser?.role === 'Admin' && <option>Admin</option>}
-                          {currentUser?.role === 'Sub Admin' && <option>Sub Admin</option>}
-                          {currentUser?.role === 'Secretary' && <option>Secretary</option>}
-                        </select>
                       </div>
 
                       <div style={{ borderTop: '1px solid var(--border)', marginTop: '24px', paddingTop: '20px' }}>
@@ -4296,6 +4410,52 @@ export default function App() {
                         Save Changes
                       </button>
                     </form>
+                  </div>
+                </div>
+
+                <div className="card">
+                  <div className="card-header"><div className="card-title">Change Email Address</div></div>
+                  <div className="card-body">
+                    {currentUser?.pendingEmail && (
+                      <div style={{
+                        background: 'rgba(48,92,222,0.08)',
+                        border: '1px solid rgba(48,92,222,0.3)',
+                        borderRadius: 'var(--radius-sm)',
+                        padding: '12px 14px',
+                        marginBottom: '16px',
+                        fontSize: '13px'
+                      }}>
+                        A confirmation link was sent to <strong>{currentUser.pendingEmail}</strong>. Check that inbox to finish the change — your sign-in email stays the same until then.
+                      </div>
+                    )}
+                    <div className="form-group">
+                      <label className="form-label">New Email Address</label>
+                      <input
+                        className="form-control"
+                        type="email"
+                        value={emailChangeForm.newEmail}
+                        onChange={e => setEmailChangeForm({ ...emailChangeForm, newEmail: e.target.value })}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Current Password</label>
+                      <input
+                        className="form-control"
+                        type="password"
+                        placeholder="••••••••"
+                        value={emailChangeForm.currentPassword}
+                        onChange={e => setEmailChangeForm({ ...emailChangeForm, currentPassword: e.target.value })}
+                      />
+                    </div>
+                    <button
+                      className="submit-btn"
+                      style={{ width: 'auto', padding: '12px 28px' }}
+                      type="button"
+                      disabled={emailChangeLoading}
+                      onClick={handleChangeEmailSubmit}
+                    >
+                      {emailChangeLoading ? 'Sending…' : 'Send Verification Link'}
+                    </button>
                   </div>
                 </div>
 
@@ -4619,6 +4779,15 @@ export default function App() {
                                       <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Awaiting Sub Admin approval</span>
                                     ) : (
                                       <>
+                                        {u.id !== currentUser?.id && (
+                                          <button
+                                            className="table-action"
+                                            onClick={() => { setRoleChangeUser(u); setRoleChangeSelection(u.role); }}
+                                            title="Change role"
+                                          >
+                                            <UserCog size={14} style={{ color: 'var(--amber)' }} />
+                                          </button>
+                                        )}
                                         <button className="table-action" onClick={() => handleToggleUserStatus(u)} title={u.status === 'Active' ? 'Deactivate' : 'Activate'}>
                                           {u.status === 'Active'
                                             ? <Ban size={14} style={{ color: '#d48806' }} />
@@ -6250,6 +6419,39 @@ export default function App() {
             </div>
             <div className="confirm-actions" style={{ marginTop: '16px' }}>
               <button className="confirm-btn confirm-btn-cancel" onClick={() => setCertModalOpen(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Change Role (System Admin) */}
+      {roleChangeUser && (
+        <div className="confirm-overlay" onClick={() => setRoleChangeUser(null)}>
+          <div className="confirm-box" style={{ maxWidth: '420px' }} onClick={e => e.stopPropagation()}>
+            <div className="confirm-message" style={{ fontWeight: 700, marginBottom: '14px' }}>
+              Change role — {roleChangeUser.name}
+            </div>
+            <div className="form-group">
+              <label className="form-label">New Role</label>
+              <select
+                className="form-control"
+                value={roleChangeSelection}
+                onChange={e => setRoleChangeSelection(e.target.value)}
+              >
+                <option>Livestock Manager</option>
+                <option>Farmer</option>
+                <option>Veterinarian</option>
+                <option>Extension Worker</option>
+                <option>Secretary</option>
+                <option>Sub Admin</option>
+                <option>Admin</option>
+              </select>
+            </div>
+            <div className="confirm-actions" style={{ marginTop: '16px' }}>
+              <button className="confirm-btn confirm-btn-cancel" onClick={() => setRoleChangeUser(null)}>Cancel</button>
+              <button className="submit-btn" style={{ width: 'auto', padding: '9px 18px' }} onClick={handleConfirmRoleChange} disabled={roleChangeLoading}>
+                {roleChangeLoading ? 'Saving…' : 'Save Role'}
+              </button>
             </div>
           </div>
         </div>
