@@ -219,6 +219,7 @@ const updateProfile = async (req, res) => {
 
         const oldRole = user.role;
         const oldStatus = user.status;
+        const oldName = user.name;
         const targetEmail = user.email;
 
         // Password change handling
@@ -272,6 +273,13 @@ const updateProfile = async (req, res) => {
             logActivity({
                 userId: user.id, userName: user.name, userRole: user.role,
                 action: 'password_changed', category: 'account', details: 'User changed their own password', req
+            });
+        }
+        if (name && name !== oldName) {
+            logActivity({
+                userId: user.id, userName: user.name, userRole: user.role,
+                action: 'name_changed', category: 'account',
+                details: `${targetEmail}: "${oldName}" → "${name}"`, req
             });
         }
         if (isAdmin && !isSelf) {

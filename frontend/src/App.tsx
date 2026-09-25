@@ -219,6 +219,7 @@ const ACTIVITY_ACTION_LABELS: Record<string, string> = {
   logout: 'Logout',
   account_registered: 'Account Registered',
   password_changed: 'Password Changed',
+  name_changed: 'Name Changed',
   password_reset_requested: 'Password Reset Requested',
   password_reset_completed: 'Password Reset Completed',
   role_changed: 'Role Changed',
