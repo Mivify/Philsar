@@ -107,7 +107,7 @@ interface Assessment {
   cattleId: string;
   age: number;
   bcs: number;
-  daysSinceCalving?: number;
+  daysSinceCalving?: number | null;
   estrusIndicators: string;
   history: string;
   healthStatus: string;
@@ -1499,7 +1499,12 @@ export default function App() {
   // DSS Insemination Assessment
   const handleDSSSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!dssForm.cattleId || !dssForm.age || !dssForm.daysSinceCalving) {
+    if (!dssForm.history) {
+      showToast('Please select the cattle\'s reproductive history.', 'warning');
+      return;
+    }
+    const isFirstBreeding = dssForm.history === 'First Breeding';
+    if (!dssForm.cattleId || !dssForm.age || (!isFirstBreeding && !dssForm.daysSinceCalving)) {
       showToast('Please fill out all required cattle data fields.', 'warning');
       return;
     }
@@ -1507,17 +1512,14 @@ export default function App() {
       showToast('Please select at least one estrus indicator (or "None Observed").', 'warning');
       return;
     }
-    if (!dssForm.history) {
-      showToast('Please select the cattle\'s reproductive history.', 'warning');
-      return;
-    }
     setDssLoading(true);
     try {
       const response = await axios.post(`${API_BASE}/assessments`, {
         cattleId: dssForm.cattleId,
-        age: dssForm.age,
+        // A heifer's age is entered in months; the backend always works in years.
+        age: isFirstBreeding ? parseInt(dssForm.age) / 12 : dssForm.age,
         bcs: dssForm.bcs.split(' ')[0], // Parse first character (number)
-        daysSinceCalving: dssForm.daysSinceCalving,
+        daysSinceCalving: isFirstBreeding ? null : dssForm.daysSinceCalving,
         estrusIndicators: dssForm.estrusIndicators.join(', '),
         history: dssForm.history,
         healthStatus: dssForm.healthStatus,
@@ -3616,7 +3618,7 @@ export default function App() {
                           ></div>
                           <div>
                             <div className="activity-text">
-                              DSS evaluated Cattle <strong>#{item.cattleId}</strong> (Age {item.age}, BCS {item.bcs}) as{' '}
+                              DSS evaluated Cattle <strong>#{item.cattleId}</strong> (Age {item.history === 'First Breeding' ? `${Math.round(item.age * 12)} mo` : item.age}, BCS {item.bcs}) as{' '}
                               <strong>{item.isReady ? 'Ready' : 'Not Ready'}</strong>. Recommended:{' '}
                               <strong>{item.recommendation}</strong>
                             </div>
@@ -3985,18 +3987,56 @@ export default function App() {
                           required
                         />
                       </div>
+                      {/* Asked first because it decides how the next fields are
+                          read: a first breeding is a heifer, aged in months, with
+                          no previous calving to count days from. */}
                       <div className="form-group">
-                        <label className="form-label">Age (years) <span>*</span></label>
+                        <label className="form-label">Reproductive History <span>*</span></label>
+                        <div className="radio-group">
+                          {['Successful Previous Calving', 'First Breeding', 'History of Infertility'].map(hist => (
+                            <div
+                              key={hist}
+                              className={`radio-btn ${dssForm.history === hist ? 'selected' : ''}`}
+                              onClick={() => {
+                                const wasHeifer = dssForm.history === 'First Breeding';
+                                const isHeifer = hist === 'First Breeding';
+                                let age = dssForm.age;
+                                if (age && wasHeifer !== isHeifer) {
+                                  const n = parseFloat(age);
+                                  age = isHeifer ? String(Math.round(n * 12)) : String(Math.max(1, Math.round(n / 12)));
+                                }
+                                setDssForm({
+                                  ...dssForm,
+                                  history: hist,
+                                  age,
+                                  daysSinceCalving: isHeifer ? '' : dssForm.daysSinceCalving
+                                });
+                              }}
+                            >
+                              {hist}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">
+                          {dssForm.history === 'First Breeding' ? 'Age (months)' : 'Age (years)'} <span>*</span>
+                        </label>
                         <input
                           className="form-control"
                           type="number"
-                          placeholder="e.g., 3"
+                          placeholder={dssForm.history === 'First Breeding' ? 'e.g., 15' : 'e.g., 3'}
                           value={dssForm.age}
                           onChange={e => setDssForm({ ...dssForm, age: e.target.value })}
-                          min="1"
-                          max="15"
+                          min={dssForm.history === 'First Breeding' ? '6' : '1'}
+                          max={dssForm.history === 'First Breeding' ? '96' : '15'}
                           required
                         />
+                        {dssForm.history === 'First Breeding' && (
+                          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                            Heifers are assessed in months — the minimum for a first breeding is 15 months.
+                          </div>
+                        )}
                       </div>
                       <div className="form-group">
                         <label className="form-label">Body Condition Score (1–9) <span>*</span></label>
@@ -4017,15 +4057,32 @@ export default function App() {
                         </select>
                       </div>
                       <div className="form-group">
-                        <label className="form-label">Days Since Last Calving <span>*</span></label>
-                        <input
-                          className="form-control"
-                          type="number"
-                          placeholder="e.g., 60"
-                          value={dssForm.daysSinceCalving}
-                          onChange={e => setDssForm({ ...dssForm, daysSinceCalving: e.target.value })}
-                          required
-                        />
+                        <label className="form-label">
+                          Days Since Last Calving {dssForm.history !== 'First Breeding' && <span>*</span>}
+                        </label>
+                        {dssForm.history === 'First Breeding' ? (
+                          <>
+                            <input
+                              className="form-control"
+                              type="text"
+                              value="Not applicable"
+                              disabled
+                            />
+                            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                              A first breeding means no previous calving, so the waiting period doesn't apply.
+                            </div>
+                          </>
+                        ) : (
+                          <input
+                            className="form-control"
+                            type="number"
+                            placeholder="e.g., 60"
+                            value={dssForm.daysSinceCalving}
+                            onChange={e => setDssForm({ ...dssForm, daysSinceCalving: e.target.value })}
+                            min="0"
+                            required
+                          />
+                        )}
                       </div>
                       <div className="form-group">
                         <label className="form-label">Estrus Indicators <span>*</span> <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(select all that apply)</span></label>
@@ -4050,20 +4107,6 @@ export default function App() {
                               }}
                             >
                               {indicator}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label">Reproductive History <span>*</span></label>
-                        <div className="radio-group">
-                          {['Successful Previous Calving', 'First Breeding', 'History of Infertility'].map(hist => (
-                            <div
-                              key={hist}
-                              className={`radio-btn ${dssForm.history === hist ? 'selected' : ''}`}
-                              onClick={() => setDssForm({ ...dssForm, history: hist })}
-                            >
-                              {hist}
                             </div>
                           ))}
                         </div>
@@ -4121,16 +4164,28 @@ export default function App() {
                         <div className="verdict-method-label">Recommended Technique</div>
                         <div className="verdict-method-name">{dssResult.recommendation}</div>
                         <div className="verdict-method-desc">
-                          Computed using standard voluntary waiting period (VWP) and physiological readiness constraints.
+                          {dssResult.history === 'First Breeding'
+                            ? 'Computed using first-breeding age and physiological readiness constraints.'
+                            : 'Computed using standard voluntary waiting period (VWP) and physiological readiness constraints.'}
                         </div>
                       </div>
 
                       <div style={{ marginBottom: '16px' }}>
                         <div className="toc-title" style={{ marginBottom: '12px' }}>Evaluation Checklist</div>
                         <ul className="criteria-list">
+                          {/* Must mirror ageOk in assessmentController.js */}
                           <li className="criteria-item">
-                            <div className="criteria-icon">{parseInt(dssForm.age) >= 2 && parseInt(dssForm.age) <= 8 ? '✅' : '❌'}</div>
-                            Age is within optimal breeding parameters (2–8 years)
+                            {dssForm.history === 'First Breeding' ? (
+                              <>
+                                <div className="criteria-icon">{parseFloat(dssForm.age) >= 15 && parseFloat(dssForm.age) <= 96 ? '✅' : '❌'}</div>
+                                Age is suitable for a first breeding (15 months – 8 years)
+                              </>
+                            ) : (
+                              <>
+                                <div className="criteria-icon">{parseFloat(dssForm.age) >= 2 && parseFloat(dssForm.age) <= 8 ? '✅' : '❌'}</div>
+                                Age is within optimal breeding parameters (2–8 years)
+                              </>
+                            )}
                           </li>
                           <li className="criteria-item">
                             <div className="criteria-icon">{parseInt(dssForm.bcs.split(' ')[0]) >= 5 && parseInt(dssForm.bcs.split(' ')[0]) <= 7 ? '✅' : '❌'}</div>
@@ -4141,8 +4196,19 @@ export default function App() {
                             Estrus / heat signs successfully observed
                           </li>
                           <li className="criteria-item">
-                            <div className="criteria-icon">{parseInt(dssForm.daysSinceCalving) >= 45 ? '✅' : '❌'}</div>
-                            Voluntary waiting period (VWP) is sufficient ( &gt;= 45 days)
+                            {dssForm.history === 'First Breeding' ? (
+                              <>
+                                <div className="criteria-icon">➖</div>
+                                <span style={{ color: 'var(--text-muted)' }}>
+                                  Voluntary waiting period — not applicable (first breeding, no previous calving)
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <div className="criteria-icon">{parseInt(dssForm.daysSinceCalving) >= 45 ? '✅' : '❌'}</div>
+                                Voluntary waiting period (VWP) is sufficient ( &gt;= 45 days)
+                              </>
+                            )}
                           </li>
                           <li className="criteria-item">
                             <div className="criteria-icon">{(dssForm.healthStatus === 'Healthy — no issues' || dssForm.healthStatus === 'Minor health issue — treated') ? '✅' : '❌'}</div>

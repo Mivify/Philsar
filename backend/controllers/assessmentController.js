@@ -16,7 +16,13 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 // guidance isn't limited to only what happens to be written in the modules.
 const generateBreedingGuidance = async (data, fallback) => {
     try {
-        const caseQuery = `Breeding readiness assessment: age ${data.age} years, body condition score ${data.bcs}, ${data.daysSinceCalving} days since last calving, estrus indicators: ${data.estrusIndicators}, reproductive history: ${data.history}, current health status: ${data.healthStatus}. Determined ${data.isReady ? 'ready for breeding' : 'not ready for breeding'} — recommended action: ${data.recommendation}.`;
+        const ageText = data.isFirstBreeding
+            ? `${Math.round(data.age * 12)} months (maiden heifer)`
+            : `${data.age} years`;
+        const calvingText = data.isFirstBreeding
+            ? 'no previous calving (first breeding)'
+            : `${data.daysSinceCalving} days since last calving`;
+        const caseQuery = `Breeding readiness assessment: age ${ageText}, body condition score ${data.bcs}, ${calvingText}, estrus indicators: ${data.estrusIndicators}, reproductive history: ${data.history}, current health status: ${data.healthStatus}. Determined ${data.isReady ? 'ready for breeding' : 'not ready for breeding'} — recommended action: ${data.recommendation}.`;
         const relevantChunks = await retrieveRelevantChunks(caseQuery);
         const referenceContext = relevantChunks.length > 0
             ? `\n\nReference material from PHILSAR's Learning Modules (ground your guidance in this when it's relevant to this case; otherwise rely on your own veterinary/animal husbandry knowledge — don't force a connection that isn't there):\n${relevantChunks.map(c => `--- From "${c.moduleTitle}" (${c.lessonTitle}) ---\n${c.content}`).join('\n\n')}`
@@ -31,19 +37,19 @@ const generateBreedingGuidance = async (data, fallback) => {
         // didn't meet keeps its explanation aligned with what the farmer sees.
         const checklistSummary = `
 System Checklist Results (already evaluated by this system's rules — do not contradict these; only explain the verdict using criteria marked NOT MET, even if a MET value might seem non-ideal by general standards):
-- Age within 2-8 years: ${data.checklist.ageOk ? 'MET' : 'NOT MET'}
+- ${data.isFirstBreeding ? 'Age suitable for first breeding (15 months to 8 years)' : 'Age within 2-8 years'}: ${data.checklist.ageOk ? 'MET' : 'NOT MET'}
 - Body Condition Score within 5-7: ${data.checklist.bcsOk ? 'MET' : 'NOT MET'}
 - Health status clear of untreated/ongoing conditions: ${data.checklist.healthOk ? 'MET' : 'NOT MET'}
-- Voluntary waiting period (>=45 days since calving): ${data.checklist.vwpOk ? 'MET' : 'NOT MET'}
+- Voluntary waiting period (>=45 days since calving): ${data.checklist.vwpOk === null ? 'NOT APPLICABLE — this is a maiden heifer with no previous calving; do not mention a waiting period' : (data.checklist.vwpOk ? 'MET' : 'NOT MET')}
 - Estrus/heat signs observed: ${data.checklist.estrusOk ? 'MET' : 'NOT MET'}
 - No unresolved repeat-breeder history: ${data.checklist.historyOk ? 'MET' : 'NOT MET'}`;
 
         const prompt = `You are a livestock reproduction advisor for the PHILSAR Cattle Reproductive Portal. Based on the following breeding assessment, write a short, practical guidance paragraph (2-4 sentences, no headers or bullet points) for the farmer.
 
 Cattle ID: ${data.cattleId}
-Age: ${data.age} years
+Age: ${ageText}
 Body Condition Score (BCS): ${data.bcs} (scale 1-9)
-Days Since Last Calving: ${data.daysSinceCalving}
+Days Since Last Calving: ${data.isFirstBreeding ? 'Not applicable — first breeding, no previous calving' : data.daysSinceCalving}
 Estrus Indicators Observed: ${data.estrusIndicators}
 Reproductive History: ${data.history}
 Current Health Status: ${data.healthStatus}
@@ -84,9 +90,23 @@ const createAssessment = async (req, res) => {
             return res.status(400).json({ message: 'Missing required evaluation fields' });
         }
 
-        const ageNum = parseInt(age);
+        // A maiden heifer has never calved, so "days since last calving" has no
+        // meaning for her. Every other history requires it — previously a
+        // missing value silently defaulted to 60, which quietly passed the
+        // waiting-period check for a cow that may have calved yesterday.
+        const isFirstBreeding = history === 'First Breeding';
+        if (!isFirstBreeding && (daysSinceCalving === undefined || daysSinceCalving === null || daysSinceCalving === '')) {
+            return res.status(400).json({ message: 'Days since last calving is required unless this is a first breeding.' });
+        }
+
+        // Always years; a heifer's age arrives as months/12 (e.g. 15 mo = 1.25).
+        const ageNum = parseFloat(age);
+        if (Number.isNaN(ageNum) || ageNum <= 0) {
+            return res.status(400).json({ message: 'Please enter a valid age.' });
+        }
+        const ageMonths = Math.round(ageNum * 12);
         const bcsNum = parseInt(bcs);
-        const daysNum = daysSinceCalving ? parseInt(daysSinceCalving) : 60;
+        const daysNum = isFirstBreeding ? null : parseInt(daysSinceCalving);
 
         // DSS Evaluation Logic
         const indicatorList = estrusIndicators.split(',').map(s => s.trim()).filter(Boolean);
@@ -104,13 +124,37 @@ const createAssessment = async (req, res) => {
         // the leading causes of reproductive-related culling.
         const isHealthClear = healthStatus === 'Healthy — no issues' || healthStatus === 'Minor health issue — treated';
 
-        // Age 2-8: cows 4-10 yrs old had the highest conception rate (86.5%) vs.
-        // 60.4% for cows >10 yrs old in Samkange et al. (2019, Trop. Anim. Health
-        // Prod. 51(7):1829-1837); 2 as the lower bound matches the ~22-25-month
-        // optimal age at first calving found in Kusaka et al. (2023, J. Reprod.
-        // Dev. 69(5):291-297). 8 is used (not 10) to stay inside the
-        // highest-performing band rather than right at its edge.
-        const ageOk = ageNum >= 2 && ageNum <= 8;
+        // Age 2-8 (cows that have calved before): cows 4-10 yrs old had the
+        // highest conception rate (86.5%) vs. 60.4% for cows >10 yrs old in
+        // Samkange et al. (2019, Trop. Anim. Health Prod. 51(7):1829-1837); 2 as
+        // the lower bound matches the optimal age at first calving in Kusaka et
+        // al. (2023, J. Reprod. Dev. 69(6):291-297), where calving as early as
+        // 22.5 months gave better survivability without impairing fertility.
+        // 8 is used (not 10) to stay inside the highest-performing band rather
+        // than right at its edge.
+        //
+        // Age 15 months – 8 years (First Breeding, a maiden heifer): the 2-year
+        // floor above is an age at first *calving*, so applying it to a heifer
+        // being bred for the first time rejected her ~9 months too late.
+        // - Fantuz et al. (2024, Animals 14(19):2801): to calve at 22-24 months,
+        //   heifers "need to conceive at 13-15 months of age at 55-60% of
+        //   estimated mature BW".
+        // - Kusaka et al. (2023) above: calving at ≥22.5 months minus a ~9-month
+        //   gestation puts conception at ~13-14 months, consistent with that.
+        // - Lean et al. (2026, J. Dairy Sci., doi:10.3168/jds.2026-28762): 10-13
+        //   months is possible only for well-grown heifers (>330 kg), at the cost
+        //   of more stillbirths and medical treatment.
+        // - Fernandes Júnior et al. (2022, Animals 12(2):174): zebu (Bos indicus)
+        //   puberty is ~25 months; only herds selected for sexual precocity
+        //   start mating at 14 months.
+        // This form collects no body weight and most Philippine herds are Bos
+        // indicus-influenced, so 15 months — the conservative top of the Bos
+        // taurus window — is the floor. A zebu heifer that hasn't reached
+        // puberty is still caught by the separate estrus-sign criterion, which
+        // is direct evidence of cycling rather than an age proxy for it.
+        const ageOk = isFirstBreeding
+            ? (ageMonths >= 15 && ageMonths <= 96)
+            : (ageNum >= 2 && ageNum <= 8);
 
         // BCS 5-7 — all figures here are on the same 1-9 scale this form uses
         // (not the 1-5 Canadian/UK scale some sources use, which would need
@@ -127,7 +171,9 @@ const createAssessment = async (req, res) => {
         // found an economically optimal voluntary waiting period of roughly
         // 6-8 weeks (42-56 days) for most cows; 45 days sits at the low end of
         // the 45-60-day range SDSU Extension (Villamediana, 2023) recommends.
-        const vwpOk = daysNum >= 45;
+        // null (not applicable) for a maiden heifer — there is no calving to wait
+        // after, so this criterion neither passes nor fails her.
+        const vwpOk = isFirstBreeding ? null : daysNum >= 45;
 
         // "History of Infertility" maps to the veterinary concept of a "repeat
         // breeder": a clinically normal, regularly-cycling cow that has failed
@@ -144,7 +190,7 @@ const createAssessment = async (req, res) => {
         // an unresolved health condition does.
         const historyOk = history !== 'History of Infertility';
 
-        const isReady = ageOk && bcsOk && isHealthClear && vwpOk && hasEstrusSign && historyOk;
+        const isReady = ageOk && bcsOk && isHealthClear && vwpOk !== false && hasEstrusSign && historyOk;
 
         // AI is recommended only for Standing Heat or Clear Discharge — the two
         // signs treated as precise ovulation-timing anchors:
@@ -174,11 +220,13 @@ const createAssessment = async (req, res) => {
                 : 'Introduce a proven bull at a ratio of 1:20–30. Monitor closely and keep breeding records. Observe for return to heat in 21 days to confirm breeding success.')
             : (!historyOk
                 ? 'This cow has a documented history of infertility (repeat breeding). Schedule a veterinary reproductive exam (e.g. ultrasonography or progesterone testing) to check for an underlying cause before attempting another service, since retiming alone often will not resolve repeat-breeder cases. Address any other flagged issues (body condition, health, waiting period) in the meantime.'
-                : 'Improve body condition through improved nutrition if BCS is below 5. Treat any health conditions with veterinary guidance. Re-evaluate in 2–4 weeks.');
+                : (isFirstBreeding && ageMonths < 15)
+                    ? `This heifer is ${ageMonths} months old, below the 15-month minimum for a first breeding. Breeding too early risks calving difficulty and stunted growth. Keep her on good nutrition so she reaches 55–65% of her expected mature body weight, keep recording heat signs, and re-evaluate once she is at least 15 months old.`
+                    : 'Improve body condition through improved nutrition if BCS is below 5. Treat any health conditions with veterinary guidance. Re-evaluate in 2–4 weeks.');
 
         const { text: guidance, sources } = await generateBreedingGuidance(
             {
-                cattleId, age: ageNum, bcs: bcsNum, daysSinceCalving: daysNum, estrusIndicators, history, healthStatus, isReady, recommendation,
+                cattleId, age: ageNum, isFirstBreeding, bcs: bcsNum, daysSinceCalving: daysNum, estrusIndicators, history, healthStatus, isReady, recommendation,
                 checklist: { ageOk, bcsOk, healthOk: isHealthClear, vwpOk, estrusOk: hasEstrusSign, historyOk }
             },
             fallbackGuidance
@@ -193,7 +241,7 @@ const createAssessment = async (req, res) => {
         // Save assessment to database
         const assessment = await BreedingAssessment.create({
             cattleId,
-            age: ageNum,
+            age: Math.round(ageNum * 100) / 100,
             bcs: bcsNum,
             daysSinceCalving: daysNum,
             estrusIndicators,
