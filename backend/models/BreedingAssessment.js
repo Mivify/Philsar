@@ -11,9 +11,6 @@ const BreedingAssessment = sequelize.define('BreedingAssessment', {
         type: DataTypes.STRING,
         allowNull: false,
     },
-    // Stored in years, but FLOAT rather than INTEGER: a first-breeding heifer
-    // is assessed in months (15 months = 1.25 years), which a whole-year
-    // column would silently truncate to 1.
     age: {
         type: DataTypes.FLOAT,
         allowNull: false,

@@ -1516,8 +1516,7 @@ export default function App() {
     try {
       const response = await axios.post(`${API_BASE}/assessments`, {
         cattleId: dssForm.cattleId,
-        // A heifer's age is entered in months; the backend always works in years.
-        age: isFirstBreeding ? parseInt(dssForm.age) / 12 : dssForm.age,
+        age: dssForm.age,
         bcs: dssForm.bcs.split(' ')[0], // Parse first character (number)
         daysSinceCalving: isFirstBreeding ? null : dssForm.daysSinceCalving,
         estrusIndicators: dssForm.estrusIndicators.join(', '),
@@ -3618,7 +3617,7 @@ export default function App() {
                           ></div>
                           <div>
                             <div className="activity-text">
-                              DSS evaluated Cattle <strong>#{item.cattleId}</strong> (Age {item.history === 'First Breeding' ? `${Math.round(item.age * 12)} mo` : item.age}, BCS {item.bcs}) as{' '}
+                              DSS evaluated Cattle <strong>#{item.cattleId}</strong> (Age {item.age}, BCS {item.bcs}) as{' '}
                               <strong>{item.isReady ? 'Ready' : 'Not Ready'}</strong>. Recommended:{' '}
                               <strong>{item.recommendation}</strong>
                             </div>
@@ -3987,9 +3986,8 @@ export default function App() {
                           required
                         />
                       </div>
-                      {/* Asked first because it decides how the next fields are
-                          read: a first breeding is a heifer, aged in months, with
-                          no previous calving to count days from. */}
+                      {/* Asked first because it decides whether Days Since Last
+                          Calving applies — a first breeding has no previous calving. */}
                       <div className="form-group">
                         <label className="form-label">Reproductive History <span>*</span></label>
                         <div className="radio-group">
@@ -3997,21 +3995,11 @@ export default function App() {
                             <div
                               key={hist}
                               className={`radio-btn ${dssForm.history === hist ? 'selected' : ''}`}
-                              onClick={() => {
-                                const wasHeifer = dssForm.history === 'First Breeding';
-                                const isHeifer = hist === 'First Breeding';
-                                let age = dssForm.age;
-                                if (age && wasHeifer !== isHeifer) {
-                                  const n = parseFloat(age);
-                                  age = isHeifer ? String(Math.round(n * 12)) : String(Math.max(1, Math.round(n / 12)));
-                                }
-                                setDssForm({
-                                  ...dssForm,
-                                  history: hist,
-                                  age,
-                                  daysSinceCalving: isHeifer ? '' : dssForm.daysSinceCalving
-                                });
-                              }}
+                              onClick={() => setDssForm({
+                                ...dssForm,
+                                history: hist,
+                                daysSinceCalving: hist === 'First Breeding' ? '' : dssForm.daysSinceCalving
+                              })}
                             >
                               {hist}
                             </div>
@@ -4019,24 +4007,17 @@ export default function App() {
                         </div>
                       </div>
                       <div className="form-group">
-                        <label className="form-label">
-                          {dssForm.history === 'First Breeding' ? 'Age (months)' : 'Age (years)'} <span>*</span>
-                        </label>
+                        <label className="form-label">Age (years) <span>*</span></label>
                         <input
                           className="form-control"
                           type="number"
-                          placeholder={dssForm.history === 'First Breeding' ? 'e.g., 15' : 'e.g., 3'}
+                          placeholder="e.g., 3"
                           value={dssForm.age}
                           onChange={e => setDssForm({ ...dssForm, age: e.target.value })}
-                          min={dssForm.history === 'First Breeding' ? '6' : '1'}
-                          max={dssForm.history === 'First Breeding' ? '96' : '15'}
+                          min="1"
+                          max="15"
                           required
                         />
-                        {dssForm.history === 'First Breeding' && (
-                          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                            Heifers are assessed in months — the minimum for a first breeding is 15 months.
-                          </div>
-                        )}
                       </div>
                       <div className="form-group">
                         <label className="form-label">Body Condition Score (1–9) <span>*</span></label>
@@ -4173,19 +4154,9 @@ export default function App() {
                       <div style={{ marginBottom: '16px' }}>
                         <div className="toc-title" style={{ marginBottom: '12px' }}>Evaluation Checklist</div>
                         <ul className="criteria-list">
-                          {/* Must mirror ageOk in assessmentController.js */}
                           <li className="criteria-item">
-                            {dssForm.history === 'First Breeding' ? (
-                              <>
-                                <div className="criteria-icon">{parseFloat(dssForm.age) >= 15 && parseFloat(dssForm.age) <= 96 ? '✅' : '❌'}</div>
-                                Age is suitable for a first breeding (15 months – 8 years)
-                              </>
-                            ) : (
-                              <>
-                                <div className="criteria-icon">{parseFloat(dssForm.age) >= 2 && parseFloat(dssForm.age) <= 8 ? '✅' : '❌'}</div>
-                                Age is within optimal breeding parameters (2–8 years)
-                              </>
-                            )}
+                            <div className="criteria-icon">{parseFloat(dssForm.age) >= 2 && parseFloat(dssForm.age) <= 8 ? '✅' : '❌'}</div>
+                            Age is within optimal breeding parameters (2–8 years)
                           </li>
                           <li className="criteria-item">
                             <div className="criteria-icon">{parseInt(dssForm.bcs.split(' ')[0]) >= 5 && parseInt(dssForm.bcs.split(' ')[0]) <= 7 ? '✅' : '❌'}</div>
