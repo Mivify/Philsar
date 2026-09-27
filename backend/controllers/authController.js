@@ -37,9 +37,15 @@ const register = async (req, res) => {
             return res.status(400).json({ message: 'Please enter a valid email address' });
         }
 
-        // Check if user exists
+        // An unverified account is only a reservation — nobody has proved they own
+        // that inbox, and it can't log in or hold any data. Rejecting a signup
+        // against one let anyone lock the real owner out of their own address by
+        // registering it first, so it gets replaced further down instead. A
+        // verified account is never touched. Someone re-registering over a
+        // genuine owner's still-pending signup only invalidates the old link;
+        // they still can't verify an inbox they don't control.
         const existingUser = await User.findOne({ where: { email } });
-        if (existingUser) {
+        if (existingUser && existingUser.emailVerified) {
             return res.status(400).json({ message: 'User already exists' });
         }
 
@@ -74,12 +80,19 @@ const register = async (req, res) => {
             userData.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000;
         }
 
+        // Deleted only now, after every validation above has passed, so a signup
+        // rejected for (say) a weak password never discards anything.
+        if (existingUser) {
+            await existingUser.destroy();
+        }
+
         const user = await User.create(userData);
 
+        const replacedNote = existingUser ? ' (replaced an earlier unverified registration)' : '';
         logActivity({
             userId: user.id, userName: user.name, userRole: user.role,
             action: 'account_registered', category: 'account',
-            details: isAdminCreating ? `${finalRole} account created for ${email} by an admin` : `${finalRole} account self-registered: ${email}`,
+            details: (isAdminCreating ? `${finalRole} account created for ${email} by an admin` : `${finalRole} account self-registered: ${email}`) + replacedNote,
             req
         });
 
@@ -118,6 +131,12 @@ const register = async (req, res) => {
             }
         });
     } catch (error) {
+        // Simultaneous signups for one address can all pass the findOne check
+        // above; the unique index on email then rejects all but one, which
+        // should read as the same answer rather than a generic server error.
+        if (error.name === 'SequelizeUniqueConstraintError') {
+            return res.status(400).json({ message: 'User already exists' });
+        }
         res.status(500).json({ message: 'Server error', error: error.message });
     }
 };
@@ -644,8 +663,11 @@ const changeEmail = async (req, res) => {
         if (newEmail.toLowerCase() === user.email.toLowerCase()) {
             return res.status(400).json({ message: 'That is already your current email address.' });
         }
+        // Same rule as register: an unverified account on this address is only a
+        // reservation, so it doesn't block the change. It's discarded in
+        // verifyEmailChange once this user proves they control the inbox.
         const inUse = await User.findOne({ where: { email: newEmail } });
-        if (inUse) {
+        if (inUse && inUse.emailVerified) {
             return res.status(400).json({ message: 'That email address is already in use.' });
         }
 
@@ -699,11 +721,16 @@ const verifyEmailChange = async (req, res) => {
         // registered or been assigned this exact address in the meantime.
         const stillFree = await User.findOne({ where: { email: user.pendingEmail } });
         if (stillFree && stillFree.id !== user.id) {
-            user.pendingEmail = null;
-            user.emailChangeTokenHash = null;
-            user.emailChangeExpires = null;
-            await user.save();
-            return res.status(400).json({ message: 'That email address is now in use by another account. Please request the change again with a different address.' });
+            if (stillFree.emailVerified) {
+                user.pendingEmail = null;
+                user.emailChangeTokenHash = null;
+                user.emailChangeExpires = null;
+                await user.save();
+                return res.status(400).json({ message: 'That email address is now in use by another account. Please request the change again with a different address.' });
+            }
+            // Clicking this link just proved this user controls the inbox, so an
+            // unverified reservation on the address is discarded.
+            await stillFree.destroy();
         }
 
         const oldEmail = user.email;
@@ -722,6 +749,11 @@ const verifyEmailChange = async (req, res) => {
 
         res.status(200).json({ message: 'Your email address has been updated. Please sign in with your new email.' });
     } catch (error) {
+        // A verified account claimed this address between the check above and
+        // the save — the unique index caught it.
+        if (error.name === 'SequelizeUniqueConstraintError') {
+            return res.status(400).json({ message: 'That email address is now in use by another account. Please request the change again with a different address.' });
+        }
         res.status(500).json({ message: 'Server error', error: error.message });
     }
 };
