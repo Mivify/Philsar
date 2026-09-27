@@ -2812,7 +2812,7 @@ export default function App() {
                         <input
                           className="auth-input"
                           type="text"
-                          placeholder="James Kevin Santos"
+                          placeholder="Juan Dela Cruz"
                           value={authForm.name}
                           onChange={e => setAuthForm({ ...authForm, name: e.target.value })}
                           required
