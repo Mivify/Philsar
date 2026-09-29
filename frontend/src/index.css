@@ -1582,6 +1582,29 @@ body {
 
 .submit-btn:hover { background: var(--brown-mid); }
 
+/* Compact inline buttons (Settings tab, Activity Log pager) */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 16px;
+  background: var(--warm-white);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.btn:hover:not(:disabled) { background: var(--amber-pale); border-color: var(--amber); }
+.btn:disabled { opacity: 0.45; cursor: default; }
+
+.btn-primary { background: var(--brown-dark); color: var(--cream); border-color: var(--brown-dark); }
+.btn-primary:hover:not(:disabled) { background: var(--brown-mid); border-color: var(--brown-mid); }
+
 .result-panel {
   background: var(--warm-white);
   border: 1px solid var(--border);

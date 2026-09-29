@@ -1,4 +1,14 @@
 const LandingImage = require('../models/LandingImage');
+const User = require('../models/User');
+const { logActivity } = require('../utils/activityLog');
+
+const logHomePhotoAction = async (req, action, details) => {
+    const actor = await User.findByPk(req.user.id, { attributes: ['name', 'role'] });
+    logActivity({
+        userId: req.user.id, userName: actor?.name, userRole: actor?.role,
+        action, category: 'admin', details, req
+    });
+};
 
 const getLandingImages = async (req, res) => {
     try {
@@ -24,6 +34,7 @@ const addLandingImage = async (req, res) => {
         const position = (Number.isFinite(maxPosition) ? maxPosition : 0) + 1;
 
         const image = await LandingImage.create({ imageUrl, position });
+        await logHomePhotoAction(req, 'home_photo_added', 'Photo added to the Home page banner');
         res.status(201).json({ message: 'Landing image added successfully', image });
     } catch (error) {
         res.status(500).json({ message: 'Error adding landing image', error: error.message });
@@ -45,6 +56,7 @@ const reorderLandingImages = async (req, res) => {
         );
 
         const images = await LandingImage.findAll({ order: [['position', 'ASC'], ['createdAt', 'ASC']] });
+        await logHomePhotoAction(req, 'home_photos_reordered', 'Home page banner photos reordered');
         res.status(200).json({ message: 'Order updated successfully', images });
     } catch (error) {
         res.status(500).json({ message: 'Error reordering landing images', error: error.message });
@@ -60,6 +72,7 @@ const deleteLandingImage = async (req, res) => {
         }
 
         await image.destroy();
+        await logHomePhotoAction(req, 'home_photo_removed', 'Photo removed from the Home page banner');
         res.status(200).json({ message: 'Landing image removed successfully' });
     } catch (error) {
         res.status(500).json({ message: 'Error removing landing image', error: error.message });

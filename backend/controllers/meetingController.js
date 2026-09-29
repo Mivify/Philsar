@@ -393,12 +393,14 @@ const getJaasToken = async (req, res) => {
         }
 
         // Must match the room the frontend actually joins (App.tsx's Jitsi-mount
-        // effect uses the same replace()) — the room claim needs to be the
+        // effect builds it the same way) — the room claim needs to be the
         // literal room, not the "*" wildcard. Lowercased because Jitsi's
         // underlying XMPP room naming is conventionally case-insensitive/
         // lowercased regardless of the case passed into the iframe's roomName,
-        // and several real meeting titles here have mixed case.
-        const sanitizedRoomName = (meeting.title.replace(/[^a-zA-Z0-9]/g, '') || 'Seminar').toLowerCase();
+        // and several real meeting titles here have mixed case. The meeting id
+        // follows a hyphen (which the sanitized title can't contain) so two
+        // sessions with the same title never share a room.
+        const sanitizedRoomName = `${(meeting.title.replace(/[^a-zA-Z0-9]/g, '') || 'Seminar').toLowerCase()}-${meeting.id}`;
 
         const token = generateJaasToken({
             userId: user.id,

@@ -242,6 +242,12 @@ const ACTIVITY_ACTION_LABELS: Record<string, string> = {
   module_updated: 'Module Updated',
   module_deleted: 'Module Deleted',
   settings_updated: 'Settings Updated',
+  announcement_created: 'Announcement Posted',
+  announcement_updated: 'Announcement Edited',
+  announcement_deleted: 'Announcement Deleted',
+  home_photo_added: 'Home Photo Added',
+  home_photos_reordered: 'Home Photos Reordered',
+  home_photo_removed: 'Home Photo Removed',
 };
 
 // Rough at-a-glance severity so the table reads like a security log, not a
@@ -306,6 +312,20 @@ function PasswordChecklist({ password }: { password: string }) {
 
 type Tab = 'home' | 'about' | 'dashboard' | 'learning' | 'chatbot' | 'dss' | 'meetings' | 'profile' | 'admin';
 const VALID_TABS: Tab[] = ['home', 'about', 'dashboard', 'learning', 'chatbot', 'dss', 'meetings', 'profile', 'admin'];
+
+// Breadcrumb labels reuse the sidebar's own names (and translations) instead of
+// the raw tab id, which showed up as "Dss" and "Chatbot".
+const TAB_NAV_KEYS: Record<Tab, string> = {
+  home: 'nav.home', about: 'nav.about', dashboard: 'nav.dashboard', learning: 'nav.learning',
+  chatbot: 'nav.chatbot', dss: 'nav.dss', meetings: 'nav.meetings', profile: 'nav.profile', admin: 'nav.admin'
+};
+
+// Dashboard greeting by the viewer's local time: morning until noon, afternoon until 6 PM.
+function greetingKeyForHour(hour: number): string {
+  if (hour < 12) return 'dashboard.greetingMorning';
+  if (hour < 18) return 'dashboard.greetingAfternoon';
+  return 'dashboard.greetingEvening';
+}
 
 function tabFromPath(pathname: string): Tab {
   const path = pathname.replace(/^\//, '');
@@ -439,7 +459,9 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     'home.virtualMeetingsDesc': 'Join live seminars and connect with extension workers.',
     'about.title': 'About PHILSAR',
     'about.subtitle': 'The Philippine Society of Animal Reproduction — advancing the science and practice of animal reproduction in the Philippines.',
-    'dashboard.greeting': 'Good morning',
+    'dashboard.greetingMorning': 'Good morning',
+    'dashboard.greetingAfternoon': 'Good afternoon',
+    'dashboard.greetingEvening': 'Good evening',
     'dashboard.subtitle': "Here's what's happening with your herd today",
     'learning.title': 'Learning Center',
     'learning.subtitle': 'Structured visual courses on cattle reproductive anatomy, estrus sync protocols, and breeding techniques',
@@ -494,7 +516,9 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     'home.virtualMeetingsDesc': 'Sumali sa mga live na seminar at makipag-ugnayan sa mga extension worker.',
     'about.title': 'Tungkol sa PHILSAR',
     'about.subtitle': 'Ang Philippine Society of Animal Reproduction — nagsusulong ng agham at kasanayan sa pagpaparami ng hayop sa Pilipinas.',
-    'dashboard.greeting': 'Magandang umaga',
+    'dashboard.greetingMorning': 'Magandang umaga',
+    'dashboard.greetingAfternoon': 'Magandang hapon',
+    'dashboard.greetingEvening': 'Magandang gabi',
     'dashboard.subtitle': 'Narito ang mga nangyayari sa iyong kawan ngayong araw',
     'learning.title': 'Sentro ng Pag-aaral',
     'learning.subtitle': 'Structured na visual na mga kurso tungkol sa anatomiya ng pagpaparami ng baka, mga protocol sa estrus sync, at mga teknik sa pagpaparami',
@@ -533,6 +557,7 @@ export default function App() {
   const [selectedLessonIndex, setSelectedLessonIndex] = useState<number>(0);
   const [completedLessonsMap, setCompletedLessonsMap] = useState<Record<number, number[]>>({});
   const [meetingModalOpen, setMeetingModalOpen] = useState(false);
+  const [sessionFilter, setSessionFilter] = useState<'all' | 'upcoming' | 'recorded'>('all');
   const [meetingExpanded, setMeetingExpanded] = useState(false);
   const [minutesPanelOpen, setMinutesPanelOpen] = useState(false);
   const [activeMeeting, setActiveMeeting] = useState<Meeting | null>(null);
@@ -777,7 +802,9 @@ export default function App() {
       timer = window.setTimeout(() => {
         const JitsiMeet = (window as any).JitsiMeetExternalAPI;
         if (JitsiMeet) {
-          const sanitizedRoomName = activeMeeting.title.replace(/[^a-zA-Z0-9]/g, '') || 'Seminar';
+          // Title plus id, matching the room claim in the backend's JaaS token —
+          // the id keeps two sessions with the same title out of each other's room.
+          const sanitizedRoomName = `${activeMeeting.title.replace(/[^a-zA-Z0-9]/g, '') || 'Seminar'}-${activeMeeting.id}`;
           const roomName = `vpaas-magic-cookie-53e5d675a0894588a3bd511e6f7dd935/${sanitizedRoomName}`;
 
           jitsiApiRef.current = new JitsiMeet("8x8.vc", {
@@ -2646,6 +2673,14 @@ export default function App() {
     return total > 0 && (completedLessonsMap[m.id] || []).length >= total;
   });
   const rsvpedMeetingsList = meetings.filter(m => myAttendance[m.id]?.rsvped);
+  // Registered sessions that haven't ended — live ones included, since the user
+  // can still join them.
+  const myRegisteredSessions = rsvpedMeetingsList.filter(m => m.status !== 'Ended');
+  const filteredSessions = sessionFilter === 'upcoming'
+    ? meetings.filter(m => m.status !== 'Ended')
+    : sessionFilter === 'recorded'
+      ? meetings.filter(m => m.status === 'Ended')
+      : meetings;
 
   const handleSearchResultClick = (mod: LearningModule) => {
     handleTabNavigate('learning');
@@ -3292,7 +3327,7 @@ export default function App() {
               <Menu size={20} />
             </button>
             <div className="page-breadcrumb">
-              Portal / <span id="breadcrumb" style={{ textTransform: 'capitalize' }}>{activeTab}</span>
+              Portal / <span id="breadcrumb">{t(TAB_NAV_KEYS[activeTab])}</span>
             </div>
           </div>
           <div className="topbar-right">
@@ -3543,7 +3578,7 @@ export default function App() {
               </div>
 
               <div className="about-founder">
-                Founding President: <strong>Danilda Hufana-Duran, Ph.D., L.Arg.</strong>
+                Founding President: <strong>Danilda Hufana-Duran, Ph.D., L.Agr.</strong>
               </div>
             </div>
           )}
@@ -3552,7 +3587,7 @@ export default function App() {
           {activeTab === 'dashboard' && (
             <div className="view active view-large-text">
               <div className="page-header">
-                <div className="page-title">{t('dashboard.greeting')}, {currentUser?.name?.split(' ')[0]} 👋</div>
+                <div className="page-title">{t(greetingKeyForHour(new Date().getHours()))}, {currentUser?.name?.split(' ')[0]} 👋</div>
                 <div className="page-subtitle">
                   {t('dashboard.subtitle')} — {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                 </div>
@@ -3576,7 +3611,7 @@ export default function App() {
                   <div className="stat-value">{herdStats.readyForBreeding}</div>
                   <div className="stat-label">Ready for Breeding</div>
                   <div className="stat-change neutral">
-                    {herdStats.totalCattle > 0 ? Math.round((herdStats.readyForBreeding / herdStats.totalCattle) * 100) : 0}% of assessed herd
+                    {herdStats.totalCattle > 0 ? Math.round((herdStats.readyForBreeding / herdStats.totalCattle) * 100) : 0}% of your herd
                   </div>
                   <div className="stat-card-hint">Click to view cattle →</div>
                 </div>
@@ -3590,8 +3625,8 @@ export default function App() {
                 <div className="stat-card sage" style={{ cursor: 'pointer' }} onClick={() => setSeminarsAttendedModalOpen(true)}>
                   <div className="stat-icon">🎓</div>
                   <div className="stat-value">{rsvpedMeetingsList.length}</div>
-                  <div className="stat-label">Seminars Attended</div>
-                  <div className="stat-change up">↑ {rsvpedMeetingsList.length} registered</div>
+                  <div className="stat-label">Seminars Registered</div>
+                  <div className="stat-change neutral">{myRegisteredSessions.length} upcoming</div>
                   <div className="stat-card-hint">Click to view seminars →</div>
                 </div>
               </div>
@@ -4241,13 +4276,25 @@ export default function App() {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
                     <div className="card-title">All Sessions</div>
                     <div style={{ display: 'flex', gap: '8px' }}>
-                      <div className="filter-chip active" style={{ fontSize: '12px', padding: '5px 12px' }}>All</div>
-                      <div className="filter-chip" style={{ fontSize: '12px', padding: '5px 12px' }}>Upcoming</div>
-                      <div className="filter-chip" style={{ fontSize: '12px', padding: '5px 12px' }}>Recorded</div>
+                      {([['all', 'All'], ['upcoming', 'Upcoming'], ['recorded', 'Recorded']] as const).map(([key, label]) => (
+                        <div
+                          key={key}
+                          className={`filter-chip ${sessionFilter === key ? 'active' : ''}`}
+                          style={{ fontSize: '12px', padding: '5px 12px' }}
+                          onClick={() => setSessionFilter(key)}
+                        >
+                          {label}
+                        </div>
+                      ))}
                     </div>
                   </div>
 
-                  {meetings.map(session => (
+                  {filteredSessions.length === 0 && (
+                    <div style={{ padding: '20px 4px', color: 'var(--text-muted)', fontSize: '13px' }}>
+                      {sessionFilter === 'recorded' ? 'No past sessions yet.' : sessionFilter === 'upcoming' ? 'No upcoming sessions right now.' : 'No sessions scheduled yet.'}
+                    </div>
+                  )}
+                  {filteredSessions.map(session => (
                     <div key={session.id} className="meeting-card" onClick={() => handleJoinMeeting(session)}>
                       <div className={`meeting-status-dot ${session.status.toLowerCase()}`}></div>
                       <div className="meeting-info">
@@ -4292,13 +4339,13 @@ export default function App() {
                     <div className="card-header"><div className="card-title">Meeting Info</div></div>
                     <div className="card-body">
                       <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.6', marginBottom: '16px' }}>
-                        All webinars are hosted via <strong>Jitsi Meet</strong>, a secure open-source conferencing system. No downloads or accounts are necessary to join.
+                        All webinars are hosted via <strong>Jitsi Meet</strong>, a secure open-source conferencing system. No downloads or separate video accounts are needed to join.
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px', color: 'var(--text-muted)' }}>
                         <div>📷 High-definition audio/video</div>
                         <div>💬 Real-time chat & Q&A boards</div>
                         <div>📱 Accessible on phone, tablet & PC</div>
-                        <div>🔒 Completely encrypted streams</div>
+                        <div>🔒 Encrypted video streams</div>
                       </div>
                     </div>
                   </div>
@@ -4307,9 +4354,13 @@ export default function App() {
                     <div className="card-header"><div className="card-title">My Registered Sessions</div></div>
                     <div className="card-body">
                       <div style={{ fontSize: '13px', color: 'var(--text-muted)', textAlign: 'center', padding: '10px 0' }}>
-                        You are registered for <strong style={{ color: 'var(--text-primary)' }}>{meetings.filter(m => m.status === 'Upcoming').length} upcoming</strong> webinars this period.
+                        {myRegisteredSessions.length === 0 ? (
+                          <>You haven't registered for any upcoming sessions yet.</>
+                        ) : (
+                          <>You are registered for <strong style={{ color: 'var(--text-primary)' }}>{myRegisteredSessions.length} upcoming</strong> {myRegisteredSessions.length === 1 ? 'session' : 'sessions'}.</>
+                        )}
                       </div>
-                      {meetings.filter(m => m.status === 'Upcoming').map(upcoming => (
+                      {myRegisteredSessions.map(upcoming => (
                         <div
                           key={upcoming.id}
                           style={{
@@ -4320,7 +4371,7 @@ export default function App() {
                           }}
                         >
                           <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--amber)' }}>
-                            {upcoming.dateTime}
+                            {upcoming.status === 'Live' ? `${upcoming.dateTime} · Live now` : upcoming.dateTime}
                           </div>
                           <div style={{ fontSize: '13px', color: 'var(--text-primary)', marginTop: '2px', fontWeight: 600 }}>
                             {upcoming.title}
@@ -4518,7 +4569,7 @@ export default function App() {
                       </div>
                       <div className="progress-item">
                         <div className="progress-label">
-                          <span className="progress-name">Seminars Attended</span>
+                          <span className="progress-name">Seminars Registered</span>
                           <span className="progress-pct">{rsvpedMeetingsList.length}</span>
                         </div>
                         <div className="progress-bar">
@@ -4766,7 +4817,7 @@ export default function App() {
                             <tr>
                               <th>User</th>
                               <th>Role</th>
-                              <th>Vials Run</th>
+                              <th>Assessments Run</th>
                               <th>Status</th>
                               <th>Action</th>
                             </tr>
@@ -4797,7 +4848,7 @@ export default function App() {
                                   </div>
                                 </td>
                                 <td>{u.role}</td>
-                                <td>{u.dssAssessmentsRun} run</td>
+                                <td>{u.dssAssessmentsRun}</td>
                                 <td>
                                   <span className={`status-pill ${u.status === 'Active' ? 'active' : 'inactive'}`}>
                                     {u.status}
@@ -5152,7 +5203,7 @@ export default function App() {
                         <div className="markdown-legend-title">Markdown Guide</div>
                         <div className="markdown-legend-grid">
                           <div className="markdown-legend-row"><code># Heading 1</code></div>
-                          <div className="markdown-legend-row"><code>## Heading 2</code></div>
+                          <div className="markdown-legend-row"><code>## Heading 2</code> new lesson</div>
                           <div className="markdown-legend-row"><code>**bold text**</code></div>
                           <div className="markdown-legend-row"><code>*italic text*</code></div>
                           <div className="markdown-legend-row"><code>- bullet item</code></div>
@@ -5163,6 +5214,7 @@ export default function App() {
                           <div className="markdown-legend-row"><code>`inline code`</code></div>
                           <div className="markdown-legend-row"><code>---</code> horizontal rule</div>
                         </div>
+                        <div className="markdown-legend-hint">Each <code>##</code> heading starts a new lesson; the text above the first one becomes the Introduction.</div>
                         <div className="markdown-legend-hint">Use "Insert Image" above the content editor to add images — it writes the Markdown for you.</div>
                       </div>
                     </div>
@@ -5251,16 +5303,6 @@ export default function App() {
                               value={newMeetingForm.dateTime}
                               onChange={e => setNewMeetingForm({ ...newMeetingForm, dateTime: e.target.value })}
                               required
-                            />
-                          </div>
-                          <div className="form-group">
-                            <label className="form-label">Video Conference Link</label>
-                            <input
-                              className="form-control"
-                              type="text"
-                              placeholder="https://meet.jit.si/..."
-                              value={newMeetingForm.videoLink}
-                              onChange={e => setNewMeetingForm({ ...newMeetingForm, videoLink: e.target.value })}
                             />
                           </div>
                           {editingMeeting && (
@@ -5650,7 +5692,7 @@ export default function App() {
                             onChange={e => setSettings({ ...settings, certAttendanceThresholdMinutes: e.target.value })}
                           />
                           <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                            Attendees who stay in a seminar for at least this many minutes automatically qualify for a certificate. Admins can still manually grant or revoke one regardless of this threshold.
+                            Attendees who stay in a seminar for at least this many minutes automatically qualify for a certificate. The Admin and Sub Admin can also grant one manually from the Meetings tab to someone below this threshold; only manually granted certificates can be revoked.
                           </div>
                         </div>
                         <div style={{ borderTop: '1px solid var(--border)', margin: '20px 0 16px', paddingTop: '16px', fontWeight: 700, fontSize: '14px' }}>
@@ -6350,12 +6392,12 @@ export default function App() {
         </div>
       )}
 
-      {/* Seminars Attended (Dashboard stat card) */}
+      {/* Seminars Registered (Dashboard stat card) */}
       {seminarsAttendedModalOpen && (
         <div className="confirm-overlay" onClick={() => setSeminarsAttendedModalOpen(false)}>
           <div className="confirm-box" style={{ maxWidth: '560px' }} onClick={e => e.stopPropagation()}>
             <div className="confirm-message" style={{ fontWeight: 700, marginBottom: '14px' }}>
-              🎓 Seminars Attended
+              🎓 Seminars Registered
             </div>
             <div style={{ maxHeight: '360px', overflowY: 'auto' }}>
               <table className="data-table">
