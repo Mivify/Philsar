@@ -5887,7 +5887,6 @@ export default function App() {
                                 <th>User</th>
                                 <th>Action</th>
                                 <th>Details</th>
-                                <th>IP Address</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -5917,7 +5916,6 @@ export default function App() {
                                       </span>
                                     </td>
                                     <td style={{ fontSize: '12.5px', maxWidth: '360px' }}>{log.details || '—'}</td>
-                                    <td style={{ fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>{log.ipAddress || '—'}</td>
                                   </tr>
                                 );
                               })}
