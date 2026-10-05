@@ -39,8 +39,7 @@ const getActivityLogs = async (req, res) => {
 };
 
 // Powers the "at a glance" anomaly banner above the log table — deliberately
-// independent of whatever category/search filter is currently applied, since
-// it answers "should I be worried right now?" rather than "show me rows".
+// independent of whatever category/search filter is currently applied
 const getActivitySummary = async (req, res) => {
     try {
         const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -50,10 +49,7 @@ const getActivitySummary = async (req, res) => {
             ActivityLog.findAll({ where: { ...inWindow, action: 'login_failed' }, attributes: ['userName'] }),
             ActivityLog.count({ where: { ...inWindow, action: 'account_locked' } }),
             ActivityLog.count({ where: { ...inWindow, action: { [Op.in]: ['role_changed', 'account_status_changed'] } } }),
-            // 'account_deleted' is never actually written — deletions now go
-            // through the two-person approval flow, which logs
-            // 'account_deletion_approved' at the point the account is actually
-            // removed (see authController.js's approveUserDeletion).
+
             ActivityLog.count({ where: { ...inWindow, action: 'account_deletion_approved' } }),
         ]);
 

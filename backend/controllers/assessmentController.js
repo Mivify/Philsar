@@ -9,11 +9,7 @@ require('dotenv').config();
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 // Falls back to the previous hardcoded guidance if the Gemini call fails for any reason
-// (rate limit, network, bad key) — the DSS feature must never hard-fail because of this.
-// RAG-grounds the guidance in the Learning Modules the same way the chatbot does — a case
-// summary is embedded and matched against module content, but the model still falls back
-// to its own veterinary/animal husbandry knowledge when nothing relevant comes back, so
-// guidance isn't limited to only what happens to be written in the modules.
+// (rate limit, network, bad key)
 const generateBreedingGuidance = async (data, fallback) => {
     try {
         const calvingText = data.isFirstBreeding
@@ -25,13 +21,7 @@ const generateBreedingGuidance = async (data, fallback) => {
             ? `\n\nReference material from PHILSAR's Learning Modules (ground your guidance in this when it's relevant to this case; otherwise rely on your own veterinary/animal husbandry knowledge — don't force a connection that isn't there):\n${relevantChunks.map(c => `--- From "${c.moduleTitle}" (${c.lessonTitle}) ---\n${c.content}`).join('\n\n')}`
             : '';
 
-        // Without this, the model forms its own opinion from the raw numbers alone —
-        // e.g. flagging a BCS of 4 as a concern because the UI itself labels it
-        // "Borderline", even though this system's own rule treats 5-7 as acceptable.
-        // That produced guidance that contradicted the checklist shown right next to
-        // it (checklist ✅ on BCS, guidance text citing BCS as a reason to postpone).
-        // Telling the model exactly which criteria this system already decided met/
-        // didn't meet keeps its explanation aligned with what the farmer sees.
+
         const checklistSummary = `
 System Checklist Results (already evaluated by this system's rules — do not contradict these; only explain the verdict using criteria marked NOT MET, even if a MET value might seem non-ideal by general standards):
 - Age within 2-8 years: ${data.checklist.ageOk ? 'MET' : 'NOT MET'}
@@ -56,17 +46,13 @@ ${checklistSummary}${referenceContext}
 
 Write actionable guidance specific to this cattle's data above.`;
 
-        // gemini-3.1-flash-lite: same reasoning as the chatbot's fixed model —
-        // Flash-Lite tier free-tier quota (500 requests/day) is 25x the regular
-        // Flash tier's (20/day), and it was verified reliable across repeated
-        // real test calls with this exact guidance-style prompt.
+
         const response = await ai.models.generateContent({
             model: 'gemini-3.1-flash-lite',
             contents: prompt
         });
 
-        // Deduped by module — citing every matched lesson individually is noisier
-        // than useful when several land in the same module.
+
         const sources = Object.values(
             Object.fromEntries(relevantChunks.map(c => [c.moduleId, { moduleId: c.moduleId, moduleTitle: c.moduleTitle }]))
         );
@@ -88,9 +74,7 @@ const createAssessment = async (req, res) => {
         }
 
         // A maiden heifer has never calved, so "days since last calving" has no
-        // meaning for her. Every other history requires it — previously a
-        // missing value silently defaulted to 60, which quietly passed the
-        // waiting-period check for a cow that may have calved yesterday.
+        // meaning for her.
         const isFirstBreeding = history === 'First Breeding';
         if (!isFirstBreeding && (daysSinceCalving === undefined || daysSinceCalving === null || daysSinceCalving === '')) {
             return res.status(400).json({ message: 'Days since last calving is required unless this is a first breeding.' });
@@ -108,76 +92,27 @@ const createAssessment = async (req, res) => {
         const hasEstrusSign = indicatorList.length > 0 && !indicatorList.includes('None Observed');
 
         // Only these two of the 4 dropdown options count as clear — the previous
-        // `!includes('ongoing')` check let "Recovering from illness" silently pass,
-        // contradicting the AI guidance text which correctly treated active
-        // recovery as a reason to postpone breeding. Untreated/ongoing conditions
-        // are excluded because postpartum uterine disease (metritis/endometritis)
-        // is well documented to cut first-service conception rates and delay
-        // return to cyclicity — Giuliodori et al. (2013, J. Dairy Sci. 96:3621-3631)
-        // found lower first-AI conception in cows with clinical metritis, and
-        // Várhidi et al. (2024, Vet. Sci. 11:66) reviews uterine disease as one of
-        // the leading causes of reproductive-related culling.
+        // `!includes('ongoing')`
         const isHealthClear = healthStatus === 'Healthy — no issues' || healthStatus === 'Minor health issue — treated';
 
-        // Age 2-8, applied to every animal including a first breeding: cows 4-10
-        // yrs old had the highest conception rate (86.5%) vs. 60.4% for cows >10
-        // yrs old in Samkange et al. (2019, Trop. Anim. Health Prod.
-        // 51(7):1829-1837); 2 as the lower bound matches the optimal age at first
-        // calving in Kusaka et al. (2023, J. Reprod. Dev. 69(6):291-297), where
-        // calving as early as 22.5 months gave better survivability without
-        // impairing fertility. 8 is used (not 10) to stay inside the
-        // highest-performing band rather than right at its edge.
+        // Age 2-8, applied to every animal including a first breeding
         const ageOk = ageNum >= 2 && ageNum <= 8;
 
-        // BCS 5-7 — all figures here are on the same 1-9 scale this form uses
-        // (not the 1-5 Canadian/UK scale some sources use, which would need
-        // very different numbers). Brandão et al. (2021, J. Anim. Sci. 99(Suppl
-        // 3):48) found cows at BCS >=5.0 had substantially higher pregnancy
-        // (82.7% vs 67.9%) and calving rates than BCS <5.0 — so 4 ("Borderline"
-        // in this form's own scale) is excluded, not treated as adequate. 7 is
-        // the ceiling because BCS 8-9 (overconditioned) is linked to dystocia
-        // from pelvic fat accumulation (Vedovatto & Ferreira, 2025, LSU
-        // AgCenter Pub. 3951-C).
+        // BCS 5-7 — all figures here are on the same 1-9
         const bcsOk = bcsNum >= 5 && bcsNum <= 7;
 
-        // >=45 days: Inchaisri et al. (2011, J. Dairy Sci. 94(8):3811-3823)
-        // found an economically optimal voluntary waiting period of roughly
-        // 6-8 weeks (42-56 days) for most cows; 45 days sits at the low end of
-        // the 45-60-day range SDSU Extension (Villamediana, 2023) recommends.
-        // null (not applicable) for a maiden heifer — there is no calving to wait
-        // after, so this criterion neither passes nor fails her.
+
         const vwpOk = isFirstBreeding ? null : daysNum >= 45;
 
         // "History of Infertility" maps to the veterinary concept of a "repeat
         // breeder": a clinically normal, regularly-cycling cow that has failed
-        // to conceive after repeated services (Pérez-Marín & Quintela, 2023,
-        // Animals 13(13):2187). Villar et al. (2025, Animals 15:266) found a
-        // ~21% prevalence in dairy herds and identified reproductive
-        // pathologies (endometritis, dystocia) as leading risk factors — the
-        // standard recommendation is a veterinary reproductive exam
-        // (ultrasonography, progesterone assay) BEFORE another service, since
-        // an undiagnosed physical cause makes any further AI or natural
-        // service attempt likely to fail again regardless of timing. So this
-        // doesn't try to decide between AI and natural mating for these cows —
-        // it withholds a "Ready" verdict entirely and defers to a vet, same as
-        // an unresolved health condition does.
+        // to conceive after repeated services
         const historyOk = history !== 'History of Infertility';
 
         const isReady = ageOk && bcsOk && isHealthClear && vwpOk !== false && hasEstrusSign && historyOk;
 
         // AI is recommended only for Standing Heat or Clear Discharge — the two
-        // signs treated as precise ovulation-timing anchors:
-        // - Standing Heat is the classic anchor for the AM-PM rule (inseminate
-        //   ~12h after onset) — but Gaude et al. (2021, Livestock Science
-        //   245:104449) found it's seen in only ~22% of actual estrus events,
-        //   so it can't be the only trigger.
-        // - Clear Discharge is grouped with it as a secondary confirming sign.
-        // Swollen Vulva and Mounting Others are left out of the AI trigger and
-        // fall back to Natural Mating instead, which tolerates looser timing —
-        // deliberately kept narrower than research alone would strictly
-        // require (Widyastuti et al., 2025, Vet. World 18:1357-1364, found
-        // vulvar swelling tracks the same hormonal window as discharge), since
-        // this is the more conservative, established two-sign rule.
+        // signs treated as precise ovulation-timing anchors
         const useAI = isReady && (
             indicatorList.includes('Standing Heat') ||
             indicatorList.includes('Clear Discharge')

@@ -7,12 +7,12 @@ const { logActivity } = require('../utils/activityLog');
 const { isStrongPassword, WEAK_PASSWORD_MESSAGE } = require('../utils/passwordPolicy');
 
 // Roles a user can grant themselves via public self-registration. Admin accounts can
-// only be created by an existing Admin (see the role-handling logic in `register`).
+// only be created by an existing Admin (the role-handling logic in `register`).
 const SELF_SERVE_ROLES = ['Farmer', 'Livestock Manager', 'Veterinarian', 'Extension Worker'];
 
-// Deliberately permissive (catches "no @", "no domain", stray spaces) rather than
-// a strict RFC 5322 pattern — the goal is rejecting obvious typos, not being the
-// sole line of defense; deliverability is ultimately proven by the verification
+// Deliberately permissive (catches "no @", No Dot, stray spaces) rather than
+// it is rejecting obvious typos, not being the
+// but emails are proven by the verification
 // email actually arriving.
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -22,11 +22,8 @@ const generateToken = (user) => jwt.sign(
     { expiresIn: '7d' }
 );
 
-// A valid-format bcrypt hash that matches no real password. Compared against
-// on every failed lookup so a nonexistent email takes the same code path (and
-// roughly the same time) as a real one with a wrong password — otherwise the
-// missing bcrypt.compare() call is both a faster response and a status-code
-// tell (404 vs 401) that leaks which emails are registered.
+// A valid-format bcrypt hash that matches no real password
+// To prevent attackers from discovering registered email addresses
 const DUMMY_PASSWORD_HASH = '$2a$10$CwTycUXWue0Thq9StjUM0uJ8OrJfmMptFOL3.gEO3jS3vG4TmqXKG';
 
 const register = async (req, res) => {
@@ -38,39 +35,28 @@ const register = async (req, res) => {
         }
 
         // An unverified account is only a reservation — nobody has proved they own
-        // that inbox, and it can't log in or hold any data. Rejecting a signup
-        // against one let anyone lock the real owner out of their own address by
-        // registering it first, so it gets replaced further down instead. A
-        // verified account is never touched. Someone re-registering over a
-        // genuine owner's still-pending signup only invalidates the old link;
-        // they still can't verify an inbox they don't control.
+        // that email, and it can't log in or hold any data.
         const existingUser = await User.findOne({ where: { email } });
         if (existingUser && existingUser.emailVerified) {
             return res.status(400).json({ message: 'User already exists' });
         }
 
         // Only an already-authenticated Admin (creating a user via the Admin Panel,
-        // which posts to this same endpoint) may set an arbitrary role. Anyone else —
-        // including a fully anonymous signup — is restricted to the self-serve roles,
-        // regardless of what the request body claims.
+        // can add another admin account) 
         const isAdminCreating = req.user?.role === 'Admin';
         const finalRole = isAdminCreating
             ? (role || 'Farmer')
             : (SELF_SERVE_ROLES.includes(role) ? role : 'Farmer');
 
         // Only enforced for self-serve signups — an Admin setting up a staff
-        // account via the Admin Panel isn't gated by this (out of scope of what
-        // was asked, and the Add New User form has no matching live checklist).
+        // account via the Admin Panel isn't gated by this
         if (!isAdminCreating && !isStrongPassword(password)) {
             return res.status(400).json({ message: WEAK_PASSWORD_MESSAGE });
         }
 
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        // Admin-created accounts skip verification entirely (the admin is already
-        // vouching for the address) and rely on the model's emailVerified default
-        // of true. Self-serve signups are explicitly marked unverified and get a
-        // token emailed to them; they can't log in until they use it (see `login`).
+        // Admin-created accounts skip verification entirely
         let verificationToken = null;
         const userData = { name, email, password: hashedPassword, role: finalRole, organization: organization || '' };
         if (!isAdminCreating) {
@@ -131,9 +117,8 @@ const register = async (req, res) => {
             }
         });
     } catch (error) {
-        // Simultaneous signups for one address can all pass the findOne check
-        // above; the unique index on email then rejects all but one, which
-        // should read as the same answer rather than a generic server error.
+        // Simultaneous signups for one address can all pass but if its verified
+        // it will say that the user already exist
         if (error.name === 'SequelizeUniqueConstraintError') {
             return res.status(400).json({ message: 'User already exists' });
         }
@@ -203,8 +188,8 @@ const login = async (req, res) => {
     }
 };
 
-// JWTs are stateless — this doesn't invalidate anything server-side. It exists
-// purely so the security log can distinguish a normal sign-out from the
+
+// this is purely so the security log can distinguish a normal sign-out from the
 // 15-minute inactivity auto-logout (see the `reason` field).
 const logout = async (req, res) => {
     try {
@@ -257,22 +242,9 @@ const updateProfile = async (req, res) => {
         }
 
         if (name) user.name = name;
-        // Email is deliberately not settable here — changing it now goes through
-        // changeEmail/verifyEmailChange below, which confirms the new address is
-        // actually reachable before it takes effect, the same way a brand-new
-        // signup can't log in until its own verification link is used.
         if (organization !== undefined) user.organization = organization;
         if (profilePicture !== undefined) user.profilePicture = profilePicture;
-        // modulesCompleted is intentionally not settable here — it's always
-        // recomputed from actual lesson completions in progressController.js.
-        // Accepting it from the request body would let a user directly
-        // overwrite their own progress stat without doing the work.
-        // role/status are account-management fields — only an Admin may change them,
-        // even when editing their own account, to close the self-escalation path.
         if (isAdmin) {
-            // Mirrors the same guard deleteUser already has: demoting or deactivating
-            // the last remaining Admin is just as much of a lockout as deleting them,
-            // and previously had no protection at all on this path.
             const effectiveRole = role || oldRole;
             const losingAdminRole = oldRole === 'Admin' && effectiveRole !== 'Admin';
             const deactivatingAdmin = effectiveRole === 'Admin' && status === 'Inactive' && oldStatus !== 'Inactive';
@@ -322,10 +294,6 @@ const updateProfile = async (req, res) => {
 
         res.status(200).json({
             message: 'Profile updated successfully',
-            // Changing the password invalidates every previously issued token
-            // (see optionalAuth's passwordChangedAt check) — including whichever
-            // one this very request used — so the caller needs a new one to stay
-            // logged in without an unexpected 401 on their next request.
             ...(passwordChanged ? { token: generateToken(user) } : {}),
             user: {
                 id: user.id,
@@ -346,9 +314,7 @@ const updateProfile = async (req, res) => {
     }
 };
 
-// Lets the client refresh a logged-in user's data on load instead of trusting a
-// possibly-stale localStorage snapshot indefinitely (e.g. modulesCompleted/dssAssessmentsRun
-// changing via some other path since the last login).
+
 const getUserById = async (req, res) => {
     try {
         const { id } = req.params;
@@ -395,9 +361,7 @@ const getUsers = async (req, res) => {
 };
 
 // Doesn't actually delete — flags the account for deletion, pending a Sub
-// Admin's approval (see approveUserDeletion/rejectUserDeletion below). Kept
-// on the same route/method a plain delete used to use, since from the
-// System Admin's side "requesting" is the only delete action they have.
+// Admin's approval
 const deleteUser = async (req, res) => {
     try {
         const { id } = req.params;
@@ -414,9 +378,7 @@ const deleteUser = async (req, res) => {
             return res.status(400).json({ message: 'A deletion request for this account is already pending Sub Admin approval.' });
         }
 
-        // Only an Admin can grant the Admin role to anyone else, so losing the
-        // last one would lock the whole app out of admin features with no way
-        // back in short of editing the database directly.
+        // avoide letting the admin delete the last remaining admin account
         if (user.role === 'Admin') {
             const adminCount = await User.count({ where: { role: 'Admin' } });
             if (adminCount <= 1) {
@@ -453,9 +415,7 @@ const approveUserDeletion = async (req, res) => {
             return res.status(400).json({ message: 'This account has no pending deletion request.' });
         }
 
-        // Re-checked here, not just at request time — the admin count could
-        // have changed since the request was made, and this is the actual
-        // point of no return.
+
         if (user.role === 'Admin') {
             const adminCount = await User.count({ where: { role: 'Admin' } });
             if (adminCount <= 1) {
@@ -520,13 +480,8 @@ const forgotPassword = async (req, res) => {
             user.resetPasswordExpires = Date.now() + 60 * 60 * 1000;
             await user.save();
 
-            // Falls back to the actual request host if BACKEND_URL isn't configured,
-            // so a missing env var can't produce a broken "undefined/..." link.
             const baseUrl = process.env.BACKEND_URL || `https://${req.get('host')}`;
             const link = `${baseUrl}/reset-password?token=${rawToken}`;
-            // Caught separately from the outer try/catch — a delivery failure must
-            // still fall through to the identical generic response below, or the
-            // response itself would leak whether the email is registered.
             try {
                 await sendPasswordResetEmail(user.email, link);
             } catch (emailError) {
@@ -609,9 +564,6 @@ const resendVerification = async (req, res) => {
         const { email } = req.body;
         const user = await User.findOne({ where: { email } });
 
-        // Same anti-enumeration shape as forgotPassword: only do real work when
-        // there's an actual unverified account behind the email, but always
-        // respond identically either way.
         if (user && !user.emailVerified) {
             const rawToken = crypto.randomBytes(32).toString('hex');
             user.emailVerificationTokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
@@ -633,11 +585,7 @@ const resendVerification = async (req, res) => {
     }
 };
 
-// Step 1 of changing an account's email: stages the new address in
-// `pendingEmail` and emails a confirmation link to it — the account's
-// `email` field isn't touched until verifyEmailChange (below) succeeds.
-// Requires the current password so a hijacked session can't quietly redirect
-// the account to an attacker-controlled inbox.
+
 const changeEmail = async (req, res) => {
     try {
         const { id } = req.params;
@@ -701,8 +649,7 @@ const changeEmail = async (req, res) => {
 };
 
 // Step 2: the link from the email above lands here. No auth required — it's
-// a bearer token proving control of the new inbox, the same trust model as
-// verifyEmail/resetPassword.
+// a bearer token proving control of the new inbox,
 const verifyEmailChange = async (req, res) => {
     try {
         const { token } = req.body;
@@ -749,8 +696,6 @@ const verifyEmailChange = async (req, res) => {
 
         res.status(200).json({ message: 'Your email address has been updated. Please sign in with your new email.' });
     } catch (error) {
-        // A verified account claimed this address between the check above and
-        // the save — the unique index caught it.
         if (error.name === 'SequelizeUniqueConstraintError') {
             return res.status(400).json({ message: 'That email address is now in use by another account. Please request the change again with a different address.' });
         }
