@@ -2,7 +2,7 @@ const LessonProgress = require('../models/LessonProgress');
 const Module = require('../models/Module');
 const User = require('../models/User');
 
-// Mirrors the frontend's parseLessons() split logic exactly: 1 (intro) + one per "## " heading.
+
 const countLessons = (content) => (content ? content.split(/\n##\s+/).length : 0);
 
 const serializeUser = (user) => ({
@@ -17,9 +17,7 @@ const serializeUser = (user) => ({
     dssAssessmentsRun: user.dssAssessmentsRun
 });
 
-// Recomputes modulesCompleted from scratch against real LessonProgress + Module data,
-// rather than trusting an incrementally-maintained counter. Self-correcting on every call —
-// there is no code path left that can leave this value out of sync with reality.
+// Recomputes modulesCompleted from scratch to always make sure accurate data
 const computeModulesCompleted = async (userId) => {
     const [modules, rows] = await Promise.all([
         Module.findAll({ attributes: ['id', 'content'] }),
@@ -39,10 +37,7 @@ const computeModulesCompleted = async (userId) => {
     return completed;
 };
 
-// Returns completion state shaped as { [moduleId]: [lessonIndex, ...] }, matching the
-// frontend's completedLessonsMap state shape exactly. Route keeps a :userId param for
-// URL-shape compatibility with existing frontend calls, but it's ignored — always scoped
-// to the caller's own id, so one user can't read another's progress by editing the URL.
+
 const getProgress = async (req, res) => {
     try {
         const userId = req.user.id;

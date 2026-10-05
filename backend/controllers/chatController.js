@@ -6,16 +6,10 @@ require('dotenv').config();
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-// Truncated so a long question doesn't bloat the log table — enough to see
-// what was actually asked without storing the full conversation.
+
 const MAX_LOGGED_MESSAGE_LENGTH = 200;
 
-// Fixed model, no user choice — kept simple. gemini-3.5-flash-lite specifically:
-// its free-tier daily quota (500 requests/day, confirmed via the AI Studio
-// rate-limit dashboard) is 25x higher than the regular Flash models (20/day),
-// and it was verified reliable across repeated real test calls, unlike
-// gemini-3.5-flash which returned empty responses or 503 "high demand" errors
-// under the same testing.
+
 const CHAT_MODEL = 'gemini-3.5-flash-lite';
 
 const handleChat = async (req, res) => {
@@ -26,10 +20,7 @@ const handleChat = async (req, res) => {
             return res.status(400).json({ message: 'No chat message provided' });
         }
 
-        // Logged as soon as the message is known valid — mirrors the DSS
-        // assessment log (every run gets recorded regardless of whether the
-        // Gemini call itself succeeds), so admins can see chatbot usage even
-        // when a reply later falls back to the generic error message below.
+        // Logged the users message in the admin log page
         const actor = await User.findByPk(req.user.id, { attributes: ['name', 'role'] });
         const truncatedMessage = message.length > MAX_LOGGED_MESSAGE_LENGTH
             ? `${message.slice(0, MAX_LOGGED_MESSAGE_LENGTH)}…`
@@ -44,7 +35,7 @@ const handleChat = async (req, res) => {
             userContext = `\nThe user you are talking to is named "${user.name}"${user.role ? `, their role is "${user.role}"` : ''}${user.organization ? `, and they are from the organization "${user.organization}"` : ''}. You should address them by name and be aware of their profile role when answering.`;
         }
 
-        // Add current date/time context so the AI knows today's date
+        // Add current date/time context so the AI knows the date today
         const currentDate = new Date().toLocaleString('en-US', {
             weekday: 'long',
             year: 'numeric',
@@ -74,8 +65,7 @@ User Query: ${message}`;
             contents: promptContext
         });
 
-        // Deduped by module — citing every matched lesson individually is noisier
-        // than useful when several land in the same module.
+
         const sources = Object.values(
             Object.fromEntries(relevantChunks.map(c => [c.moduleId, { moduleId: c.moduleId, moduleTitle: c.moduleTitle }]))
         );

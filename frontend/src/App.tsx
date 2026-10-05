@@ -204,13 +204,10 @@ function parseLessons(content: string): { title: string; content: string }[] {
 
 // Roles an admin can pick from when limiting who a Regular Meeting is for.
 // Admin and Sub Admin are deliberately absent: they always see every meeting
-// (they manage them, and the Admin Panel reads the same list), so offering
-// them as toggles would imply a restriction that doesn't actually apply.
+
 const MEETING_AUDIENCE_ROLES = ['Livestock Manager', 'Farmer', 'Veterinarian', 'Extension Worker', 'Secretary'];
 
-// Human-readable labels for ActivityLog.action values (see backend/utils/activityLog.js
-// for where each of these gets written). New action strings just fall back to
-// themselves rather than needing this map updated in lockstep.
+
 const ACTIVITY_ACTION_LABELS: Record<string, string> = {
   login_success: 'Login',
   login_failed: 'Failed Login',
@@ -250,8 +247,7 @@ const ACTIVITY_ACTION_LABELS: Record<string, string> = {
   home_photo_removed: 'Home Photo Removed',
 };
 
-// Rough at-a-glance severity so the table reads like a security log, not a
-// plain activity feed — 'high' flags the events most worth a second look.
+
 const ACTIVITY_SEVERITY: Record<string, 'high' | 'medium' | 'low'> = {
   login_failed: 'high',
   account_locked: 'high',
@@ -269,11 +265,7 @@ function getActivitySeverity(action: string): 'high' | 'medium' | 'low' {
   return ACTIVITY_SEVERITY[action] || 'low';
 }
 
-// Shared everywhere a password gets set (registration, change password, reset
-// password) so the rule and its wording only live in one place. Mirrored
-// server-side in backend/utils/passwordPolicy.js — the checklist here is a
-// UX convenience, not the enforcement; the backend rejects a weak password
-// regardless of what the client sends.
+// Shared everywhere a password gets set
 const PASSWORD_RULES: { key: string; label: string; test: (pw: string) => boolean }[] = [
   { key: 'length', label: 'At least 8 characters', test: pw => pw.length >= 8 },
   { key: 'upper', label: 'One uppercase letter (A-Z)', test: pw => /[A-Z]/.test(pw) },
@@ -313,8 +305,7 @@ function PasswordChecklist({ password }: { password: string }) {
 type Tab = 'home' | 'about' | 'dashboard' | 'learning' | 'chatbot' | 'dss' | 'meetings' | 'profile' | 'admin';
 const VALID_TABS: Tab[] = ['home', 'about', 'dashboard', 'learning', 'chatbot', 'dss', 'meetings', 'profile', 'admin'];
 
-// Breadcrumb labels reuse the sidebar's own names (and translations) instead of
-// the raw tab id, which showed up as "Dss" and "Chatbot".
+
 const TAB_NAV_KEYS: Record<Tab, string> = {
   home: 'nav.home', about: 'nav.about', dashboard: 'nav.dashboard', learning: 'nav.learning',
   chatbot: 'nav.chatbot', dss: 'nav.dss', meetings: 'nav.meetings', profile: 'nav.profile', admin: 'nav.admin'
@@ -337,8 +328,7 @@ const CHAT_GREETING: { role: 'assistant'; content: string } = {
   content: 'Hello! I am **PHILSARBot**, your AI assistant for cattle reproductive management. I can help you understand estrus cycles, AI procedures, breeding techniques, and more. What would you like to know today?'
 };
 
-// Themed replacement for window.confirm() on destructive actions — styled to match
-// the portal's Royal Blue theme instead of the browser's default confirm dialog.
+
 const confirmDelete = (text: string, title = 'Are you sure?', confirmButtonText = 'Yes, delete it'): Promise<boolean> => {
   return Swal.fire({
     title,
@@ -358,8 +348,7 @@ const confirmDelete = (text: string, title = 'Are you sure?', confirmButtonText 
   }).then(result => result.isConfirmed);
 };
 
-// Themed replacement for window.alert() — a non-blocking toast instead of a
-// dialog the user must click OK to dismiss, styled to match the portal's theme.
+
 type ToastType = 'success' | 'error' | 'warning' | 'info';
 const showToast = (text: string, icon: ToastType = 'info') => {
   Swal.fire({
@@ -376,9 +365,7 @@ const showToast = (text: string, icon: ToastType = 'info') => {
   });
 };
 
-// Static organizational content for the Home page's "About Us" section — sourced
-// from the PHILSAR Core Identity Framework (mission/vision/KISSPA values/strategic
-// objectives), not user-editable data, so it's a plain constant rather than fetched.
+// about us page ng philsar
 const KISSPA_VALUES = [
   { letter: 'K', title: 'Knowledge Sharing and Collaboration', desc: 'Fostering strong partnerships among SUCs, scientists, practitioners, institutions, and ASEAN counterparts to advance the field of animal reproduction collectively.' },
   { letter: 'I', title: 'Innovation and Excellence', desc: 'Championing cutting-edge reproductive technologies and continuously elevating the quality of education, research, training, and practice.' },
@@ -416,11 +403,7 @@ const STRATEGIC_OBJECTIVES = [
   ] }
 ];
 
-// First-pass i18n: covers the sidebar, topbar, Home page, and the page
-// title/subtitle/primary buttons on every other tab. Deeper content (form
-// labels, table headers, admin sub-panels, AI-generated chatbot/DSS output,
-// admin-authored modules/announcements) stays English-only for now — those
-// aren't reachable by a static dictionary the same way.
+
 type Language = 'en' | 'tl';
 const TRANSLATIONS: Record<Language, Record<string, string>> = {
   en: {
@@ -568,11 +551,7 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-  // Role-tier helpers, reused across every gate below instead of repeating
-  // the role list at each call site (and risking the two drifting apart).
-  // isSystemAdmin: everything, including Users/Settings/Home Page — Admin only.
-  // isModuleOrMeetingAdmin: + Learning Modules and the Meetings control panel — Sub Admin too.
-  // canEditMinutes: + writing/editing meeting minutes — Secretary too.
+  // role checker
   const isSystemAdmin = currentUser?.role === 'Admin';
   const isModuleOrMeetingAdmin = currentUser?.role === 'Admin' || currentUser?.role === 'Sub Admin';
   const canEditMinutes = currentUser?.role === 'Admin' || currentUser?.role === 'Sub Admin' || currentUser?.role === 'Secretary';
@@ -646,9 +625,7 @@ export default function App() {
   const [verifyEmailChangeStatus, setVerifyEmailChangeStatus] = useState<'pending' | 'success' | 'error'>('pending');
   const [verifyEmailChangeErrorMsg, setVerifyEmailChangeErrorMsg] = useState('');
 
-  // Profile Form State. Email and role aren't editable here — a role change is
-  // an Admin-only action (see the Users tab's Change Role button) and an email
-  // change goes through its own verify-before-it-takes-effect flow below.
+
   const [profileForm, setProfileForm] = useState({
     name: '',
     organization: '',
@@ -671,9 +648,7 @@ export default function App() {
   const [inputMessage, setInputMessage] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
-  // Floating chathead — lets the user chat from any tab without navigating to
-  // the full AI Assistant view. Shares the same chatMessages/handleSendMessage
-  // as that view, so it's one continuous conversation either way.
+  // Floating chathead for the ai chatbot
   const [chatheadOpen, setChatheadOpen] = useState(false);
   const [chatheadSeenCount, setChatheadSeenCount] = useState(1); // CHAT_GREETING counts as already seen
 
@@ -696,9 +671,7 @@ export default function App() {
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [newModuleForm, setNewModuleForm] = useState({ title: '', description: '', content: '', imageUrl: '', topic: '' });
   const [topicFilter, setTopicFilter] = useState('All Topics');
-  // allowedRoles starts empty so a new Regular Meeting begins with nobody
-  // selected — the admin picks its audience deliberately rather than
-  // un-picking from a pre-filled list.
+
   const [newMeetingForm, setNewMeetingForm] = useState({ title: '', host: '', dateTime: '', status: 'Upcoming' as any, videoLink: '', recordingUrl: '', meetingType: 'Seminar' as any, allowedRoles: '' });
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
   const [savingUser, setSavingUser] = useState(false);
@@ -741,36 +714,23 @@ export default function App() {
   // Loaders
   const [dataLoading, setDataLoading] = useState(false);
 
-  // VITE_API_BASE overrides when set (e.g. a separately-hosted frontend). Otherwise:
-  // local dev talks to the backend on its own port; a production build defaults to a
-  // relative path, which is correct when the backend serves this same build (combined
-  // Railway deploy) since everything is then same-origin.
+
   const API_BASE = import.meta.env.VITE_API_BASE || (import.meta.env.DEV ? 'http://localhost:5000/api' : '/api');
 
-  // Core Hooks & Effects
-  // Also re-fires on activeTab: the chatbot view fully unmounts when you
-  // navigate away (conditional render, not just hidden via CSS), so the
-  // scrollable message list remounts at scrollTop 0 every time you come
-  // back — without this dependency, returning to the tab showed the very
-  // first message instead of where the conversation actually left off.
+
   useEffect(() => {
     if (activeTab !== 'chatbot' && !chatheadOpen) return;
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages, isChatLoading, activeTab, chatheadOpen]);
 
-  // Marks messages as "seen" whenever the full chat view or the open chathead
-  // is actually visible, so the unread badge only counts messages that
-  // arrived while neither was showing.
+
   useEffect(() => {
     if (activeTab === 'chatbot' || chatheadOpen) {
       setChatheadSeenCount(chatMessages.length);
     }
   }, [chatMessages.length, activeTab, chatheadOpen]);
 
-  // Persist the chatbot conversation per-user so it survives page refreshes and
-  // tab navigation — cleared explicitly on logout (see handleLogout) rather than
-  // here, so it doesn't get wiped just because currentUser hasn't hydrated yet
-  // on a fresh page load.
+
   useEffect(() => {
     if (!currentUser?.id) return;
     localStorage.setItem(`philsar_chat_${currentUser.id}`, JSON.stringify(chatMessages));
@@ -785,11 +745,7 @@ export default function App() {
       let timer: number | undefined;
 
       (async () => {
-        // Joining anonymously (no jwt) puts the room in JaaS's "testing mode",
-        // where premium features like cloud recording never appear in the
-        // toolbar regardless of client-side config — they're gated behind proof
-        // of moderator rights via a signed token. Falls back to an anonymous
-        // join if this fails, so a token-service hiccup never blocks joining.
+
         let jaasJwt: string | undefined;
         try {
           const tokenRes = await axios.get(`${API_BASE}/meetings/${activeMeeting.id}/jaas-token`);
@@ -818,11 +774,7 @@ export default function App() {
             configOverwrite: {
               startWithAudioMuted: true,
               startWithVideoMuted: true,
-              // JaaS's default embed toolbar omits fullscreen — spell it out explicitly
-              // alongside the rest of the standard toolbar to bring it back. 'recording'
-              // is JaaS-native (unlike the free public meet.jit.si server); whether it
-              // actually works depends on the 8x8 account's plan. Recording rights
-              // default to the meeting's moderator (usually whoever joins first).
+
               toolbarButtons: [
                 'microphone', 'camera', 'desktop', 'fullscreen', 'fodeviceselection',
                 'hangup', 'chat', 'raisehand', 'tileview', 'settings', 'videoquality',
@@ -831,11 +783,7 @@ export default function App() {
             }
           });
 
-          // Track cumulative seminar attendance so a 30-minute certificate can be issued.
-          // Reports real elapsed wall-clock time since the last *successful* ping rather
-          // than assuming exactly 30s always passed — a dropped ping, delayed timer tick,
-          // or brief reconnect no longer permanently undercounts, since the next
-          // successful ping just reports the full real gap and catches up.
+
           const meetingId = activeMeeting.id;
           const userId = currentUser?.id;
           let lastPingAt = Date.now();
@@ -846,18 +794,9 @@ export default function App() {
             axios.post(`${API_BASE}/meetings/${meetingId}/attendance/ping`, { userId, elapsedSeconds })
               .then(res => {
                 lastPingAt = now;
-                // Merged, not replaced — the ping response doesn't necessarily
-                // carry every field the initial full fetch does (e.g. rsvped),
-                // and blindly replacing the whole entry silently dropped
-                // whichever ones it omitted. That previously wiped `rsvped`
-                // to undefined after the very first heartbeat, so leaving and
-                // rejoining the same call incorrectly asked the user to RSVP
-                // again — even though they already had — until a full page
-                // refresh re-fetched the complete record.
+
                 setMyAttendance(prev => ({ ...prev, [meetingId]: { ...prev[meetingId], ...res.data } }));
-                // The host ending the seminar doesn't push to already-connected
-                // participants — this heartbeat is the only channel checking back in,
-                // so it doubles as the signal to disconnect everyone still in the call.
+                // if the hosts end the call
                 if (res.data.status === 'Ended') {
                   showToast('This seminar has been ended by the host.', 'info');
                   setMeetings(prev => prev.map(m => m.id === meetingId ? { ...m, status: 'Ended' } : m));
@@ -898,10 +837,7 @@ export default function App() {
     }
   }, [activeMeeting]);
 
-  // A 401 means the session is no longer valid server-side (expired, or
-  // invalidated by a password change elsewhere) — nothing previously handled
-  // this globally, so a stale session would just fail silently call after
-  // call instead of cleanly dropping back to the login screen.
+
   useEffect(() => {
     const interceptorId = axios.interceptors.response.use(
       response => response,
@@ -918,11 +854,7 @@ export default function App() {
     return () => axios.interceptors.response.eject(interceptorId);
   }, []);
 
-  // Auto-logout after 15 minutes with no user interaction — protects a session
-  // left open unattended (shared/kiosk computers, walking away mid-shift).
-  // Tracked via plain mutable variables rather than state, since activity fires
-  // on every mousemove/keydown and would otherwise re-render the whole app
-  // constantly; only the periodic idle check needs to actually do anything.
+  // Auto-logout after 15 minutes with no user interaction
   useEffect(() => {
     if (!isAuthenticated) return;
 
@@ -966,7 +898,7 @@ export default function App() {
       refreshSessionData(parsedUser);
 
       // Restore the chatbot conversation for this user if one was saved from
-      // an earlier page load in this browser (see the persistence effect below).
+      // an earlier page load in this browser
       const storedChat = localStorage.getItem(`philsar_chat_${parsedUser.id}`);
       if (storedChat) {
         try {
@@ -982,10 +914,7 @@ export default function App() {
     logoImg.src = philsarLogo;
     logoImgRef.current = logoImg;
 
-    // Normalize the landing URL so it always reflects the active tab — but leave
-    // a reset-password, verify-email, or verify-email-change link alone, since
-    // their token lives in the query string and tabFromPath would otherwise
-    // coerce it straight to /dashboard.
+
     if (
       window.location.pathname !== '/reset-password' &&
       window.location.pathname !== '/verify-email' &&
@@ -995,10 +924,7 @@ export default function App() {
     }
   }, []);
 
-  // Fires the verification call once, only when landing directly on a
-  // /verify-email?token=... link (authView/verifyToken are both established
-  // by their lazy useState initializers before this first runs, so reading
-  // them here on mount is safe without listing them as dependencies).
+
   useEffect(() => {
     if (authView !== 'verify') return;
     if (!verifyToken) {
@@ -1014,10 +940,7 @@ export default function App() {
       });
   }, []);
 
-  // Mirrors the /verify-email effect above — fires once on landing directly on
-  // a /verify-email-change?token=... link. This works whether or not the
-  // clicking browser is currently signed in, since the token alone identifies
-  // the account server-side.
+
   useEffect(() => {
     if (authView !== 'verify-email-change') return;
     if (!verifyEmailChangeToken) {
@@ -1028,9 +951,7 @@ export default function App() {
     axios.post(`${API_BASE}/auth/verify-email-change`, { token: verifyEmailChangeToken })
       .then(() => {
         setVerifyEmailChangeStatus('success');
-        // If this browser happens to be signed in as the account that just
-        // changed its email, sync the local copy so the UI doesn't keep
-        // showing the old address until next login.
+
         setCurrentUser(prev => {
           if (!prev || !prev.pendingEmail) return prev;
           const updated = { ...prev, email: prev.pendingEmail, pendingEmail: null };
@@ -1044,9 +965,7 @@ export default function App() {
       });
   }, []);
 
-  // A tab left open (or backgrounded) has no way to learn that data changed
-  // elsewhere — another tab, another device — short of a manual reload. Catch
-  // it up the same way a fresh mount would, whenever it regains focus.
+
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && isAuthenticated && currentUser) {
@@ -1057,9 +976,7 @@ export default function App() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [isAuthenticated, currentUser?.id]);
 
-  // Preload the admin-configured certificate background so it can be embedded
-  // synchronously; crossOrigin is required since jsPDF reads pixels via canvas
-  // and the file is served from the backend's origin.
+
   useEffect(() => {
     if (settings.certBackgroundImage) {
       const bgImg = new Image();
@@ -1071,8 +988,7 @@ export default function App() {
     }
   }, [settings.certBackgroundImage]);
 
-  // Auto-advance the Home page hero background through whatever images the
-  // admin has uploaded — a no-op while there are 0-1 images.
+
   useEffect(() => {
     if (landingImages.length < 2) return;
     const interval = setInterval(() => {
@@ -1081,7 +997,7 @@ export default function App() {
     return () => clearInterval(interval);
   }, [landingImages.length]);
 
-  // Keep activeTab in sync with browser back/forward navigation
+
   useEffect(() => {
     const handlePopState = () => {
       setActiveTab(tabFromPath(window.location.pathname));
@@ -1092,17 +1008,12 @@ export default function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // Every tab is a sibling view toggled via display:none/block (not
-  // mounted/unmounted), so the browser scroll position otherwise carries
-  // over from whatever page was open before — reset it on every navigation.
+
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [activeTab]);
 
-  // Fetch all necessary data from the backend APIs
-  // Cattle/DSS data is private per user, so we read the userId fresh from localStorage
-  // rather than the `currentUser` closure — several call sites invoke this in the same
-  // synchronous block as setCurrentUser(...), where that state update hasn't landed yet.
+
   const fetchGlobalData = async () => {
     try {
       setDataLoading(true);
@@ -1144,10 +1055,7 @@ export default function App() {
     }
   };
 
-  // Everything that can go stale in a tab left open while data changes elsewhere
-  // (another tab, another device, or just time passing) — called on mount and
-  // again whenever the tab regains focus, so a backgrounded tab catches up
-  // without the user needing to manually refresh.
+
   const refreshSessionData = (user: User) => {
     // Lesson completion is server-persisted so it survives cleared storage / device changes
     axios.get(`${API_BASE}/progress/${user.id}`)
@@ -1163,9 +1071,7 @@ export default function App() {
       })
       .catch(err => console.error('Error refreshing user data:', err));
 
-    // Modules/meetings/etc. are only ever rendered post-login, and several of
-    // the endpoints below require auth — no reason to fetch them (or risk a
-    // 401) for a logged-out visitor.
+
     fetchGlobalData();
   };
 
@@ -1182,23 +1088,11 @@ export default function App() {
     if (activeTab === 'admin' && isModuleOrMeetingAdmin) {
       fetchUsersList();
     }
-    // currentUser?.role is deliberately included: on a hard refresh landing
-    // directly on /admin, activeTab is already 'admin' on the very first
-    // render but currentUser hasn't hydrated from localStorage yet, so the
-    // condition above is false. Without this dependency the effect would
-    // never re-fire once currentUser becomes available a moment later,
-    // leaving the Users table empty until logging out and back in.
+
   }, [activeTab, currentUser?.role]);
 
   // Re-check certificate eligibility whenever the user opens Virtual Meetings —
-  // covers certificates an admin granted manually since the last page load.
-  // currentUser?.id is deliberately included: on a hard refresh landing directly
-  // on /meetings, activeTab is already 'meetings' on the very first render but
-  // currentUser hasn't hydrated from localStorage yet, so the condition above
-  // is false. Without this dependency the effect would never re-fire once
-  // currentUser becomes available a moment later, leaving myAttendance empty —
-  // showing the RSVP button and hiding earned certificates until the user
-  // navigates away from the tab and back.
+  // covers certificates an admin granted manually
   useEffect(() => {
     if (activeTab === 'meetings' && currentUser) {
       axios.get(`${API_BASE}/meetings/attendance/${currentUser.id}`)
@@ -1232,11 +1126,7 @@ export default function App() {
         currentPassword: ''
       });
 
-      // Refetch stats, activity logs, and lesson-completion progress — a plain
-      // fetchGlobalData() call here left completedLessonsMap empty for the rest
-      // of a freshly-logged-in session (it's only ever populated by the mount/
-      // visibility-regain paths below), so "Modules Completed" looked wrong
-      // until the tab was refreshed or backgrounded and refocused.
+
       refreshSessionData(user);
     } catch (error: any) {
       if (error.response?.data?.requiresVerification) {
@@ -1267,9 +1157,7 @@ export default function App() {
         role: authForm.role,
         organization: authForm.organization
       });
-      // Self-serve registration no longer logs the user straight in — the
-      // account starts unverified and can't sign in until they click the
-      // link emailed to them (see requiresVerification handling in `login`).
+
       setPendingVerificationEmail(authForm.email);
       setResendSent(false);
       setAuthView('verify-pending');
@@ -1334,17 +1222,10 @@ export default function App() {
   };
 
   const handleLogout = (reason: 'manual' | 'inactivity' = 'manual') => {
-    // Fire-and-forget, purely for the security log (JWTs are stateless — this
-    // doesn't invalidate anything). Sent before the Authorization header is
-    // cleared below; axios merges that header into the request synchronously
-    // at call time, so it's already attached even though the header gets
-    // deleted immediately after in this same function.
+
     axios.post(`${API_BASE}/auth/logout`, { reason }).catch(() => {});
 
-    // Chat is persisted to localStorage per-user (see the chatMessages effect below) —
-    // remove it here so logging out actually restarts the conversation, rather than
-    // just resetting the in-memory copy while a stale one lingers in storage for the
-    // next fresh login to pick back up.
+
     if (currentUser) {
       localStorage.removeItem(`philsar_chat_${currentUser.id}`);
     }
@@ -1354,8 +1235,7 @@ export default function App() {
     setCurrentUser(null);
     setCompletedLessonsMap({});
     setActiveTab('home');
-    // Client-only state with no per-user backend fetch — must be reset explicitly
-    // so the next account to log in in this tab doesn't inherit it.
+
     setChatMessages([CHAT_GREETING]);
     setInputMessage('');
     setDssResult(null);
@@ -1376,9 +1256,7 @@ export default function App() {
         password: profileForm.password || undefined,
         currentPassword: profileForm.password ? profileForm.currentPassword : undefined
       });
-      // A password change invalidates the old token server-side, so the response
-      // includes a fresh one in that case — reusing the old token here would leave
-      // the session broken on its very next request.
+
       const newToken = response.data.token || currentUser.token;
       const updated = { ...response.data.user, token: newToken };
       if (response.data.token) {
@@ -1393,10 +1271,7 @@ export default function App() {
     }
   };
 
-  // Separate from handleProfileSubmit above — this doesn't change anything on
-  // the account by itself, it only sends a confirmation link to the new
-  // address. The account keeps using its current email until that link is
-  // clicked (see the /verify-email-change gatekeeper view).
+
   const handleChangeEmailSubmit = async () => {
     if (!currentUser) return;
     if (!emailChangeForm.newEmail || !emailChangeForm.currentPassword) {
@@ -1625,26 +1500,7 @@ export default function App() {
     setMinutesPanelOpen(false);
   };
 
-  // Closing the modal (background click, the × button) only hides it — the Jitsi
-  // mount effect no longer keys off meetingModalOpen, so the call stays connected
-  // in the background. Actually leaving requires clearing activeMeeting itself,
-  // which is what the effect keys disposal off of.
-  //
-  // dispose() (fired by that effect's cleanup once activeMeeting clears) only
-  // tears down the local iframe/connection — it doesn't wait for the
-  // 'hangup' command to actually finish. Calling executeCommand('hangup')
-  // and clearing activeMeeting in the same tick (a prior attempt at this fix)
-  // still raced: dispose() ran essentially immediately, tearing the iframe
-  // down before the async postMessage to Jitsi had time to reach the
-  // conference server — so the "ghost" duplicate tile on rejoin kept
-  // happening. Jitsi's own hang-up button doesn't have this problem because
-  // it waits for the real 'videoConferenceLeft' event before doing anything
-  // else, so we wait for that same event here before clearing state (with a
-  // timeout fallback in case it never fires, e.g. the connection already
-  // dropped). The jitsiApiRef.current === api check guards against a rejoin
-  // racing ahead of this and creating a *new* Jitsi instance before this
-  // stale cleanup fires — without it, this could wrongly tear down the new
-  // session instead of the one actually being left.
+
   const handleLeaveMeeting = () => {
     setMeetingModalOpen(false);
     setMeetingExpanded(false);
@@ -1686,7 +1542,7 @@ export default function App() {
   const handleDownloadMinutes = async (meeting: Meeting) => {
     if (!meeting.minutes) return;
 
-    // Loaded on demand, same as the certificate PDF — keeps jsPDF out of the main bundle.
+
     const { jsPDF } = await import('jspdf');
     const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
     const w = doc.internal.pageSize.getWidth();
@@ -1818,18 +1674,14 @@ export default function App() {
     await fetchCertAttendance(meeting.id);
   };
 
-  // The roster otherwise only reflects whatever attendance looked like at the
-  // moment the modal was opened — an admin watching a live seminar would see a
-  // frozen snapshot instead of climbing attendance times.
+
   useEffect(() => {
     if (!certModalOpen || !certModalMeeting) return;
     const interval = setInterval(() => fetchCertAttendance(certModalMeeting.id), 20000);
     return () => clearInterval(interval);
   }, [certModalOpen, certModalMeeting]);
 
-  // Shares fetchCertAttendance/certAttendanceRows with the certificate modal —
-  // same underlying per-meeting attendance data, and only one of the two
-  // modals is ever open at a time.
+
   const openRegistrantsModal = async (meeting: Meeting) => {
     setRegistrantsModalMeeting(meeting);
     setRegistrantsModalOpen(true);
@@ -2052,10 +1904,7 @@ export default function App() {
     }
   };
 
-  // A System Admin changing their own role wouldn't be logged (updateProfile's
-  // role_changed log is guarded by isAdmin && !isSelf, to distinguish a genuine
-  // admin action from ordinary self-service), so this modal is never opened for
-  // the admin's own row in the first place — see the Actions column below.
+
   const handleConfirmRoleChange = async () => {
     if (!roleChangeUser || !roleChangeSelection) return;
     if (roleChangeSelection === roleChangeUser.role) {
@@ -2281,9 +2130,7 @@ export default function App() {
     }
   };
 
-  // Swaps the photo at `index` with its neighbor in the given direction, updates
-  // the UI immediately, then persists the full new order. Reverts on failure so
-  // the on-screen order never drifts from what's actually saved.
+
   const handleMoveLandingImage = async (index: number, direction: -1 | 1) => {
     const targetIndex = index + direction;
     if (targetIndex < 0 || targetIndex >= landingImages.length) return;
@@ -2432,11 +2279,7 @@ export default function App() {
 
   const MEETING_MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-  // Meeting.dateTime is stored as a plain "Month Day, h:mm AM/PM" display string
-  // (no year — see the split(', ') based parsing used elsewhere for session cards),
-  // so the calendar/clock picker's native "datetime-local" value is converted to
-  // that exact format right at submit time, keeping every other consumer of
-  // dateTime (home page cards, PDF certificates, the admin table) untouched.
+  //date and time when creating meetings
   const formatMeetingDateTime = (localValue: string): string => {
     if (!localValue) return '';
     const d = new Date(localValue);
@@ -2450,15 +2293,7 @@ export default function App() {
     return `${month} ${day}, ${hours}:${minutes} ${ampm}`;
   };
 
-  // The reverse conversion, used only to pre-populate the picker when opening
-  // Edit. Deliberately strict: native Date parsing of these display strings is
-  // unreliable (some valid-looking strings throw, and at least one shape — a
-  // relative "Today, ..." string — silently parses to the wrong date with no
-  // error at all), so this only accepts the exact format formatMeetingDateTime
-  // produces and returns '' otherwise. An empty result leaves the picker blank
-  // rather than risk silently showing an incorrect date/time; the admin then
-  // just picks a fresh one. The year isn't stored in the string, so it's assumed
-  // to be the current year — fine for the near-term seminars this field is for.
+
   const parseMeetingDateTimeForInput = (display: string): string => {
     const match = /^([A-Za-z]+)\s+(\d{1,2}),\s*(\d{1,2}):(\d{2})\s*([AaPp][Mm])$/.exec((display || '').trim());
     if (!match) return '';
@@ -2486,7 +2321,7 @@ export default function App() {
         ...newMeetingForm,
         dateTime: formatMeetingDateTime(newMeetingForm.dateTime),
         // A Seminar is open to the whole portal, so it's saved with no role
-        // restriction rather than whatever the picker happened to be showing.
+
         allowedRoles: newMeetingForm.meetingType === 'Regular Meeting' ? newMeetingForm.allowedRoles : null
       };
       if (editingMeeting) {
@@ -2559,8 +2394,7 @@ export default function App() {
     }
   };
 
-  // Debounce the free-text search so every keystroke doesn't fire a request —
-  // only the settled value (300ms after typing stops) feeds the actual fetch.
+
   useEffect(() => {
     const timer = setTimeout(() => {
       setActivityLogSearch(activityLogSearchInput);
@@ -2573,12 +2407,10 @@ export default function App() {
     if (activeTab === 'admin' && activeAdminTab === 'activity' && isSystemAdmin) {
       fetchActivityLogs();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [activeTab, activeAdminTab, isSystemAdmin, activityLogCategory, activityLogSearch, activityLogPage]);
 
-  // Independent of the filtered table above — this answers "should I be
-  // worried right now?" so it stays fixed to a real 24h window regardless of
-  // whatever category/search the admin currently has the table filtered to.
+
   useEffect(() => {
     if (activeTab === 'admin' && activeAdminTab === 'activity' && isSystemAdmin) {
       axios.get(`${API_BASE}/activity-logs/summary`)
@@ -2661,13 +2493,7 @@ export default function App() {
       }).slice(0, 6)
     : [];
 
-  // Derived live from currently-existing modules/meetings, rather than trusting
-  // currentUser.modulesCompleted/seminarsAttended — those are counters that only
-  // ever go up (incremented once, at completion/RSVP time) and are never
-  // adjusted down when the underlying module or meeting is later deleted, so
-  // they drift upward over time. Deriving fresh every render keeps the number
-  // shown on the Dashboard/Profile always in sync with what these same lists
-  // show in their "click to view" modals.
+
   const completedModulesList = modules.filter(m => {
     const total = parseLessons(m.content).length;
     return total > 0 && (completedLessonsMap[m.id] || []).length >= total;
@@ -2696,9 +2522,7 @@ export default function App() {
       })
     : allUsers;
 
-  // Surfaced in its own panel above the full roster so a Sub Admin doesn't
-  // have to scroll the whole Users list to find the handful of accounts
-  // actually waiting on them.
+
   const pendingDeletionUsers = allUsers.filter(u => u.pendingDeletion);
 
   // Password visibility toggle

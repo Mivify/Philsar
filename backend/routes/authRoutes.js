@@ -6,10 +6,7 @@ const { uploadImage } = require('../controllers/moduleController');
 const { optionalAuth, requireAuth, requireAdmin, requireSubAdmin, requireSubAdminOnly } = require('../middleware/auth');
 const { logActivity } = require('../utils/activityLog');
 
-// Login is the sensitive one — caps brute-force attempts per IP. Only failed
-// attempts count (skipSuccessfulRequests) so a legitimate user isn't
-// penalized for their own successful logins sharing the window. Registration
-// gets a looser limit too, mainly to stop automated account-creation spam.
+
 const loginLimiter = rateLimit({
     windowMs: 5 * 60 * 1000,
     limit: 5,
@@ -32,8 +29,7 @@ const registerLimiter = rateLimit({
     legacyHeaders: false,
     message: { message: 'Too many accounts created from this network. Please try again later.' }
 });
-// Unauthenticated and enumerable (an attacker could otherwise probe which
-// emails are registered by hammering this endpoint), so it gets its own cap.
+
 const forgotPasswordLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     limit: 5,
@@ -41,8 +37,7 @@ const forgotPasswordLimiter = rateLimit({
     legacyHeaders: false,
     message: { message: 'Too many reset requests. Please try again in a few minutes.' }
 });
-// Token entropy makes brute-forcing impractical, but every other sensitive
-// auth endpoint has a limiter — this one shouldn't be the exception.
+
 const resetPasswordLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     limit: 10,
@@ -70,16 +65,12 @@ router.post('/resend-verification', resendVerificationLimiter, resendVerificatio
 router.get('/profile/:id', requireAuth, getUserById);
 router.put('/profile/:id', requireAuth, updateProfile);
 router.post('/profile/:id/change-email', requireAuth, changeEmail);
-// Reuses resetPasswordLimiter, matching /verify-email above — same trust
-// model (a bearer token from an email link), no dedicated limiter needed.
+// Reuses resetPasswordLimiter
 router.post('/verify-email-change', resetPasswordLimiter, verifyEmailChange);
 // Sub Admin can see the full roster (the Users tab is view-only for them,
-// plus approving/rejecting pending deletions below) — the Meetings/
-// certificates panel also matches attendees against this same list.
+// plus approving/rejecting pending deletions below)
 router.get('/users', requireSubAdmin, getUsers);
-// Admin can only request a deletion, never perform one directly — see
-// deleteUser's comment. Approve/reject is Sub-Admin-only, deliberately a
-// different role than the requester.
+// Admin can only request a deletion, never perform one directly
 router.delete('/users/:id', requireAdmin, deleteUser);
 router.post('/users/:id/approve-deletion', requireSubAdminOnly, approveUserDeletion);
 router.post('/users/:id/reject-deletion', requireSubAdminOnly, rejectUserDeletion);

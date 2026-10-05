@@ -7,10 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const cloudinary = require('cloudinary').v2;
 
-// Re-chunks and re-embeds a module's content for RAG retrieval in the chatbot.
-// Wrapped by callers in a try/catch that only logs — a Gemini hiccup here
-// shouldn't block saving the module itself, since embeddings are a secondary
-// feature, not the module's source of truth.
+// this is for the gemini chat RAG feature
 const reindexModuleChunks = async (moduleId, content) => {
     await ModuleChunk.destroy({ where: { moduleId } });
     const chunks = chunkModuleContent(content);
@@ -58,8 +55,7 @@ const createModule = async (req, res) => {
         if (!title || !content) {
             return res.status(400).json({ message: 'Title and content are required' });
         }
-        // Coerce the "No topic" option's empty string to null — the ENUM column
-        // only accepts one of its defined values or null, not an empty string.
+
         const moduleItem = await Module.create({ title, description, content, imageUrl, topic: topic || null });
         try {
             await reindexModuleChunks(moduleItem.id, content);
@@ -139,10 +135,7 @@ const deleteModule = async (req, res) => {
     }
 };
 
-// Upload Cover Image (Base64 handler). Uses Cloudinary when configured — required for
-// deployments on platforms with an ephemeral filesystem (e.g. Railway), where anything
-// written to local disk is lost on every redeploy. Falls back to local disk otherwise,
-// so local dev keeps working without needing a Cloudinary account.
+
 const uploadImage = async (req, res) => {
     try {
         const { base64Data, fileName } = req.body;
@@ -192,8 +185,7 @@ const uploadImage = async (req, res) => {
     }
 };
 
-// One-time catch-up for modules created before RAG chunking existed — safe to
-// re-run, since it only touches modules that currently have zero chunk rows.
+
 const backfillEmbeddings = async (req, res) => {
     try {
         const modules = await Module.findAll();

@@ -20,7 +20,7 @@ const getLandingImages = async (req, res) => {
 };
 
 // The image itself is uploaded separately via the existing modules upload endpoint
-// (Cloudinary-backed) — this just records the resulting URL as a carousel entry.
+// (Cloudinary-backed)
 const addLandingImage = async (req, res) => {
     try {
         const { imageUrl } = req.body;
@@ -28,8 +28,7 @@ const addLandingImage = async (req, res) => {
             return res.status(400).json({ message: 'Missing imageUrl' });
         }
 
-        // New uploads go to the end of the rotation rather than defaulting to 0,
-        // which would otherwise jump them ahead of any already-reordered photos.
+        
         const maxPosition = await LandingImage.max('position');
         const position = (Number.isFinite(maxPosition) ? maxPosition : 0) + 1;
 
@@ -41,9 +40,7 @@ const addLandingImage = async (req, res) => {
     }
 };
 
-// Persists the admin's drag-reordered sequence in one shot: body is the full list
-// of landing image IDs in the desired display order. Position is just each id's
-// index in that array, so no gaps or uniqueness bookkeeping is needed.
+
 const reorderLandingImages = async (req, res) => {
     try {
         const { orderedIds } = req.body;

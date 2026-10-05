@@ -9,31 +9,20 @@ const HEARTBEAT_SECONDS = 30;
 const MAX_ELAPSED_PER_PING_SECONDS = 5 * 60;
 const DEFAULT_CERTIFICATE_THRESHOLD_MINUTES = 30;
 
-// Admin-configurable via the Settings tab (certAttendanceThresholdMinutes) —
-// falls back to the default if unset or not a sane positive number.
+// Admin-configurable via the Settings tab
 const getCertificateThresholdSeconds = async () => {
     const setting = await Setting.findByPk('certAttendanceThresholdMinutes');
     const minutes = Number(setting?.value);
     return (Number.isFinite(minutes) && minutes > 0 ? minutes : DEFAULT_CERTIFICATE_THRESHOLD_MINUTES) * 60;
 };
 
-// Automatic (threshold-based) eligibility is Seminar-only — a Regular
-// Meeting never auto-qualifies for a certificate, regardless of how long
-// someone stayed. `record.granted` (a manual admin override) still works
-// for either type, so an admin can still hand-grant one as an exception.
+// Automatic eligibility is Seminar-only — a Regular
+// Meeting never auto-qualifies for a certificate
 const isEligible = (record, thresholdSeconds, meetingType) =>
     (meetingType === 'Seminar' && record.secondsAttended >= thresholdSeconds) || record.granted;
 
 // A Regular Meeting can be limited to specific roles via `allowedRoles`.
-// Enforced here rather than only hidden in the UI, so a restricted meeting's
-// video link can't be reached by calling the API directly.
-//   - Admin/Sub Admin always pass: they manage meetings, and the Admin Panel
-//     reads this same endpoint, so filtering them would empty their table.
-//   - Seminars are never restricted.
-//   - allowedRoles === null means "never configured" → unrestricted, so every
-//     meeting that predates this feature keeps behaving as it did.
-//   - An explicitly empty string means the admin narrowed it all the way down,
-//     leaving it visible to admins only.
+
 const canViewMeeting = (meeting, role) => {
     if (role === 'Admin' || role === 'Sub Admin') return true;
     if (meeting.meetingType !== 'Regular Meeting') return true;
@@ -65,9 +54,7 @@ const rsvpMeeting = async (req, res) => {
             return res.status(403).json({ message: 'This meeting is not open to your role.' });
         }
 
-        // Tracked per-user so re-calling this (double-click, revisit) doesn't keep
-        // inflating registrants/seminarsAttended, and so joinability can be gated
-        // on having actually RSVP'd (see requireAuth-gated Join Live flow).
+
         const [record, created] = await MeetingAttendance.findOrCreate({
             where: { userId, meetingId: id },
             defaults: { secondsAttended: 0, rsvped: true }
@@ -146,9 +133,7 @@ const updateMeeting = async (req, res) => {
         if (minutes !== undefined) meeting.minutes = minutes;
         if (recordingUrl !== undefined) meeting.recordingUrl = recordingUrl;
         if (meetingType) meeting.meetingType = meetingType;
-        // `!== undefined` rather than a truthiness check so an empty list (admins
-        // only) can actually be saved. Switching a meeting back to Seminar clears
-        // the restriction outright, since Seminars are always open.
+
         if (allowedRoles !== undefined) meeting.allowedRoles = allowedRoles;
         if (meeting.meetingType === 'Seminar') meeting.allowedRoles = null;
 
@@ -166,8 +151,8 @@ const updateMeeting = async (req, res) => {
     }
 };
 
-// Deliberately narrow — only touches `minutes`, unlike updateMeeting above.
-// This is the one Secretary is allowed to call (see requireMinutesAccess),
+// Deliberately narrow — only touches minutes, unlike updateMeeting above.
+// This is the one Secretary is allowed to call
 // so it must not accept any other field on the meeting.
 const updateMeetingMinutes = async (req, res) => {
     try {
@@ -219,13 +204,7 @@ const pingAttendance = async (req, res) => {
             return res.status(404).json({ message: 'Meeting not found' });
         }
 
-        // The client reports real wall-clock time since its last successful ping
-        // (self-correcting for dropped pings, throttled timers, brief reconnects)
-        // rather than us just assuming a fixed 30s always elapsed. Clamped so a
-        // single ping can't claim an unreasonable amount of attendance.
-        // (`|| HEARTBEAT_SECONDS` would silently treat a legitimate 0 — e.g. the
-        // very first ping right after joining — as "missing" and fall back to 30,
-        // so missing/invalid is detected explicitly instead.)
+        // reports real wall-clock time for the certificate
         const parsedElapsed = Number(elapsedSeconds);
         const safeElapsed = Number.isFinite(parsedElapsed)
             ? Math.min(Math.max(parsedElapsed, 1), MAX_ELAPSED_PER_PING_SECONDS)
@@ -252,8 +231,7 @@ const pingAttendance = async (req, res) => {
 
 const getMyAttendance = async (req, res) => {
     try {
-        // Route keeps a :userId param for URL-shape compatibility with existing
-        // frontend calls, but it's ignored — always scoped to the caller's own id.
+
         const userId = req.user.id;
         const rows = await MeetingAttendance.findAll({ where: { userId } });
         const thresholdSeconds = await getCertificateThresholdSeconds();
@@ -392,14 +370,7 @@ const getJaasToken = async (req, res) => {
             return res.status(503).json({ message: 'Video call authentication is not configured' });
         }
 
-        // Must match the room the frontend actually joins (App.tsx's Jitsi-mount
-        // effect builds it the same way) — the room claim needs to be the
-        // literal room, not the "*" wildcard. Lowercased because Jitsi's
-        // underlying XMPP room naming is conventionally case-insensitive/
-        // lowercased regardless of the case passed into the iframe's roomName,
-        // and several real meeting titles here have mixed case. The meeting id
-        // follows a hyphen (which the sanitized title can't contain) so two
-        // sessions with the same title never share a room.
+
         const sanitizedRoomName = `${(meeting.title.replace(/[^a-zA-Z0-9]/g, '') || 'Seminar').toLowerCase()}-${meeting.id}`;
 
         const token = generateJaasToken({
@@ -416,11 +387,7 @@ const getJaasToken = async (req, res) => {
     }
 };
 
-// These two exist purely for the security log — attendance itself is already
-// tracked via the ping heartbeat, but a ping doesn't tell you the moment
-// someone actually joined or left, which is exactly what "did this account
-// join a seminar at 2am" style monitoring needs. Called from the frontend's
-// Jitsi videoConferenceJoined/videoConferenceLeft event handlers.
+// this is for the admin log page to see the attendance
 const logMeetingJoin = async (req, res) => {
     try {
         const { id } = req.params;
