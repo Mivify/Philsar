@@ -423,7 +423,7 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
   en: {
     'nav.main': 'Main',
     'nav.home': 'Home',
-    'nav.about': 'About Us',
+    'nav.about': 'Our Community',
     'nav.dashboard': 'Dashboard',
     'nav.learning': 'Learning Modules',
     'nav.chatbot': 'AI Assistant',
@@ -480,7 +480,7 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
   tl: {
     'nav.main': 'Pangunahin',
     'nav.home': 'Home',
-    'nav.about': 'Tungkol Sa Amin',
+    'nav.about': 'Ating Komunidad',
     'nav.dashboard': 'Dashboard',
     'nav.learning': 'Mga Modyul sa Pag-aaral',
     'nav.chatbot': 'AI Assistant',
@@ -3185,14 +3185,6 @@ export default function App() {
           </button>
 
           <button
-            className={`nav-item ${activeTab === 'about' ? 'active' : ''}`}
-            onClick={() => handleTabNavigate('about')}
-          >
-            <div className="nav-icon">ℹ️</div>
-            {t('nav.about')}
-          </button>
-
-          <button
             className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
             onClick={() => handleTabNavigate('dashboard')}
           >
@@ -3225,6 +3217,14 @@ export default function App() {
             {meetings.some(m => m.status === 'Live') && (
               <span className="nav-badge" style={{ background: '#52c41a', color: '#fff' }}>{t('nav.live')}</span>
             )}
+          </button>
+
+          <button
+            className={`nav-item ${activeTab === 'about' ? 'active' : ''}`}
+            onClick={() => handleTabNavigate('about')}
+          >
+            <div className="nav-icon">ℹ️</div>
+            {t('nav.about')}
           </button>
 
           <div className="nav-section-label">{t('nav.account')}</div>
