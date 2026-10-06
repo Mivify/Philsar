@@ -247,9 +247,20 @@ body {
 }
 
 .page-breadcrumb span { color: var(--text-primary); font-weight: 600; }
+.page-breadcrumb .breadcrumb-root { color: inherit; font-weight: inherit; }
 
 .topbar-right {
   display: flex; align-items: center; gap: 12px;
+}
+
+/* Phones: drop the "Portal /" prefix and let a long page name shorten with "…"
+   so the top bar never makes the page wider than the screen */
+@media (max-width: 640px) {
+  .topbar-left { flex: 1; min-width: 0; }
+  .page-breadcrumb { min-width: 0; }
+  .page-breadcrumb .breadcrumb-root { display: none; }
+  .page-breadcrumb span#breadcrumb { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .topbar-right { gap: 8px; flex-shrink: 0; margin-left: 8px; }
 }
 
 .topbar-btn {
@@ -461,7 +472,10 @@ body {
   height: 420px;
   border-radius: var(--radius-lg);
   overflow: hidden;
-  margin: -32px -32px 28px;
+  /* Edge to edge on phones: cancels the 16px phone padding of .page-content.
+     Divided by 1.1 because the Home view is zoomed (.view-large-text), which
+     also scales these margins. */
+  margin: calc(-16px / 1.1) calc(-16px / 1.1) 28px;
   display: flex;
   align-items: flex-end;
 }
@@ -1835,7 +1849,14 @@ body {
   padding: 4px;
   margin-bottom: 24px;
   width: fit-content;
+  /* On narrow screens the row scrolls sideways by itself instead of making
+     the whole page wider than the phone */
+  position: relative;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.admin-tabs::-webkit-scrollbar { display: none; }
 
 .admin-tab {
   padding: 8px 18px;
@@ -1847,6 +1868,8 @@ body {
   transition: all 0.2s;
   border: none; background: none;
   font-family: inherit;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .admin-tab.active {
@@ -2005,23 +2028,26 @@ body {
   margin-bottom: 16px;
 }
 
-/* Archived Accounts card under the Users table */
-.archived-accounts { margin-top: 20px; }
-.admin-form-grid + .archived-accounts { margin-top: 0; }
-.archived-accounts > .card-header { padding-bottom: 20px; }
-.archived-accounts > .card-body { padding-top: 0; }
-.archived-toggle {
-  background: var(--warm-white);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 6px 14px;
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
+/* All Accounts / Archived switch in the Users card header */
+.users-card-header { flex-wrap: wrap; gap: 12px; }
+.users-view-tabs { display: flex; gap: 22px; }
+.users-view-tabs button {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0 0 4px;
+  font-family: 'Playfair Display', serif;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-muted);
   cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
 }
-.archived-toggle:hover { background: white; border-color: var(--amber); }
+.users-view-tabs button.active { color: var(--text-primary); border-bottom-color: var(--amber); }
+.users-view-tabs button:not(.active):hover { color: var(--text-primary); }
+@media (max-width: 640px) {
+  .users-view-tabs button { font-size: 15px; }
+}
 .restore-action { display: inline-flex; align-items: center; gap: 5px; color: #2D6A4F; margin-right: 0; }
 
 .view-only-badge {

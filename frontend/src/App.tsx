@@ -663,7 +663,8 @@ export default function App() {
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [archivedUsers, setArchivedUsers] = useState<ArchivedUser[]>([]);
-  const [showArchivedUsers, setShowArchivedUsers] = useState(false);
+  // Which list the Users card shows: All Accounts or Archived
+  const [usersView, setUsersView] = useState<'all' | 'archived'>('all');
   const [herdStats, setHerdStats] = useState({ totalCattle: 0, readyForBreeding: 0, newThisMonth: 0 });
   const [settings, setSettings] = useState<SystemSettings>({
     certTitleText: 'Certificate of Attendance',
@@ -1273,6 +1274,15 @@ export default function App() {
     }
 
   }, [activeTab, currentUser?.role]);
+
+  // On narrow screens the Admin Panel tab row scrolls sideways; keep the
+  // selected tab in view (centered) whenever it changes
+  useEffect(() => {
+    const active = document.querySelector<HTMLElement>('.admin-tabs .admin-tab.active');
+    const row = active?.parentElement;
+    if (!active || !row || row.scrollWidth <= row.clientWidth) return;
+    row.scrollTo({ left: active.offsetLeft - (row.clientWidth - active.offsetWidth) / 2, behavior: 'smooth' });
+  }, [activeAdminTab, activeTab]);
 
   // Re-check certificate eligibility whenever the user opens Virtual Meetings —
   // covers certificates an admin granted manually
@@ -2781,15 +2791,14 @@ export default function App() {
     setSearchQuery('');
   };
 
-  // Listed alphabetically by last name ("Dela Cruz, Juan"); the search matches
-  // either way the name is written, or the email
-  const filteredUsers = (userSearchQuery.trim().length > 0
-    ? allUsers.filter(u => {
-        const q = userSearchQuery.toLowerCase();
-        return u.name.toLowerCase().includes(q) || lastFirstName(u).toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
-      })
-    : [...allUsers]
-  ).sort(compareByLastName);
+  // Both lists are alphabetical by last name ("Dela Cruz, Juan"); the search
+  // matches either way the name is written, or the email
+  const matchesUserSearch = (u: PersonName & { email: string }) => {
+    const q = userSearchQuery.trim().toLowerCase();
+    return !q || u.name.toLowerCase().includes(q) || lastFirstName(u).toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
+  };
+  const filteredUsers = allUsers.filter(matchesUserSearch).sort(compareByLastName);
+  const filteredArchivedUsers = archivedUsers.filter(matchesUserSearch).sort(compareByLastName);
 
 
   const pendingDeletionUsers = allUsers.filter(u => u.pendingDeletion);
@@ -3474,7 +3483,7 @@ export default function App() {
               <Menu size={20} />
             </button>
             <div className="page-breadcrumb">
-              Portal / <span id="breadcrumb">{t(TAB_NAV_KEYS[activeTab])}</span>
+              <span className="breadcrumb-root">Portal /</span> <span id="breadcrumb">{t(TAB_NAV_KEYS[activeTab])}</span>
             </div>
           </div>
           <div className="topbar-right">
@@ -4999,8 +5008,28 @@ export default function App() {
                     )}
 
                     <div className="card">
-                      <div className="card-header">
-                        <div className="card-title">All Accounts</div>
+                      <div className="card-header users-card-header">
+                        {/* Switches the table between the two lists; the search applies to both */}
+                        <div className="users-view-tabs" role="tablist" aria-label="Accounts list">
+                          <button
+                            type="button"
+                            role="tab"
+                            aria-selected={usersView === 'all'}
+                            className={usersView === 'all' ? 'active' : ''}
+                            onClick={() => setUsersView('all')}
+                          >
+                            All Accounts ({allUsers.length})
+                          </button>
+                          <button
+                            type="button"
+                            role="tab"
+                            aria-selected={usersView === 'archived'}
+                            className={usersView === 'archived' ? 'active' : ''}
+                            onClick={() => setUsersView('archived')}
+                          >
+                            Archived ({archivedUsers.length})
+                          </button>
+                        </div>
                         <div className="admin-users-search">
                           <Search size={15} />
                           <input
@@ -5023,6 +5052,54 @@ export default function App() {
                         </div>
                       </div>
                       <div className="card-body data-table-wrapper">
+                        {usersView === 'archived' ? (
+                          // Approved deletions are archived, not erased; an Admin can restore them
+                          <table className="data-table">
+                            <thead>
+                              <tr>
+                                <th>User</th>
+                                <th>Role</th>
+                                <th>Archived</th>
+                                <th>Requested by / Approved by</th>
+                                {isSystemAdmin && <th>Action</th>}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {filteredArchivedUsers.length === 0 && (
+                                <tr>
+                                  <td colSpan={isSystemAdmin ? 5 : 4} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '28px 16px' }}>
+                                    {archivedUsers.length === 0 ? 'No archived accounts.' : `No archived accounts match "${userSearchQuery}".`}
+                                  </td>
+                                </tr>
+                              )}
+                              {filteredArchivedUsers.map(u => (
+                                <tr key={u.id}>
+                                  <td>
+                                    <div className="user-chip">
+                                      <div className="chip-avatar" style={{ background: 'var(--text-muted)' }}>
+                                        {u.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                                      </div>
+                                      <div>
+                                        <div style={{ fontWeight: 600 }}>{lastFirstName(u)}</div>
+                                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{u.email}</div>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td>{u.role}</td>
+                                  <td>{new Date(u.archivedAt).toLocaleDateString('en-PH', { dateStyle: 'medium' })}</td>
+                                  <td style={{ fontSize: '12px' }}>{u.pendingDeletionRequestedByName || '—'} / {u.archivedByName || '—'}</td>
+                                  {isSystemAdmin && (
+                                    <td>
+                                      <button className="table-action restore-action" onClick={() => handleRestoreUser(u)} title="Restore this account">
+                                        <RotateCcw size={14} /> Restore
+                                      </button>
+                                    </td>
+                                  )}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        ) : (
                         <table className="data-table">
                           <thead>
                             <tr>
@@ -5120,65 +5197,9 @@ export default function App() {
                             ))}
                           </tbody>
                         </table>
+                        )}
                       </div>
                     </div>
-                  </div>
-
-                  {/* Approved deletions are archived, not erased; an Admin can restore them */}
-                  <div className="card archived-accounts">
-                    <div className="card-header">
-                      <div className="card-title">Archived Accounts ({archivedUsers.length})</div>
-                      <button
-                        type="button"
-                        className="archived-toggle"
-                        onClick={() => setShowArchivedUsers(s => !s)}
-                        aria-expanded={showArchivedUsers}
-                      >
-                        {showArchivedUsers ? 'Hide' : 'Show'}
-                      </button>
-                    </div>
-                    {showArchivedUsers && (
-                      <div className="card-body data-table-wrapper">
-                        <table className="data-table">
-                          <thead>
-                            <tr>
-                              <th>User</th>
-                              <th>Role</th>
-                              <th>Archived</th>
-                              <th>Requested by / Approved by</th>
-                              {isSystemAdmin && <th>Action</th>}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {archivedUsers.length === 0 && (
-                              <tr>
-                                <td colSpan={isSystemAdmin ? 5 : 4} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '28px 16px' }}>
-                                  No archived accounts.
-                                </td>
-                              </tr>
-                            )}
-                            {[...archivedUsers].sort(compareByLastName).map(u => (
-                              <tr key={u.id}>
-                                <td>
-                                  <div style={{ fontWeight: 600 }}>{lastFirstName(u)}</div>
-                                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{u.email}</div>
-                                </td>
-                                <td>{u.role}</td>
-                                <td>{new Date(u.archivedAt).toLocaleDateString('en-PH', { dateStyle: 'medium' })}</td>
-                                <td style={{ fontSize: '12px' }}>{u.pendingDeletionRequestedByName || '—'} / {u.archivedByName || '—'}</td>
-                                {isSystemAdmin && (
-                                  <td>
-                                    <button className="table-action restore-action" onClick={() => handleRestoreUser(u)} title="Restore this account">
-                                      <RotateCcw size={14} /> Restore
-                                    </button>
-                                  </td>
-                                )}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
                   </div>
                 </div>
               )}
