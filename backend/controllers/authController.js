@@ -34,10 +34,10 @@ const register = async (req, res) => {
         if (!email || !EMAIL_REGEX.test(email)) {
             return res.status(400).json({ message: 'Please enter a valid email address' });
         }
-        // Fake domains and throwaway inboxes are rejected before any account exists
+        // Fake domains, typos and throwaway inboxes are rejected before any account exists
         const emailProblem = await findEmailDomainProblem(email);
         if (emailProblem) {
-            return res.status(400).json({ message: emailProblem });
+            return res.status(400).json({ message: emailProblem.message });
         }
 
         // An unverified account is only a reservation — nobody has proved they own
@@ -141,8 +141,9 @@ const checkEmail = async (req, res) => {
         if (typeof email !== 'string' || !EMAIL_REGEX.test(email)) {
             return res.status(200).json({ valid: false, message: 'Please enter a valid email address' });
         }
+        // problem.suggestion (e.g. juan@gmail.com for juan@gmaiol.com) lets the form offer a one-click fix
         const problem = await findEmailDomainProblem(email);
-        res.status(200).json(problem ? { valid: false, message: problem } : { valid: true });
+        res.status(200).json(problem ? { valid: false, ...problem } : { valid: true });
     } catch (error) {
         res.status(500).json({ message: 'Error checking email address' });
     }
@@ -621,7 +622,7 @@ const changeEmail = async (req, res) => {
         }
         const emailProblem = await findEmailDomainProblem(newEmail);
         if (emailProblem) {
-            return res.status(400).json({ message: emailProblem });
+            return res.status(400).json({ message: emailProblem.message });
         }
 
         const user = await User.findByPk(id);

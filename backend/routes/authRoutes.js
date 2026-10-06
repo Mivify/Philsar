@@ -55,10 +55,11 @@ const resendVerificationLimiter = rateLimit({
     message: { message: 'Too many requests. Please try again in a few minutes.' }
 });
 
-// The registration form calls this each time the email field loses focus
+// The registration form calls this whenever the user pauses while typing an
+// email, so the limit allows for a few people signing up on the same network
 const checkEmailLimiter = rateLimit({
     windowMs: 5 * 60 * 1000,
-    limit: 30,
+    limit: 100,
     standardHeaders: true,
     legacyHeaders: false,
     message: { message: 'Too many requests. Please try again in a few minutes.' }

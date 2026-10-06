@@ -274,6 +274,10 @@ const PASSWORD_RULES: { key: string; label: string; test: (pw: string) => boolea
   { key: 'special', label: 'One special character (!@#$…)', test: pw => /[^A-Za-z0-9]/.test(pw) },
 ];
 
+// Same format rule as EMAIL_REGEX in authController. An address that passes is
+// then checked by the server (/auth/check-email) for fake domains and typos.
+const EMAIL_FORMAT = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 function isPasswordStrong(password: string): boolean {
   return PASSWORD_RULES.every(rule => rule.test(password));
 }
@@ -601,8 +605,11 @@ export default function App() {
   const [authForm, setAuthForm] = useState({ name: '', email: '', password: '', role: 'Farmer', organization: '' });
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
-  // Server's verdict on the registration email, tagged with the address it was checked for
-  const [registerEmailCheck, setRegisterEmailCheck] = useState<{ email: string; status: 'checking' | 'valid' | 'invalid'; message?: string } | null>(null);
+  // Verdict on the registration email, tagged with the address it was checked for
+  const [registerEmailCheck, setRegisterEmailCheck] = useState<{ email: string; status: 'checking' | 'valid' | 'invalid'; message?: string; suggestion?: string } | null>(null);
+  const registerEmailTimer = useRef<number | undefined>(undefined);
+  // Server verdicts already received, so retyping an address doesn't ask again
+  const registerEmailVerdicts = useRef(new Map<string, { status: 'valid' | 'invalid'; message?: string; suggestion?: string }>());
   const [authView, setAuthView] = useState<'login' | 'register' | 'forgot' | 'reset' | 'verify' | 'verify-pending' | 'verify-email-change'>(() => {
     const hasToken = !!new URLSearchParams(window.location.search).get('token');
     if (window.location.pathname === '/reset-password' && hasToken) return 'reset';
@@ -1143,23 +1150,68 @@ export default function App() {
     }
   };
 
-  // Runs when the registration email field loses focus. The server rejects fake
-  // domains and throwaway inboxes, and checks again on submit, so a failed lookup
-  // here (network, rate limit) just shows nothing instead of blocking the user.
-  const handleRegisterEmailBlur = async () => {
-    const email = authForm.email.trim();
-    if (!email || registerEmailCheck?.email === email) return;
+  // Asks the server whether the address could be real (fake domains, typos like
+  // gmaiol.com, throwaway inboxes). register checks again on submit, so a failed
+  // lookup here (network, rate limit) just shows nothing instead of blocking the user.
+  const checkRegisterEmail = async (email: string) => {
+    const known = registerEmailVerdicts.current.get(email);
+    if (known) {
+      setRegisterEmailCheck({ email, ...known });
+      return;
+    }
     setRegisterEmailCheck({ email, status: 'checking' });
     try {
       const { data } = await axios.post(`${API_BASE}/auth/check-email`, { email });
-      const result = data.valid
-        ? { email, status: 'valid' as const }
-        : { email, status: 'invalid' as const, message: data.message };
-      // Ignore the answer if a newer address was checked in the meantime
-      setRegisterEmailCheck(prev => (prev?.email === email ? result : prev));
+      const verdict = data.valid
+        ? { status: 'valid' as const }
+        : { status: 'invalid' as const, message: data.message, suggestion: data.suggestion };
+      registerEmailVerdicts.current.set(email, verdict);
+      // Ignore the answer if the field has moved on to another address
+      setRegisterEmailCheck(prev => (prev?.email === email ? { email, ...verdict } : prev));
     } catch {
       setRegisterEmailCheck(prev => (prev?.email === email ? null : prev));
     }
+  };
+
+  // Live feedback while typing: the format is judged on every keystroke, and the
+  // server check runs once typing pauses for half a second.
+  const handleRegisterEmailChange = (value: string) => {
+    setAuthForm({ ...authForm, email: value });
+    window.clearTimeout(registerEmailTimer.current);
+    registerEmailTimer.current = undefined;
+    const email = value.trim();
+    if (!email) {
+      setRegisterEmailCheck(null);
+    } else if (!EMAIL_FORMAT.test(email)) {
+      setRegisterEmailCheck({ email, status: 'invalid', message: 'Enter a full email address, like juan@gmail.com' });
+    } else if (registerEmailVerdicts.current.has(email)) {
+      checkRegisterEmail(email);
+    } else {
+      setRegisterEmailCheck({ email, status: 'checking' });
+      registerEmailTimer.current = window.setTimeout(() => {
+        registerEmailTimer.current = undefined;
+        checkRegisterEmail(email);
+      }, 500);
+    }
+  };
+
+  // Leaving the field checks right away instead of waiting out the typing pause
+  // (also covers an address carried over from the sign-in form)
+  const handleRegisterEmailBlur = () => {
+    const email = authForm.email.trim();
+    const waiting = registerEmailTimer.current !== undefined;
+    window.clearTimeout(registerEmailTimer.current);
+    registerEmailTimer.current = undefined;
+    if (EMAIL_FORMAT.test(email) && (waiting || registerEmailCheck?.email !== email)) {
+      checkRegisterEmail(email);
+    }
+  };
+
+  const applyRegisterEmailSuggestion = (suggestion: string) => {
+    window.clearTimeout(registerEmailTimer.current);
+    registerEmailTimer.current = undefined;
+    setAuthForm({ ...authForm, email: suggestion });
+    checkRegisterEmail(suggestion);
   };
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
@@ -2712,13 +2764,14 @@ export default function App() {
                           type="email"
                           placeholder="you@example.com"
                           value={authForm.email}
-                          onChange={e => setAuthForm({ ...authForm, email: e.target.value })}
+                          onChange={e => handleRegisterEmailChange(e.target.value)}
                           onBlur={handleRegisterEmailBlur}
                           required
                         />
                       </div>
                       {registerEmailStatus && (
                         <div
+                          role="status"
                           style={{
                             marginTop: '8px', display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px', fontWeight: 600,
                             padding: '5px 10px', borderRadius: '6px',
@@ -2732,7 +2785,20 @@ export default function App() {
                             {registerEmailStatus.status === 'valid' ? '✓' : registerEmailStatus.status === 'invalid' ? '✗' : '…'}
                           </span>
                           {registerEmailStatus.status === 'valid' ? 'Email address looks valid'
-                            : registerEmailStatus.status === 'invalid' ? registerEmailStatus.message : 'Checking email…'}
+                            : registerEmailStatus.status === 'checking' ? 'Checking email…'
+                            : registerEmailStatus.suggestion ? (
+                              <span>
+                                Did you mean{' '}
+                                <button
+                                  type="button"
+                                  onClick={() => applyRegisterEmailSuggestion(registerEmailStatus.suggestion!)}
+                                  title="Use this address"
+                                  style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', color: 'inherit', textDecoration: 'underline', cursor: 'pointer' }}
+                                >
+                                  {registerEmailStatus.suggestion}
+                                </button>?
+                              </span>
+                            ) : registerEmailStatus.message}
                         </div>
                       )}
                     </div>
