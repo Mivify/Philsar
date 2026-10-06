@@ -18,6 +18,7 @@ const landingRoutes = require('./routes/landingRoutes');
 const announcementRoutes = require('./routes/announcementRoutes');
 const activityLogRoutes = require('./routes/activityLogRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const certificateRoutes = require('./routes/certificateRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -51,6 +52,7 @@ app.use('/api/landing-images', landingRoutes);
 app.use('/api/announcements', announcementRoutes);
 app.use('/api/activity-logs', activityLogRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/certificates', certificateRoutes);
 
 app.get('/api', (req, res) => {
     res.send('PHILSAR API is running.');

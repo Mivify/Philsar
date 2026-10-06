@@ -12,6 +12,7 @@ const {
     getMeetingAttendance,
     grantCertificate,
     revokeCertificate,
+    issueCertificate,
     getJaasToken,
     logMeetingJoin,
     logMeetingLeave
@@ -26,6 +27,8 @@ router.post('/:id/attendance/ping', requireAuth, pingAttendance);
 router.get('/:id/jaas-token', requireAuth, getJaasToken);
 router.post('/:id/attendance/join', requireAuth, logMeetingJoin);
 router.post('/:id/attendance/leave', requireAuth, logMeetingLeave);
+// Own certificate; an Admin / Sub Admin may pass { userId } to get someone else's
+router.post('/:id/certificate', requireAuth, issueCertificate);
 
 // Admin or Secretary: writing/editing minutes only — nothing else about the
 // meeting. Kept as its own route (rather than folding into the general

@@ -1,6 +1,8 @@
+const crypto = require('crypto');
 const Meeting = require('../models/Meeting');
 const User = require('../models/User');
 const MeetingAttendance = require('../models/MeetingAttendance');
+const Certificate = require('../models/Certificate');
 const Setting = require('../models/Setting');
 const { generateJaasToken } = require('../utils/jaasToken');
 const { logActivity } = require('../utils/activityLog');
@@ -19,7 +21,16 @@ const getCertificateThresholdSeconds = async () => {
 // Automatic eligibility is Seminar-only — a Regular
 // Meeting never auto-qualifies for a certificate
 const isEligible = (record, thresholdSeconds, meetingType) =>
-    (meetingType === 'Seminar' && record.secondsAttended >= thresholdSeconds) || record.granted;
+    !record.revokedAt && ((meetingType === 'Seminar' && record.secondsAttended >= thresholdSeconds) || record.granted);
+
+// 12 random characters from Crockford's base32 (no I, L, O or U, so nothing is
+// misread when typed from paper), shown as XXXX-XXXX-XXXX: about 60 bits,
+// far too many to guess.
+const CODE_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+const newCertificateCode = () => {
+    const chars = [...crypto.randomBytes(12)].map(b => CODE_ALPHABET[b % 32]).join('');
+    return `${chars.slice(0, 4)}-${chars.slice(4, 8)}-${chars.slice(8, 12)}`;
+};
 
 // A Regular Meeting can be limited to specific roles via `allowedRoles`.
 
@@ -247,6 +258,7 @@ const getMyAttendance = async (req, res) => {
             map[row.meetingId] = {
                 secondsAttended: row.secondsAttended,
                 eligible: isEligible(row, thresholdSeconds, typeById[row.meetingId]),
+                revoked: !!row.revokedAt,
                 rsvped: row.rsvped
             };
         }
@@ -269,6 +281,7 @@ const getMeetingAttendance = async (req, res) => {
             secondsAttended: row.secondsAttended,
             granted: row.granted,
             eligible: isEligible(row, thresholdSeconds, meeting?.meetingType),
+            revoked: !!row.revokedAt,
             rsvped: row.rsvped
         })));
     } catch (error) {
@@ -289,6 +302,9 @@ const grantCertificate = async (req, res) => {
             defaults: { secondsAttended: 0 }
         });
         record.granted = true;
+        // A new grant after a revoke: the next download issues a new certificate
+        // (new code); the revoked one's copies stay revoked
+        record.revokedAt = null;
         await record.save();
 
         const [actor, target, meeting] = await Promise.all([
@@ -306,7 +322,8 @@ const grantCertificate = async (req, res) => {
         res.status(200).json({
             secondsAttended: record.secondsAttended,
             granted: record.granted,
-            eligible: isEligible(record, thresholdSeconds)
+            eligible: isEligible(record, thresholdSeconds),
+            revoked: false
         });
     } catch (error) {
         res.status(500).json({ message: 'Error granting certificate', error: error.message });
@@ -325,7 +342,9 @@ const revokeCertificate = async (req, res) => {
             where: { userId, meetingId: id },
             defaults: { secondsAttended: 0 }
         });
+        // Revoking blocks the certificate even when it was earned by attendance
         record.granted = false;
+        record.revokedAt = new Date();
         await record.save();
 
         const [actor, target, meeting] = await Promise.all([
@@ -333,6 +352,11 @@ const revokeCertificate = async (req, res) => {
             User.findByPk(userId, { attributes: ['name'] }),
             Meeting.findByPk(id, { attributes: ['title'] })
         ]);
+        // Copies already downloaded now show "Revoked" when their QR code is scanned
+        await Certificate.update(
+            { revokedAt: record.revokedAt, revokedByName: actor?.name || `admin #${req.user.id}` },
+            { where: { userId, meetingId: id, revokedAt: null } }
+        );
         logActivity({
             userId: req.user.id, userName: actor?.name, userRole: actor?.role,
             action: 'certificate_revoked', category: 'admin',
@@ -343,10 +367,54 @@ const revokeCertificate = async (req, res) => {
         res.status(200).json({
             secondsAttended: record.secondsAttended,
             granted: record.granted,
-            eligible: isEligible(record, thresholdSeconds)
+            eligible: isEligible(record, thresholdSeconds),
+            revoked: true
         });
     } catch (error) {
         res.status(500).json({ message: 'Error revoking certificate', error: error.message });
+    }
+};
+
+// The certificate to print for this seminar: the signed-in user's own, or (for
+// an Admin / Sub Admin downloading on someone's behalf) that user's. Issued on
+// the first download and returned unchanged afterwards, so every copy carries
+// the same code and issue date.
+const issueCertificate = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const isStaff = req.user.role === 'Admin' || req.user.role === 'Sub Admin';
+        const userId = isStaff && req.body?.userId ? Number(req.body.userId) : req.user.id;
+
+        const [meeting, user, record] = await Promise.all([
+            Meeting.findByPk(id),
+            User.findByPk(userId, { attributes: ['id', 'name'] }),
+            MeetingAttendance.findOne({ where: { userId, meetingId: id } })
+        ]);
+        if (!meeting || !user) {
+            return res.status(404).json({ message: 'Seminar or user not found' });
+        }
+        const thresholdSeconds = await getCertificateThresholdSeconds();
+        if (!record || !isEligible(record, thresholdSeconds, meeting.meetingType)) {
+            return res.status(403).json({ message: 'No certificate is available for this seminar.' });
+        }
+
+        let certificate = await Certificate.findOne({ where: { userId, meetingId: meeting.id, revokedAt: null } });
+        if (!certificate) {
+            certificate = await Certificate.create({
+                code: newCertificateCode(),
+                userId,
+                meetingId: meeting.id,
+                recipientName: user.name,
+                meetingTitle: meeting.title,
+                meetingHost: meeting.host,
+                meetingDate: meeting.dateTime
+            });
+            // Re-read so issuedAt matches what later downloads get (MySQL keeps whole seconds)
+            await certificate.reload();
+        }
+        res.status(200).json({ code: certificate.code, recipientName: certificate.recipientName, issuedAt: certificate.createdAt });
+    } catch (error) {
+        res.status(500).json({ message: 'Error issuing certificate', error: error.message });
     }
 };
 
@@ -436,6 +504,7 @@ module.exports = {
     getMeetingAttendance,
     grantCertificate,
     revokeCertificate,
+    issueCertificate,
     getJaasToken,
     logMeetingJoin,
     logMeetingLeave

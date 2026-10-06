@@ -2683,4 +2683,71 @@ body {
   box-shadow: 0 0 0 3px rgba(48,92,222,0.25);
 }
 
+/* ─── CERTIFICATE VERIFICATION (public /verify/<code> page) ─── */
+.verify-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background: var(--cream);
+}
+.verify-card {
+  width: 100%;
+  max-width: 480px;
+  background: var(--warm-white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: 32px 28px;
+  text-align: center;
+}
+.verify-brand {
+  display: inline-flex; align-items: center; gap: 10px;
+  font-family: 'Playfair Display', serif;
+  font-size: 18px; font-weight: 700;
+  color: var(--text-primary);
+}
+.verify-brand img { width: 40px; height: 40px; object-fit: contain; }
+.verify-heading {
+  font-family: 'Playfair Display', serif;
+  font-size: 22px;
+  margin: 18px 0 16px;
+  color: var(--text-primary);
+}
+.verify-status { display: inline-block; padding: 8px 16px; border-radius: 999px; font-size: 15px; font-weight: 700; }
+.verify-status.valid { background: rgba(45,106,79,0.12); color: #1d5a3a; }
+.verify-status.revoked { background: rgba(207,19,34,0.1); color: #a01722; }
+.verify-status.not_found,
+.verify-status.error { background: rgba(212,136,6,0.12); color: #8a5a00; }
+.verify-status.checking { background: rgba(0,0,0,0.04); color: var(--text-muted); }
+.verify-message { margin: 12px 0 20px; font-size: 14px; line-height: 1.55; color: var(--text-secondary); }
+.verify-details {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 16px;
+  margin: 0 0 24px;
+  padding: 16px 18px;
+  text-align: left;
+  font-size: 14px;
+  background: var(--cream);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.verify-details dt { color: var(--text-muted); font-weight: 600; }
+.verify-details dd { margin: 0; color: var(--text-primary); font-weight: 600; overflow-wrap: anywhere; }
+.verify-code { font-family: monospace; letter-spacing: 0.5px; }
+.verify-home { font-size: 13px; font-weight: 600; color: var(--amber); }
+
+/* Revoked certificate marker (admin certificate list and the user's seminar card) */
+.cert-revoked-pill {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(207,19,34,0.1);
+  color: #a01722;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 

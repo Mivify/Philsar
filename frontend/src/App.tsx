@@ -170,6 +170,69 @@ function isValidImageUrl(url?: string): boolean {
   return /^(https?:\/\/|\/uploads\/|data:image\/)/.test(trimmed);
 }
 
+type CertificateCheck = {
+  status: 'valid' | 'revoked' | 'not_found' | 'error';
+  recipientName?: string;
+  meetingTitle?: string;
+  meetingHost?: string | null;
+  meetingDate?: string | null;
+  issuedAt?: string;
+  revokedAt?: string | null;
+};
+
+const CERTIFICATE_STATUS_TEXT: Record<CertificateCheck['status'], { title: string; message: string }> = {
+  valid: { title: '✓ Valid certificate', message: 'This certificate was issued by the PHILSAR Portal and has not been revoked.' },
+  revoked: { title: '✗ Revoked certificate', message: 'This certificate was issued by the PHILSAR Portal but has since been revoked, so it is no longer valid.' },
+  not_found: { title: 'Certificate not found', message: 'No certificate has this code. Check that the code was typed correctly — otherwise the certificate may not be genuine.' },
+  error: { title: "Couldn't check right now", message: 'Please try again in a moment.' },
+};
+
+// Public page a certificate's QR code opens (/verify/<code>). Works without
+// signing in, and checks the certificate's current status every time, so a copy
+// downloaded before it was revoked shows as revoked.
+function CertificateVerifyPage({ code, apiBase }: { code: string; apiBase: string }) {
+  const [result, setResult] = useState<CertificateCheck | null>(null);
+  useEffect(() => {
+    axios.get(`${apiBase}/certificates/verify/${encodeURIComponent(code)}`)
+      .then(res => setResult(res.data))
+      .catch(err => setResult({ status: err.response?.status === 404 ? 'not_found' : 'error' }));
+  }, [code, apiBase]);
+  const longDate = (d?: string | null) => (d ? new Date(d).toLocaleDateString('en-PH', { dateStyle: 'long' }) : '');
+  const text = result ? CERTIFICATE_STATUS_TEXT[result.status] : null;
+
+  return (
+    <div className="verify-page">
+      <div className="verify-card">
+        <div className="verify-brand">
+          <img src={philsarLogo} alt="" />
+          <span>PHILSAR Portal</span>
+        </div>
+        <h1 className="verify-heading">Certificate verification</h1>
+        {!result || !text ? (
+          <div className="verify-status checking">Checking certificate…</div>
+        ) : (
+          <>
+            <div className={`verify-status ${result.status}`} role="status">{text.title}</div>
+            <p className="verify-message">{text.message}</p>
+            {(result.status === 'valid' || result.status === 'revoked') && (
+              <dl className="verify-details">
+                <dt>Awarded to</dt><dd>{result.recipientName}</dd>
+                <dt>Seminar</dt><dd>{result.meetingTitle}</dd>
+                {result.meetingHost && <><dt>Hosted by</dt><dd>{result.meetingHost}</dd></>}
+                {result.meetingDate && <><dt>Seminar date</dt><dd>{result.meetingDate}</dd></>}
+                <dt>Issued on</dt><dd>{longDate(result.issuedAt)}</dd>
+                {result.status === 'revoked' && <><dt>Revoked on</dt><dd>{longDate(result.revokedAt)}</dd></>}
+                <dt>Certificate ID</dt><dd className="verify-code">{code.toUpperCase()}</dd>
+              </dl>
+            )}
+          </>
+        )}
+        <a className="verify-home" href="/">Go to the PHILSAR Portal</a>
+      </div>
+    </div>
+  );
+}
+
 // Pixel size of a picture the user picked, read in the browser before uploading
 function readImageSize(file: File): Promise<{ width: number; height: number }> {
   return new Promise((resolve, reject) => {
@@ -623,6 +686,8 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
 export default function App() {
   // Navigation & UI States
   const [activeTab, setActiveTab] = useState<Tab>(() => tabFromPath(window.location.pathname));
+  // A certificate's QR code opens /verify/<code>: that public page is shown instead of the portal
+  const [verifyCertificateCode] = useState(() => window.location.pathname.match(/^\/verify\/([A-Za-z0-9-]+)\/?$/)?.[1] ?? null);
   const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'modules' | 'meetings' | 'home' | 'settings' | 'activity'>('users');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -663,13 +728,13 @@ export default function App() {
   const [heroIndex, setHeroIndex] = useState(0);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [viewingAnnouncement, setViewingAnnouncement] = useState<Announcement | null>(null);
-  const [myAttendance, setMyAttendance] = useState<Record<number, { secondsAttended: number; eligible: boolean; rsvped: boolean }>>({});
+  const [myAttendance, setMyAttendance] = useState<Record<number, { secondsAttended: number; eligible: boolean; revoked?: boolean; rsvped: boolean }>>({});
   const attendanceIntervalRef = useRef<number | null>(null);
   const logoImgRef = useRef<HTMLImageElement | null>(null);
   const certBgImgRef = useRef<HTMLImageElement | null>(null);
   const [certModalOpen, setCertModalOpen] = useState(false);
   const [certModalMeeting, setCertModalMeeting] = useState<Meeting | null>(null);
-  const [certAttendanceRows, setCertAttendanceRows] = useState<Record<number, { secondsAttended: number; eligible: boolean; granted: boolean; rsvped: boolean }>>({});
+  const [certAttendanceRows, setCertAttendanceRows] = useState<Record<number, { secondsAttended: number; eligible: boolean; granted: boolean; revoked: boolean; rsvped: boolean }>>({});
   const [registrantsModalOpen, setRegistrantsModalOpen] = useState(false);
   const [registrantsModalMeeting, setRegistrantsModalMeeting] = useState<Meeting | null>(null);
   const [roleChangeUser, setRoleChangeUser] = useState<User | null>(null);
@@ -1035,7 +1100,8 @@ export default function App() {
     if (
       window.location.pathname !== '/reset-password' &&
       window.location.pathname !== '/verify-email' &&
-      window.location.pathname !== '/verify-email-change'
+      window.location.pathname !== '/verify-email-change' &&
+      !window.location.pathname.startsWith('/verify/')
     ) {
       window.history.replaceState({}, '', `/${tabFromPath(window.location.pathname)}`);
     }
@@ -1870,8 +1936,24 @@ export default function App() {
     doc.save(`Minutes - ${meeting.title}.pdf`);
   };
 
-  const handleDownloadCertificate = async (meeting: Meeting, userName?: string, styleOverride?: SystemSettings) => {
-    const recipientName = userName || currentUser?.name;
+  const handleDownloadCertificate = async (meeting: Meeting, userName?: string, styleOverride?: SystemSettings, forUserId?: number) => {
+    // A real download first gets the certificate's issued code (and the name
+    // and date it was issued with) from the server; the Settings tab preview
+    // (styleOverride) just uses a sample code
+    let recipientName = userName || currentUser?.name;
+    let code = 'SAMPLE-PREVIEW';
+    let issuedAt = new Date();
+    if (!styleOverride) {
+      try {
+        const { data } = await axios.post(`${API_BASE}/meetings/${meeting.id}/certificate`, forUserId ? { userId: forUserId } : {});
+        recipientName = data.recipientName;
+        code = data.code;
+        issuedAt = new Date(data.issuedAt);
+      } catch (error: any) {
+        showToast(error.response?.data?.message || 'Could not get the certificate. Please try again.', 'error');
+        return;
+      }
+    }
     if (!recipientName) return;
 
     const style = styleOverride || settings;
@@ -1930,10 +2012,28 @@ export default function App() {
     doc.setFontSize(14);
     doc.text(`hosted by ${meeting.host}`, w / 2, 325, { align: 'center' });
 
-    const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    const dateStr = issuedAt.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     doc.setFontSize(11);
     doc.setTextColor(ar, ag, ab);
     doc.text(`Issued on ${dateStr} · ${style.certClosingText || 'PHILSAR Cattle Reproductive Portal'}`, w / 2, h - 60, { align: 'center' });
+
+    // QR code + certificate ID in the bottom-right corner. Scanning it opens
+    // /verify/<code>, which shows the certificate's current status (so this
+    // copy reads "Revoked" if it's revoked later). White backing keeps it
+    // readable on a custom background image.
+    const { toDataURL } = await import('qrcode');
+    const qrDataUrl = await toDataURL(`${window.location.origin}/verify/${code}`, { margin: 1, width: 320, errorCorrectionLevel: 'M' });
+    const qrSize = 72;
+    const qrX = w - 52 - qrSize;
+    const qrY = h - 64 - qrSize - 14;
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(qrX - 6, qrY - 6, qrSize + 12, qrSize + 30, 4, 4, 'F');
+    doc.addImage(qrDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(90, 100, 120);
+    doc.text('Scan to verify', qrX + qrSize / 2, qrY + qrSize + 9, { align: 'center' });
+    doc.text(code, qrX + qrSize / 2, qrY + qrSize + 18, { align: 'center' });
 
     doc.save(`Certificate - ${meeting.title} - ${recipientName}.pdf`);
   };
@@ -1941,9 +2041,9 @@ export default function App() {
   const fetchCertAttendance = async (meetingId: number) => {
     try {
       const res = await axios.get(`${API_BASE}/meetings/${meetingId}/attendance`);
-      const map: Record<number, { secondsAttended: number; eligible: boolean; granted: boolean; rsvped: boolean }> = {};
+      const map: Record<number, { secondsAttended: number; eligible: boolean; granted: boolean; revoked: boolean; rsvped: boolean }> = {};
       for (const row of res.data) {
-        map[row.userId] = { secondsAttended: row.secondsAttended, eligible: row.eligible, granted: row.granted, rsvped: row.rsvped };
+        map[row.userId] = { secondsAttended: row.secondsAttended, eligible: row.eligible, granted: row.granted, revoked: !!row.revoked, rsvped: row.rsvped };
       }
       setCertAttendanceRows(map);
     } catch (error) {
@@ -1979,12 +2079,17 @@ export default function App() {
     return () => clearInterval(interval);
   }, [registrantsModalOpen, registrantsModalMeeting]);
 
-  const handleToggleCertificate = async (userId: number, currentlyGranted: boolean) => {
+  const handleToggleCertificate = async (userId: number, revoke: boolean, userName?: string) => {
     if (!certModalMeeting) return;
-    const endpoint = currentlyGranted ? 'revoke' : 'grant';
+    if (revoke && !(await confirmDelete(
+      `${userName || 'This user'} won't be able to download this certificate any more, and any copy already downloaded will show "Revoked" when its QR code is scanned.`,
+      'Revoke this certificate?',
+      'Yes, revoke it'
+    ))) return;
+    const endpoint = revoke ? 'revoke' : 'grant';
     try {
       const res = await axios.post(`${API_BASE}/meetings/${certModalMeeting.id}/attendance/${endpoint}`, { userId });
-      setCertAttendanceRows(prev => ({ ...prev, [userId]: res.data }));
+      setCertAttendanceRows(prev => ({ ...prev, [userId]: { ...prev[userId], ...res.data } }));
     } catch (error) {
       showToast('Error updating certificate.', 'error');
     }
@@ -2844,6 +2949,10 @@ export default function App() {
   const registerEmailStatus = registerEmailCheck?.email === authForm.email.trim() ? registerEmailCheck : null;
   const registerEmailTone = registerEmailStatus?.status === 'invalid' ? 'bad'
     : registerEmailStatus?.status === 'valid' && !registerEmailStatus.tentative ? 'good' : 'neutral';
+
+  if (verifyCertificateCode) {
+    return <CertificateVerifyPage code={verifyCertificateCode} apiBase={API_BASE} />;
+  }
 
   // Render Auth Screen (Gatekeeper) — a reset-password or verify-email link
   // must show its screen even if this browser already has an active session.
@@ -4553,6 +4662,11 @@ export default function App() {
                         >
                           🎓 Certificate
                         </button>
+                      )}
+                      {myAttendance[session.id]?.revoked && session.status === 'Ended' && (
+                        <span className="cert-revoked-pill" style={{ marginLeft: '8px' }} title="An administrator revoked this certificate">
+                          Certificate revoked
+                        </span>
                       )}
                     </div>
                   ))}
@@ -6793,21 +6907,28 @@ export default function App() {
                     const seconds = row?.secondsAttended || 0;
                     const granted = row?.granted || false;
                     const eligible = row?.eligible || false;
+                    const revoked = row?.revoked || false;
                     return (
                       <tr key={u.id}>
                         <td>{u.name}</td>
                         <td>{Math.floor(seconds / 60)} min</td>
                         <td>
-                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            {granted ? (
-                              <button className="table-action" onClick={() => handleToggleCertificate(u.id, true)}>Revoke</button>
-                            ) : eligible ? (
-                              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>✓ Earned</span>
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                            {revoked ? (
+                              <>
+                                <span className="cert-revoked-pill">Revoked</span>
+                                <button className="table-action" onClick={() => handleToggleCertificate(u.id, false)}>Grant again</button>
+                              </>
+                            ) : granted || eligible ? (
+                              <>
+                                {!granted && <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>✓ Earned</span>}
+                                <button className="table-action" onClick={() => handleToggleCertificate(u.id, true, u.name)}>Revoke</button>
+                              </>
                             ) : (
                               <button className="table-action" onClick={() => handleToggleCertificate(u.id, false)}>Grant</button>
                             )}
-                            {(granted || eligible) && (
-                              <button className="table-action" onClick={() => handleDownloadCertificate(certModalMeeting, u.name)}>
+                            {(granted || eligible) && !revoked && (
+                              <button className="table-action" onClick={() => handleDownloadCertificate(certModalMeeting, u.name, undefined, u.id)}>
                                 Download
                               </button>
                             )}

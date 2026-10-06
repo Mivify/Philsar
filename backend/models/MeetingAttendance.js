@@ -23,6 +23,12 @@ const MeetingAttendance = sequelize.define('MeetingAttendance', {
         type: DataTypes.BOOLEAN,
         defaultValue: false,
     },
+    // Set when an Admin revokes the certificate. Blocks it even when the
+    // attendance time alone would earn it; granting it again clears this.
+    revokedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+    },
     rsvped: {
         type: DataTypes.BOOLEAN,
         defaultValue: false,
