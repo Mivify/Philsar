@@ -170,6 +170,28 @@ function isValidImageUrl(url?: string): boolean {
   return /^(https?:\/\/|\/uploads\/|data:image\/)/.test(trimmed);
 }
 
+// Pixel size of a picture the user picked, read in the browser before uploading
+function readImageSize(file: File): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => { URL.revokeObjectURL(url); resolve({ width: img.naturalWidth, height: img.naturalHeight }); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Unreadable image')); };
+    img.src = url;
+  });
+}
+
+// The Home banner and module covers are wide frames, so a portrait or square
+// photo would be cropped to a thin strip. Returns a message if the picture
+// isn't landscape (wider than tall), otherwise null.
+async function landscapeProblem(file: File): Promise<string | null> {
+  const size = await readImageSize(file).catch(() => null);
+  if (!size) return 'That image could not be read. Please use a PNG, JPG or WEBP file.';
+  if (size.width > size.height) return null;
+  const shape = size.width === size.height ? 'square' : 'portrait (taller than wide)';
+  return `Please use a landscape (wide) photo. This one is ${size.width} × ${size.height} pixels, which is ${shape}.`;
+}
+
 // jsPDF's color setters take separate r/g/b numbers, not CSS hex strings
 function hexToRgb(hex: string): [number, number, number] {
   const clean = hex.replace('#', '');
@@ -2214,6 +2236,12 @@ export default function App() {
       return;
     }
 
+    const shapeProblem = await landscapeProblem(file);
+    if (shapeProblem) {
+      showToast(shapeProblem, 'warning');
+      return;
+    }
+
     setUploadingImage(true);
     try {
       const reader = new FileReader();
@@ -2354,6 +2382,12 @@ export default function App() {
     const maxSize = 5 * 1024 * 1024; // 5MB
     if (file.size > maxSize) {
       showToast('Image size exceeds 5MB limit. Please choose a smaller image.', 'warning');
+      return;
+    }
+
+    const shapeProblem = await landscapeProblem(file);
+    if (shapeProblem) {
+      showToast(shapeProblem, 'warning');
       return;
     }
 
@@ -5279,7 +5313,7 @@ export default function App() {
                                 <div className="upload-zone-text">
                                   Drag & drop an image, or <span style={{ color: 'var(--amber)', textDecoration: 'underline', cursor: 'pointer' }}>browse files</span>
                                 </div>
-                                <div className="upload-zone-subtext">PNG, JPG, JPEG, WEBP, GIF — max 5 MB</div>
+                                <div className="upload-zone-subtext">Landscape (wide) images only · PNG, JPG, JPEG, WEBP, GIF — max 5 MB</div>
                               </div>
                             )}
 
@@ -5774,6 +5808,7 @@ export default function App() {
                       <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '18px' }}>
                         These photos rotate through the background of the Home page hero banner. Upload as many
                         as you like — with 2 or more, they'll crossfade automatically every few seconds.
+                        Use landscape (wide) photos; portrait and square photos aren't accepted.
                       </p>
 
                       <input
