@@ -1,10 +1,10 @@
 # Portal Guide
 
-How to use the PHILSAR Cattle Reproductive Portal. The pages are in the left sidebar: Home, Dashboard, Learning Modules, Decision Support, Virtual Meetings, Our Community and My Profile, plus the Admin Panel for Admins and Sub Admins. On a phone, open the sidebar with the menu button in the top bar.
+How to use the PHILSAR Cattle Reproductive Portal. The pages are in the left sidebar: Announcements, Dashboard, Learning Modules, Decision Support, Virtual Meetings, Our Community and My Profile, plus the Admin Panel for Admins and Sub Admins. On a phone, open the sidebar with the menu button in the top bar.
 
 ## Finding your way around the portal
 
-- Home: the photo banner, Announcements (click one to read it), Upcoming Seminars and Quick Access shortcuts.
+- Announcements: the first page you see, with the photo banner, the latest announcements (click one to read it), Upcoming Seminars and Quick Access shortcuts.
 - Dashboard: a summary of your herd, assessments, seminars and learning progress.
 - Learning Modules: lessons on cattle reproduction.
 - Decision Support: check whether a cow is ready for breeding.
@@ -82,7 +82,7 @@ Recommended Technique: Artificial Insemination (AI) when she's ready and Standin
 - Open Virtual Meetings. "All Sessions" lists the seminars and meetings, and you can filter it with All, Upcoming or Recorded.
 - To register, click "RSVP" on an upcoming session. It changes to "✓ Registered" and is listed under My Registered Sessions. You have to RSVP before you can join.
 - When it's live, click "Join Live" on the session (or "🎥 Join Live Stream" in the Live Now banner). The video room opens inside the portal using Jitsi Meet, so there's nothing to install and no extra account to create. Use Toggle Mic, Toggle Camera and Toggle Chat, and click "Leave Meeting" to exit.
-- The Upcoming Seminars lists on Home and the Dashboard have RSVP buttons too.
+- The Upcoming Seminars lists on the Announcements page and the Dashboard have RSVP buttons too.
 - Some Regular Meetings are only open to certain roles, so you may not see every meeting.
 
 ## Watching a recording or reading the minutes
@@ -129,8 +129,8 @@ Every certificate has its own Certificate ID (in the form XXXX-XXXX-XXXX) and a 
 - "Manage certificates" shows each attendee's time and certificate. Click "Grant" to give one manually, "Revoke" to cancel it, or "Grant again" to restore a revoked one (the same certificate and QR code become valid again).
 - The minutes of attendance needed for an automatic certificate are set in the Settings tab.
 
-## Admin Panel: Home page, settings and activity log (System Admin only)
+## Admin Panel: Announcements, settings and activity log (System Admin only)
 
-- Home Page tab: upload the Home banner photos with "Upload Background Photo" (landscape photos only), reorder or remove them, and post announcements (Title, Body and an optional Photo, then "+ Post Announcement"; they can be edited or deleted later).
+- Announcements tab: upload the Announcements page's banner photos with "Upload Background Photo" (landscape photos only), reorder or remove them, and post announcements (Title, Body and an optional Photo, then "+ Post Announcement"; they can be edited or deleted later).
 - Settings tab: "Minutes of Attendance Required for Automatic Certificate" and the certificate's design (Certificate Title, Attendance Statement, Footer / Organization Line, Primary Color, Accent Color and an optional Custom Background). "Preview Certificate" shows a sample, and "Save Settings" applies the changes.
 - Activity Log tab: a record of sign-ins, failed logins, lockouts, role and status changes, Decision Support runs, chatbot questions, seminar activity and admin actions, with filters and a search box.

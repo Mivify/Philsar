@@ -344,9 +344,9 @@ const ACTIVITY_ACTION_LABELS: Record<string, string> = {
   announcement_created: 'Announcement Posted',
   announcement_updated: 'Announcement Edited',
   announcement_deleted: 'Announcement Deleted',
-  home_photo_added: 'Home Photo Added',
-  home_photos_reordered: 'Home Photos Reordered',
-  home_photo_removed: 'Home Photo Removed',
+  home_photo_added: 'Banner Photo Added',
+  home_photos_reordered: 'Banner Photos Reordered',
+  home_photo_removed: 'Banner Photo Removed',
 };
 
 
@@ -564,7 +564,7 @@ type Language = 'en' | 'tl';
 const TRANSLATIONS: Record<Language, Record<string, string>> = {
   en: {
     'nav.main': 'Main',
-    'nav.home': 'Home',
+    'nav.home': 'Announcements',
     'nav.about': 'Our Community',
     'nav.dashboard': 'Dashboard',
     'nav.learning': 'Learning Modules',
@@ -620,12 +620,12 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     'admin.tabUsers': '👥 Users',
     'admin.tabModules': '📚 Modules',
     'admin.tabMeetings': '🎥 Meetings',
-    'admin.tabHomePage': '🏠 Home Page',
+    'admin.tabHomePage': '📢 Announcements',
     'admin.tabSettings': '⚙️ Settings'
   },
   tl: {
     'nav.main': 'Pangunahin',
-    'nav.home': 'Home',
+    'nav.home': 'Mga Anunsyo',
     'nav.about': 'Ating Komunidad',
     'nav.dashboard': 'Dashboard',
     'nav.learning': 'Mga Modyul sa Pag-aaral',
@@ -681,7 +681,7 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     'admin.tabUsers': '👥 Mga User',
     'admin.tabModules': '📚 Mga Modyul',
     'admin.tabMeetings': '🎥 Mga Pagpupulong',
-    'admin.tabHomePage': '🏠 Home Page',
+    'admin.tabHomePage': '📢 Mga Anunsyo',
     'admin.tabSettings': '⚙️ Mga Setting'
   }
 };
@@ -2543,7 +2543,7 @@ export default function App() {
   };
 
   const handleDeleteLandingImage = async (id: number) => {
-    if (!(await confirmDelete('Remove this background photo from the Home page rotation?'))) return;
+    if (!(await confirmDelete('Remove this background photo from the Announcements page rotation?'))) return;
     try {
       await axios.delete(`${API_BASE}/landing-images/${id}`);
       setLandingImages(prev => prev.filter(img => img.id !== id));
@@ -2655,7 +2655,7 @@ export default function App() {
   };
 
   const handleDeleteAnnouncement = async (id: number) => {
-    if (!(await confirmDelete('Delete this announcement from the Home page?'))) return;
+    if (!(await confirmDelete('Delete this announcement from the Announcements page?'))) return;
     try {
       await axios.delete(`${API_BASE}/announcements/${id}`);
       setAnnouncements(prev => prev.filter(a => a.id !== id));
@@ -3543,7 +3543,7 @@ export default function App() {
             className={`nav-item ${activeTab === 'home' ? 'active' : ''}`}
             onClick={() => handleTabNavigate('home')}
           >
-            <div className="nav-icon">🏠</div>
+            <div className="nav-icon">📢</div>
             {t('nav.home')}
           </button>
 
@@ -5924,11 +5924,11 @@ export default function App() {
                 <div id="admin-home">
                   <div className="card">
                     <div className="card-header">
-                      <div className="card-title">Home Page Background Photos</div>
+                      <div className="card-title">Announcements Page Background Photos</div>
                     </div>
                     <div className="card-body">
                       <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '18px' }}>
-                        These photos rotate through the background of the Home page hero banner. Upload as many
+                        These photos rotate through the background of the Announcements page hero banner. Upload as many
                         as you like — with 2 or more, they'll crossfade automatically every few seconds.
                         Use landscape (wide) photos; portrait and square photos aren't accepted.
                       </p>
@@ -5952,7 +5952,7 @@ export default function App() {
 
                       {landingImages.length === 0 ? (
                         <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px', background: 'var(--cream)', borderRadius: 'var(--radius-sm)' }}>
-                          No background photos yet — the Home page will show a plain gradient until you upload some.
+                          No background photos yet — the Announcements page will show a plain gradient until you upload some.
                         </div>
                       ) : (
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '14px' }}>
