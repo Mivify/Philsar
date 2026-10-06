@@ -4,6 +4,7 @@ const path = require('path');
 require('dotenv').config();
 
 const { connectDB, sequelize } = require('./config/db');
+const { getKnowledgeChunks } = require('./utils/chatbotKnowledge');
 
 // Import routes
 const authRoutes = require('./routes/authRoutes');
@@ -90,6 +91,11 @@ const startServer = async () => {
     app.listen(PORT, () => {
         console.log(`Server is running on port ${PORT}`);
     });
+
+    // Load the chatbot's knowledge files (Our Community page, portal guide) now, so the first question doesn't wait for them
+    getKnowledgeChunks()
+        .then(chunks => console.log(`Chatbot knowledge files loaded (${chunks.length} sections).`))
+        .catch(error => console.error('Could not load the chatbot knowledge files yet (will retry on the next question):', error.message));
 };
 
 startServer();
