@@ -278,6 +278,16 @@ const PASSWORD_RULES: { key: string; label: string; test: (pw: string) => boolea
 // then checked by the server (/auth/check-email) for fake domains and typos.
 const EMAIL_FORMAT = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// What the registration form knows about the email typed into it
+type RegisterEmailVerdict = {
+  status: 'checking' | 'valid' | 'invalid';
+  message?: string;
+  suggestion?: string;
+  confirmed?: boolean;  // the mail provider said the mailbox exists
+  tentative?: boolean;  // passed the quick checks; the mailbox check runs when the user leaves the field
+  deep?: boolean;       // came from (or is waiting on) the mailbox check
+};
+
 function isPasswordStrong(password: string): boolean {
   return PASSWORD_RULES.every(rule => rule.test(password));
 }
@@ -606,10 +616,10 @@ export default function App() {
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   // Verdict on the registration email, tagged with the address it was checked for
-  const [registerEmailCheck, setRegisterEmailCheck] = useState<{ email: string; status: 'checking' | 'valid' | 'invalid'; message?: string; suggestion?: string } | null>(null);
+  const [registerEmailCheck, setRegisterEmailCheck] = useState<({ email: string } & RegisterEmailVerdict) | null>(null);
   const registerEmailTimer = useRef<number | undefined>(undefined);
   // Server verdicts already received, so retyping an address doesn't ask again
-  const registerEmailVerdicts = useRef(new Map<string, { status: 'valid' | 'invalid'; message?: string; suggestion?: string }>());
+  const registerEmailVerdicts = useRef(new Map<string, RegisterEmailVerdict>());
   const [authView, setAuthView] = useState<'login' | 'register' | 'forgot' | 'reset' | 'verify' | 'verify-pending' | 'verify-email-change'>(() => {
     const hasToken = !!new URLSearchParams(window.location.search).get('token');
     if (window.location.pathname === '/reset-password' && hasToken) return 'reset';
@@ -1150,31 +1160,37 @@ export default function App() {
     }
   };
 
-  // Asks the server whether the address could be real (fake domains, typos like
-  // gmaiol.com, throwaway inboxes). register checks again on submit, so a failed
-  // lookup here (network, rate limit) just shows nothing instead of blocking the user.
-  const checkRegisterEmail = async (email: string) => {
+  // Asks the server whether the address could be real: the quick checks (fake
+  // domains, typos like gmaiol.com, throwaway inboxes) and, with deep, whether the
+  // mailbox exists (Abstract API, when set up). register checks again on submit,
+  // so a failed lookup here (network, rate limit) just shows nothing instead of
+  // blocking the user.
+  const checkRegisterEmail = async (email: string, deep = false) => {
     const known = registerEmailVerdicts.current.get(email);
-    if (known) {
+    // A mailbox check is only needed after a quick check that promised one
+    if (known && (!deep || known.deep || !known.tentative)) {
       setRegisterEmailCheck({ email, ...known });
       return;
     }
-    setRegisterEmailCheck({ email, status: 'checking' });
+    setRegisterEmailCheck({ email, status: 'checking', deep });
     try {
-      const { data } = await axios.post(`${API_BASE}/auth/check-email`, { email });
-      const verdict = data.valid
-        ? { status: 'valid' as const }
-        : { status: 'invalid' as const, message: data.message, suggestion: data.suggestion };
-      registerEmailVerdicts.current.set(email, verdict);
-      // Ignore the answer if the field has moved on to another address
-      setRegisterEmailCheck(prev => (prev?.email === email ? { email, ...verdict } : prev));
+      const { data } = await axios.post(`${API_BASE}/auth/check-email`, { email, mailbox: deep });
+      const verdict: RegisterEmailVerdict = data.valid
+        ? { status: 'valid', confirmed: !!data.mailboxConfirmed, tentative: !deep && !!data.mailboxCheckAvailable, deep }
+        : { status: 'invalid', message: data.message, suggestion: data.suggestion, deep };
+      if (deep || !registerEmailVerdicts.current.get(email)?.deep) registerEmailVerdicts.current.set(email, verdict);
+      // Ignore answers for an address the field has moved on from, and never let
+      // a quick check overwrite the mailbox check
+      setRegisterEmailCheck(prev => (prev?.email === email && (deep || !prev.deep) ? { email, ...verdict } : prev));
     } catch {
-      setRegisterEmailCheck(prev => (prev?.email === email ? null : prev));
+      setRegisterEmailCheck(prev => (prev?.email === email && (deep || !prev.deep) ? null : prev));
     }
   };
 
   // Live feedback while typing: the format is judged on every keystroke, and the
-  // server check runs once typing pauses for half a second.
+  // quick server check runs once typing pauses for half a second. The mailbox
+  // check waits until the user leaves the field, since the free plan allows only
+  // 100 a month.
   const handleRegisterEmailChange = (value: string) => {
     setAuthForm({ ...authForm, email: value });
     window.clearTimeout(registerEmailTimer.current);
@@ -1195,23 +1211,20 @@ export default function App() {
     }
   };
 
-  // Leaving the field checks right away instead of waiting out the typing pause
-  // (also covers an address carried over from the sign-in form)
+  // Leaving the field runs the checks right away, including whether the mailbox
+  // exists (also covers an address carried over from the sign-in form)
   const handleRegisterEmailBlur = () => {
     const email = authForm.email.trim();
-    const waiting = registerEmailTimer.current !== undefined;
     window.clearTimeout(registerEmailTimer.current);
     registerEmailTimer.current = undefined;
-    if (EMAIL_FORMAT.test(email) && (waiting || registerEmailCheck?.email !== email)) {
-      checkRegisterEmail(email);
-    }
+    if (EMAIL_FORMAT.test(email)) checkRegisterEmail(email, true);
   };
 
   const applyRegisterEmailSuggestion = (suggestion: string) => {
     window.clearTimeout(registerEmailTimer.current);
     registerEmailTimer.current = undefined;
     setAuthForm({ ...authForm, email: suggestion });
-    checkRegisterEmail(suggestion);
+    checkRegisterEmail(suggestion, true);
   };
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
@@ -2603,6 +2616,8 @@ export default function App() {
 
   // Only the check for the address currently in the field counts
   const registerEmailStatus = registerEmailCheck?.email === authForm.email.trim() ? registerEmailCheck : null;
+  const registerEmailTone = registerEmailStatus?.status === 'invalid' ? 'bad'
+    : registerEmailStatus?.status === 'valid' && !registerEmailStatus.tentative ? 'good' : 'neutral';
 
   // Render Auth Screen (Gatekeeper) — a reset-password or verify-email link
   // must show its screen even if this browser already has an active session.
@@ -2775,17 +2790,21 @@ export default function App() {
                           style={{
                             marginTop: '8px', display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px', fontWeight: 600,
                             padding: '5px 10px', borderRadius: '6px',
-                            background: registerEmailStatus.status === 'valid' ? 'rgba(45,106,79,0.12)'
-                              : registerEmailStatus.status === 'invalid' ? 'rgba(207,19,34,0.08)' : 'rgba(0,0,0,0.04)',
-                            color: registerEmailStatus.status === 'valid' ? '#1d5a3a'
-                              : registerEmailStatus.status === 'invalid' ? '#a01722' : 'var(--text-muted)',
+                            background: registerEmailTone === 'good' ? 'rgba(45,106,79,0.12)'
+                              : registerEmailTone === 'bad' ? 'rgba(207,19,34,0.08)' : 'rgba(0,0,0,0.04)',
+                            color: registerEmailTone === 'good' ? '#1d5a3a'
+                              : registerEmailTone === 'bad' ? '#a01722' : 'var(--text-muted)',
                           }}
                         >
                           <span style={{ fontWeight: 700 }}>
                             {registerEmailStatus.status === 'valid' ? '✓' : registerEmailStatus.status === 'invalid' ? '✗' : '…'}
                           </span>
-                          {registerEmailStatus.status === 'valid' ? 'Email address looks valid'
-                            : registerEmailStatus.status === 'checking' ? 'Checking email…'
+                          {registerEmailStatus.status === 'valid' ? (
+                              registerEmailStatus.confirmed ? 'This email address exists'
+                                : registerEmailStatus.tentative ? "Looks valid. We'll check that it exists when you continue."
+                                : 'Email address looks valid'
+                            )
+                            : registerEmailStatus.status === 'checking' ? (registerEmailStatus.deep ? 'Checking that this address exists…' : 'Checking email…')
                             : registerEmailStatus.suggestion ? (
                               <span>
                                 Did you mean{' '}

@@ -5,7 +5,7 @@ const crypto = require('crypto');
 const { sendPasswordResetEmail, sendVerificationEmail, sendEmailChangeConfirmation } = require('../utils/email');
 const { logActivity } = require('../utils/activityLog');
 const { isStrongPassword, WEAK_PASSWORD_MESSAGE } = require('../utils/passwordPolicy');
-const { findEmailDomainProblem } = require('../utils/emailValidation');
+const { findEmailDomainProblem, checkMailbox, isMailboxCheckEnabled } = require('../utils/emailValidation');
 
 // Roles a user can grant themselves via public self-registration. Admin accounts can
 // only be created by an existing Admin (the role-handling logic in `register`).
@@ -38,6 +38,11 @@ const register = async (req, res) => {
         const emailProblem = await findEmailDomainProblem(email);
         if (emailProblem) {
             return res.status(400).json({ message: emailProblem.message });
+        }
+        // ...and so are mailboxes the provider says don't exist (Abstract API)
+        const mailbox = await checkMailbox(email);
+        if (mailbox.status === 'rejected') {
+            return res.status(400).json({ message: mailbox.message });
         }
 
         // An unverified account is only a reservation — nobody has proved they own
@@ -143,7 +148,20 @@ const checkEmail = async (req, res) => {
         }
         // problem.suggestion (e.g. juan@gmail.com for juan@gmaiol.com) lets the form offer a one-click fix
         const problem = await findEmailDomainProblem(email);
-        res.status(200).json(problem ? { valid: false, ...problem } : { valid: true });
+        if (problem) {
+            return res.status(200).json({ valid: false, ...problem });
+        }
+        // The mailbox check spends Abstract API requests (100 a month on the free
+        // plan), so the form asks for it only once the user leaves the email field.
+        // mailboxCheckAvailable tells the form whether that check is coming.
+        if (req.body.mailbox !== true) {
+            return res.status(200).json({ valid: true, mailboxConfirmed: false, mailboxCheckAvailable: isMailboxCheckEnabled() });
+        }
+        const mailbox = await checkMailbox(email, { budgetKey: req.ip });
+        if (mailbox.status === 'rejected') {
+            return res.status(200).json({ valid: false, message: mailbox.message, suggestion: mailbox.suggestion });
+        }
+        res.status(200).json({ valid: true, mailboxConfirmed: mailbox.status === 'exists' });
     } catch (error) {
         res.status(500).json({ message: 'Error checking email address' });
     }
