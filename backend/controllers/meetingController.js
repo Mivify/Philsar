@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { Op } = require('sequelize');
 const Meeting = require('../models/Meeting');
 const User = require('../models/User');
 const MeetingAttendance = require('../models/MeetingAttendance');
@@ -302,10 +303,14 @@ const grantCertificate = async (req, res) => {
             defaults: { secondsAttended: 0 }
         });
         record.granted = true;
-        // A new grant after a revoke: the next download issues a new certificate
-        // (new code); the revoked one's copies stay revoked
         record.revokedAt = null;
         await record.save();
+        // Granting after a revoke makes the same certificate valid again, so the
+        // copy the user already downloaded (same code / QR) checks as valid
+        await Certificate.update(
+            { revokedAt: null, revokedByName: null },
+            { where: { userId, meetingId: id, revokedAt: { [Op.ne]: null } } }
+        );
 
         const [actor, target, meeting] = await Promise.all([
             User.findByPk(req.user.id, { attributes: ['name', 'role'] }),
@@ -398,7 +403,10 @@ const issueCertificate = async (req, res) => {
             return res.status(403).json({ message: 'No certificate is available for this seminar.' });
         }
 
-        let certificate = await Certificate.findOne({ where: { userId, meetingId: meeting.id, revokedAt: null } });
+        let certificate = await Certificate.findOne({
+            where: { userId, meetingId: meeting.id, revokedAt: null },
+            order: [['createdAt', 'DESC']]
+        });
         if (!certificate) {
             certificate = await Certificate.create({
                 code: newCertificateCode(),

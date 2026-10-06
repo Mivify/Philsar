@@ -5,8 +5,8 @@ const { sequelize } = require('../config/db');
 // printed on the PDF next to a QR code that opens /verify/<code>, where anyone
 // can check it. The name, seminar and date are copied in when it's issued, so
 // the check shows what was printed even if the account or seminar changes
-// later. Revoking sets revokedAt; granting again afterwards issues a new
-// certificate with a new code, so copies of the revoked one stay revoked.
+// later. Revoking sets revokedAt; granting again clears it, so the same code
+// (and every copy already downloaded) is valid again.
 const Certificate = sequelize.define('Certificate', {
     id: {
         type: DataTypes.INTEGER,

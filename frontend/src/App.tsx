@@ -2082,7 +2082,7 @@ export default function App() {
   const handleToggleCertificate = async (userId: number, revoke: boolean, userName?: string) => {
     if (!certModalMeeting) return;
     if (revoke && !(await confirmDelete(
-      `${userName || 'This user'} won't be able to download this certificate any more, and any copy already downloaded will show "Revoked" when its QR code is scanned.`,
+      `${userName || 'This user'} won't be able to download this certificate, and any copy already downloaded will show "Revoked" when its QR code is scanned — until you grant it again.`,
       'Revoke this certificate?',
       'Yes, revoke it'
     ))) return;
