@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const rateLimit = require('express-rate-limit');
-const { register, login, logout, updateProfile, getUserById, getUsers, deleteUser, approveUserDeletion, rejectUserDeletion, forgotPassword, resetPassword, verifyEmail, resendVerification, changeEmail, verifyEmailChange } = require('../controllers/authController');
+const { register, checkEmail, login, logout, updateProfile, getUserById, getUsers, deleteUser, approveUserDeletion, rejectUserDeletion, forgotPassword, resetPassword, verifyEmail, resendVerification, changeEmail, verifyEmailChange } = require('../controllers/authController');
 const { uploadImage } = require('../controllers/moduleController');
 const { optionalAuth, requireAuth, requireAdmin, requireSubAdmin, requireSubAdminOnly } = require('../middleware/auth');
 const { logActivity } = require('../utils/activityLog');
@@ -55,7 +55,17 @@ const resendVerificationLimiter = rateLimit({
     message: { message: 'Too many requests. Please try again in a few minutes.' }
 });
 
+// The registration form calls this each time the email field loses focus
+const checkEmailLimiter = rateLimit({
+    windowMs: 5 * 60 * 1000,
+    limit: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: 'Too many requests. Please try again in a few minutes.' }
+});
+
 router.post('/register', registerLimiter, optionalAuth, register);
+router.post('/check-email', checkEmailLimiter, checkEmail);
 router.post('/login', loginLimiter, login);
 router.post('/logout', requireAuth, logout);
 router.post('/forgot-password', forgotPasswordLimiter, forgotPassword);

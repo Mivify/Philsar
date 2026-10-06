@@ -601,6 +601,8 @@ export default function App() {
   const [authForm, setAuthForm] = useState({ name: '', email: '', password: '', role: 'Farmer', organization: '' });
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
+  // Server's verdict on the registration email, tagged with the address it was checked for
+  const [registerEmailCheck, setRegisterEmailCheck] = useState<{ email: string; status: 'checking' | 'valid' | 'invalid'; message?: string } | null>(null);
   const [authView, setAuthView] = useState<'login' | 'register' | 'forgot' | 'reset' | 'verify' | 'verify-pending' | 'verify-email-change'>(() => {
     const hasToken = !!new URLSearchParams(window.location.search).get('token');
     if (window.location.pathname === '/reset-password' && hasToken) return 'reset';
@@ -1138,6 +1140,25 @@ export default function App() {
       }
     } finally {
       setAuthLoading(false);
+    }
+  };
+
+  // Runs when the registration email field loses focus. The server rejects fake
+  // domains and throwaway inboxes, and checks again on submit, so a failed lookup
+  // here (network, rate limit) just shows nothing instead of blocking the user.
+  const handleRegisterEmailBlur = async () => {
+    const email = authForm.email.trim();
+    if (!email || registerEmailCheck?.email === email) return;
+    setRegisterEmailCheck({ email, status: 'checking' });
+    try {
+      const { data } = await axios.post(`${API_BASE}/auth/check-email`, { email });
+      const result = data.valid
+        ? { email, status: 'valid' as const }
+        : { email, status: 'invalid' as const, message: data.message };
+      // Ignore the answer if a newer address was checked in the meantime
+      setRegisterEmailCheck(prev => (prev?.email === email ? result : prev));
+    } catch {
+      setRegisterEmailCheck(prev => (prev?.email === email ? null : prev));
     }
   };
 
@@ -2528,6 +2549,9 @@ export default function App() {
   // Password visibility toggle
   const [showPassword, setShowPassword] = useState(false);
 
+  // Only the check for the address currently in the field counts
+  const registerEmailStatus = registerEmailCheck?.email === authForm.email.trim() ? registerEmailCheck : null;
+
   // Render Auth Screen (Gatekeeper) — a reset-password or verify-email link
   // must show its screen even if this browser already has an active session.
   if (!isAuthenticated || authView === 'reset' || authView === 'verify' || authView === 'verify-email-change') {
@@ -2689,9 +2713,28 @@ export default function App() {
                           placeholder="you@example.com"
                           value={authForm.email}
                           onChange={e => setAuthForm({ ...authForm, email: e.target.value })}
+                          onBlur={handleRegisterEmailBlur}
                           required
                         />
                       </div>
+                      {registerEmailStatus && (
+                        <div
+                          style={{
+                            marginTop: '8px', display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px', fontWeight: 600,
+                            padding: '5px 10px', borderRadius: '6px',
+                            background: registerEmailStatus.status === 'valid' ? 'rgba(45,106,79,0.12)'
+                              : registerEmailStatus.status === 'invalid' ? 'rgba(207,19,34,0.08)' : 'rgba(0,0,0,0.04)',
+                            color: registerEmailStatus.status === 'valid' ? '#1d5a3a'
+                              : registerEmailStatus.status === 'invalid' ? '#a01722' : 'var(--text-muted)',
+                          }}
+                        >
+                          <span style={{ fontWeight: 700 }}>
+                            {registerEmailStatus.status === 'valid' ? '✓' : registerEmailStatus.status === 'invalid' ? '✗' : '…'}
+                          </span>
+                          {registerEmailStatus.status === 'valid' ? 'Email address looks valid'
+                            : registerEmailStatus.status === 'invalid' ? registerEmailStatus.message : 'Checking email…'}
+                        </div>
+                      )}
                     </div>
 
                     <div className="auth-field">
@@ -2749,7 +2792,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    <button className="auth-submit-btn" type="submit" disabled={authLoading || !isPasswordStrong(authForm.password)}>
+                    <button className="auth-submit-btn" type="submit" disabled={authLoading || !isPasswordStrong(authForm.password) || registerEmailStatus?.status === 'invalid'}>
                       <span>→</span>
                       {authLoading ? 'Creating Account…' : 'Create Account'}
                     </button>

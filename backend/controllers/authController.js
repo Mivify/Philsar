@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const { sendPasswordResetEmail, sendVerificationEmail, sendEmailChangeConfirmation } = require('../utils/email');
 const { logActivity } = require('../utils/activityLog');
 const { isStrongPassword, WEAK_PASSWORD_MESSAGE } = require('../utils/passwordPolicy');
+const { findEmailDomainProblem } = require('../utils/emailValidation');
 
 // Roles a user can grant themselves via public self-registration. Admin accounts can
 // only be created by an existing Admin (the role-handling logic in `register`).
@@ -32,6 +33,11 @@ const register = async (req, res) => {
 
         if (!email || !EMAIL_REGEX.test(email)) {
             return res.status(400).json({ message: 'Please enter a valid email address' });
+        }
+        // Fake domains and throwaway inboxes are rejected before any account exists
+        const emailProblem = await findEmailDomainProblem(email);
+        if (emailProblem) {
+            return res.status(400).json({ message: emailProblem });
         }
 
         // An unverified account is only a reservation — nobody has proved they own
@@ -123,6 +129,22 @@ const register = async (req, res) => {
             return res.status(400).json({ message: 'User already exists' });
         }
         res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
+// Live check behind the registration form's email field. Only says whether the
+// address could be real, never whether it's already registered, so it can't
+// be used to look up accounts.
+const checkEmail = async (req, res) => {
+    try {
+        const { email } = req.body;
+        if (typeof email !== 'string' || !EMAIL_REGEX.test(email)) {
+            return res.status(200).json({ valid: false, message: 'Please enter a valid email address' });
+        }
+        const problem = await findEmailDomainProblem(email);
+        res.status(200).json(problem ? { valid: false, message: problem } : { valid: true });
+    } catch (error) {
+        res.status(500).json({ message: 'Error checking email address' });
     }
 };
 
@@ -597,6 +619,10 @@ const changeEmail = async (req, res) => {
         if (!newEmail || !EMAIL_REGEX.test(newEmail)) {
             return res.status(400).json({ message: 'Please enter a valid email address' });
         }
+        const emailProblem = await findEmailDomainProblem(newEmail);
+        if (emailProblem) {
+            return res.status(400).json({ message: emailProblem });
+        }
 
         const user = await User.findByPk(id);
         if (!user) {
@@ -705,6 +731,7 @@ const verifyEmailChange = async (req, res) => {
 
 module.exports = {
     register,
+    checkEmail,
     login,
     logout,
     updateProfile,
