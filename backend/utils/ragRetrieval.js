@@ -9,11 +9,7 @@ const RELEVANCE_THRESHOLD = 0.65;
 const TOP_K = 4;
 
 // RAG retrieval over the Learning Modules' precomputed chunk embeddings
-// (generated in moduleController on module create/update). Brute-force
-// cosine similarity in Node is fine at this dataset size — no vector DB
-// needed. Falls back to no retrieved context (not an error) if anything
-// here fails, so a hiccup in retrieval never blocks the caller (chatbot
-// reply, DSS guidance, etc).
+
 const retrieveRelevantChunks = async (queryText) => {
     try {
         const queryEmbedding = await embedText(queryText, 'RETRIEVAL_QUERY');
