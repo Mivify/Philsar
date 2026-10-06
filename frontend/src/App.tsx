@@ -44,6 +44,8 @@ import philsarLogo from './assets/logo-transparent.png';
 interface User {
   id: number;
   name: string;
+  firstName?: string | null;  // null for accounts made before sign-up asked for them separately
+  lastName?: string | null;
   email: string;
   role: 'Livestock Manager' | 'Farmer' | 'Veterinarian' | 'Extension Worker' | 'Admin' | 'Sub Admin' | 'Secretary';
   organization: string;
@@ -287,6 +289,37 @@ type RegisterEmailVerdict = {
   tentative?: boolean;  // passed the quick checks; the mailbox check runs when the user leaves the field
   deep?: boolean;       // came from (or is waiting on) the mailbox check
 };
+
+// Words that belong with the surname when guessing it from a full name
+// ("Juan Dela Cruz" -> Dela Cruz), and suffixes that stay at its end ("Rizal Jr.")
+const SURNAME_PARTICLES = new Set(['de', 'del', 'dela', 'della', 'delos', 'los', 'las', 'san', 'santa', 'sta.', 'sto.', 'da', 'di', 'van', 'von', 'la', 'le']);
+const NAME_SUFFIXES = new Set(['jr', 'jr.', 'sr', 'sr.', 'ii', 'iii', 'iv']);
+
+// A user's first and last name. Accounts created before sign-up asked for them
+// separately only have the full name, so for those the split is a best guess.
+function nameParts(u: { name: string; firstName?: string | null; lastName?: string | null }) {
+  if (u.lastName) return { firstName: u.firstName || '', lastName: u.lastName };
+  const words = u.name.trim().split(/\s+/).filter(Boolean);
+  if (words.length < 2) return { firstName: words[0] || '', lastName: '' };
+  let start = words.length - 1;
+  if (start > 1 && NAME_SUFFIXES.has(words[start].toLowerCase())) start--;
+  while (start > 1 && SURNAME_PARTICLES.has(words[start - 1].toLowerCase())) start--;
+  return { firstName: words.slice(0, start).join(' '), lastName: words.slice(start).join(' ') };
+}
+
+// "Dela Cruz, Juan", the way the Admin Panel lists accounts
+function lastFirstName(u: User): string {
+  const { firstName, lastName } = nameParts(u);
+  return lastName ? `${lastName}${firstName ? `, ${firstName}` : ''}` : u.name;
+}
+
+// Alphabetical by last name, then first name (ignoring case and accents)
+function compareByLastName(a: User, b: User): number {
+  const pa = nameParts(a);
+  const pb = nameParts(b);
+  return (pa.lastName || pa.firstName).localeCompare(pb.lastName || pb.firstName, 'en', { sensitivity: 'base' })
+    || pa.firstName.localeCompare(pb.firstName, 'en', { sensitivity: 'base' });
+}
 
 function isPasswordStrong(password: string): boolean {
   return PASSWORD_RULES.every(rule => rule.test(password));
@@ -623,7 +656,7 @@ export default function App() {
   });
 
   // Auth Forms State
-  const [authForm, setAuthForm] = useState({ name: '', email: '', password: '', role: 'Farmer', organization: '' });
+  const [authForm, setAuthForm] = useState({ firstName: '', lastName: '', email: '', password: '', role: 'Farmer', organization: '' });
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   // Verdict on the registration email, tagged with the address it was checked for
@@ -657,7 +690,8 @@ export default function App() {
 
 
   const [profileForm, setProfileForm] = useState({
-    name: '',
+    firstName: '',
+    lastName: '',
     organization: '',
     password: '',
     currentPassword: ''
@@ -706,7 +740,7 @@ export default function App() {
   const [dssLoading, setDssLoading] = useState(false);
 
   // Admin Operations State
-  const [newUserForm, setNewUserForm] = useState({ name: '', email: '', password: '', role: 'Farmer', organization: '' });
+  const [newUserForm, setNewUserForm] = useState({ firstName: '', lastName: '', email: '', password: '', role: 'Farmer', organization: '' });
   const [showNewUserPassword, setShowNewUserPassword] = useState(false);
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [newModuleForm, setNewModuleForm] = useState({ title: '', description: '', content: '', imageUrl: '', topic: '' });
@@ -930,7 +964,7 @@ export default function App() {
       setCurrentUser(parsedUser);
       setIsAuthenticated(true);
       setProfileForm({
-        name: parsedUser.name,
+        ...nameParts(parsedUser),
         organization: parsedUser.organization || '',
         password: '',
         currentPassword: ''
@@ -1235,11 +1269,11 @@ export default function App() {
       localStorage.setItem('philsar_user', JSON.stringify(user));
       setCurrentUser(user);
       setIsAuthenticated(true);
-      setAuthForm({ name: '', email: '', password: '', role: 'Farmer', organization: '' });
+      setAuthForm({ firstName: '', lastName: '', email: '', password: '', role: 'Farmer', organization: '' });
 
       // Prepopulate profile form
       setProfileForm({
-        name: user.name,
+        ...nameParts(user),
         organization: user.organization || '',
         password: '',
         currentPassword: ''
@@ -1337,7 +1371,8 @@ export default function App() {
     setAuthLoading(true);
     try {
       await axios.post(`${API_BASE}/auth/register`, {
-        name: authForm.name,
+        firstName: authForm.firstName.trim(),
+        lastName: authForm.lastName.trim(),
         email: authForm.email,
         password: authForm.password,
         role: authForm.role,
@@ -1347,7 +1382,7 @@ export default function App() {
       setPendingVerificationEmail(authForm.email);
       setResendSent(false);
       setAuthView('verify-pending');
-      setAuthForm({ name: '', email: '', password: '', role: 'Farmer', organization: '' });
+      setAuthForm({ firstName: '', lastName: '', email: '', password: '', role: 'Farmer', organization: '' });
     } catch (error: any) {
       setAuthError(error.response?.data?.message || 'Registration failed. Email may already be in use.');
     } finally {
@@ -1437,7 +1472,8 @@ export default function App() {
     }
     try {
       const response = await axios.put(`${API_BASE}/auth/profile/${currentUser.id}`, {
-        name: profileForm.name,
+        firstName: profileForm.firstName.trim(),
+        lastName: profileForm.lastName.trim(),
         organization: profileForm.organization,
         password: profileForm.password || undefined,
         currentPassword: profileForm.password ? profileForm.currentPassword : undefined
@@ -2015,7 +2051,7 @@ export default function App() {
     try {
       await axios.post(`${API_BASE}/auth/register`, newUserForm);
       showToast('User added successfully!', 'success');
-      setNewUserForm({ name: '', email: '', password: '', role: 'Farmer', organization: '' });
+      setNewUserForm({ firstName: '', lastName: '', email: '', password: '', role: 'Farmer', organization: '' });
       fetchUsersList();
     } catch (error: any) {
       showToast(error.response?.data?.message || 'Error adding user.', 'error');
@@ -2701,12 +2737,15 @@ export default function App() {
     setSearchQuery('');
   };
 
-  const filteredUsers = userSearchQuery.trim().length > 0
+  // Listed alphabetically by last name ("Dela Cruz, Juan"); the search matches
+  // either way the name is written, or the email
+  const filteredUsers = (userSearchQuery.trim().length > 0
     ? allUsers.filter(u => {
         const q = userSearchQuery.toLowerCase();
-        return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
+        return u.name.toLowerCase().includes(q) || lastFirstName(u).toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
       })
-    : allUsers;
+    : [...allUsers]
+  ).sort(compareByLastName);
 
 
   const pendingDeletionUsers = allUsers.filter(u => u.pendingDeletion);
@@ -2855,18 +2894,38 @@ export default function App() {
                   )}
 
                   <form onSubmit={handleRegisterSubmit} className="auth-form">
-                    <div className="auth-field">
-                      <label className="auth-label">Full Name</label>
-                      <div className="auth-input-wrap">
-                        <span className="auth-input-icon">👤</span>
-                        <input
-                          className="auth-input"
-                          type="text"
-                          placeholder="Juan Dela Cruz"
-                          value={authForm.name}
-                          onChange={e => setAuthForm({ ...authForm, name: e.target.value })}
-                          required
-                        />
+                    <div className="name-fields">
+                      <div className="auth-field">
+                        <label className="auth-label">First Name</label>
+                        <div className="auth-input-wrap">
+                          <span className="auth-input-icon">👤</span>
+                          <input
+                            className="auth-input"
+                            type="text"
+                            placeholder="Juan"
+                            autoComplete="given-name"
+                            maxLength={50}
+                            value={authForm.firstName}
+                            onChange={e => setAuthForm({ ...authForm, firstName: e.target.value })}
+                            required
+                          />
+                        </div>
+                      </div>
+                      <div className="auth-field">
+                        <label className="auth-label">Last Name</label>
+                        <div className="auth-input-wrap">
+                          <span className="auth-input-icon">👤</span>
+                          <input
+                            className="auth-input"
+                            type="text"
+                            placeholder="Dela Cruz"
+                            autoComplete="family-name"
+                            maxLength={50}
+                            value={authForm.lastName}
+                            onChange={e => setAuthForm({ ...authForm, lastName: e.target.value })}
+                            required
+                          />
+                        </div>
                       </div>
                     </div>
 
@@ -3665,7 +3724,7 @@ export default function App() {
           {activeTab === 'dashboard' && (
             <div className="view active view-large-text">
               <div className="page-header">
-                <div className="page-title">{t(greetingKeyForHour(new Date().getHours()))}, {currentUser?.name?.split(' ')[0]} 👋</div>
+                <div className="page-title">{t(greetingKeyForHour(new Date().getHours()))}, {currentUser?.firstName || currentUser?.name?.split(' ')[0]} 👋</div>
                 <div className="page-subtitle">
                   {t('dashboard.subtitle')} — {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                 </div>
@@ -4516,15 +4575,31 @@ export default function App() {
                   <div className="card-header"><div className="card-title">Profile Information</div></div>
                   <div className="card-body">
                     <form onSubmit={handleProfileSubmit}>
-                      <div className="form-group">
-                        <label className="form-label">Full Name</label>
-                        <input
-                          className="form-control"
-                          type="text"
-                          value={profileForm.name}
-                          onChange={e => setProfileForm({ ...profileForm, name: e.target.value })}
-                          required
-                        />
+                      <div className="name-fields">
+                        <div className="form-group">
+                          <label className="form-label">First Name</label>
+                          <input
+                            className="form-control"
+                            type="text"
+                            autoComplete="given-name"
+                            maxLength={50}
+                            value={profileForm.firstName}
+                            onChange={e => setProfileForm({ ...profileForm, firstName: e.target.value })}
+                            required
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">Last Name</label>
+                          <input
+                            className="form-control"
+                            type="text"
+                            autoComplete="family-name"
+                            maxLength={50}
+                            value={profileForm.lastName}
+                            onChange={e => setProfileForm({ ...profileForm, lastName: e.target.value })}
+                            required
+                          />
+                        </div>
                       </div>
                       <div className="form-group">
                         <label className="form-label">Email Address</label>
@@ -4792,15 +4867,29 @@ export default function App() {
                         <div className="card-header"><div className="card-title">Add New User Account</div></div>
                         <div className="card-body">
                           <form onSubmit={handleAddUser}>
-                            <div className="form-group">
-                              <label className="form-label">Full Name</label>
-                              <input
-                                className="form-control"
-                                type="text"
-                                value={newUserForm.name}
-                                onChange={e => setNewUserForm({ ...newUserForm, name: e.target.value })}
-                                required
-                              />
+                            <div className="name-fields">
+                              <div className="form-group">
+                                <label className="form-label">First Name</label>
+                                <input
+                                  className="form-control"
+                                  type="text"
+                                  maxLength={50}
+                                  value={newUserForm.firstName}
+                                  onChange={e => setNewUserForm({ ...newUserForm, firstName: e.target.value })}
+                                  required
+                                />
+                              </div>
+                              <div className="form-group">
+                                <label className="form-label">Last Name</label>
+                                <input
+                                  className="form-control"
+                                  type="text"
+                                  maxLength={50}
+                                  value={newUserForm.lastName}
+                                  onChange={e => setNewUserForm({ ...newUserForm, lastName: e.target.value })}
+                                  required
+                                />
+                              </div>
                             </div>
                             <div className="form-group">
                               <label className="form-label">Email Address</label>
@@ -4920,7 +5009,7 @@ export default function App() {
                                       )}
                                     </div>
                                     <div>
-                                      <div style={{ fontWeight: 600 }}>{u.name}</div>
+                                      <div style={{ fontWeight: 600 }}>{lastFirstName(u)}</div>
                                       <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{u.email}</div>
                                     </div>
                                   </div>

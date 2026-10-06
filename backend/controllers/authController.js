@@ -28,9 +28,31 @@ const generateToken = (user) => jwt.sign(
 // To prevent attackers from discovering registered email addresses
 const DUMMY_PASSWORD_HASH = '$2a$10$CwTycUXWue0Thq9StjUM0uJ8OrJfmMptFOL3.gEO3jS3vG4TmqXKG';
 
+// Sign-up and profile forms send first and last name separately (the Admin Panel
+// lists users by last name); `name` is stored as "First Last" for display.
+const MAX_NAME_PART = 50;
+const findNameProblem = (firstName, lastName) => {
+    if (!firstName || !lastName) return 'Please enter both your first name and last name.';
+    if (firstName.length > MAX_NAME_PART || lastName.length > MAX_NAME_PART) {
+        return `First and last name can each be at most ${MAX_NAME_PART} characters.`;
+    }
+    return null;
+};
+
 const register = async (req, res) => {
     try {
-        const { name, email, password, role, organization } = req.body;
+        const { email, password, role, organization } = req.body;
+        const firstName = String(req.body.firstName ?? '').trim();
+        const lastName = String(req.body.lastName ?? '').trim();
+        // A page loaded before the separate name fields existed still sends one `name`
+        const legacyName = !firstName && !lastName ? String(req.body.name ?? '').trim() : '';
+        if (!legacyName) {
+            const nameProblem = findNameProblem(firstName, lastName);
+            if (nameProblem) {
+                return res.status(400).json({ message: nameProblem });
+            }
+        }
+        const name = legacyName || `${firstName} ${lastName}`;
 
         if (!email || !EMAIL_REGEX.test(email)) {
             return res.status(400).json({ message: 'Please enter a valid email address' });
@@ -70,7 +92,10 @@ const register = async (req, res) => {
 
         // Admin-created accounts skip verification entirely
         let verificationToken = null;
-        const userData = { name, email, password: hashedPassword, role: finalRole, organization: organization || '' };
+        const userData = {
+            name, firstName: legacyName ? null : firstName, lastName: legacyName ? null : lastName,
+            email, password: hashedPassword, role: finalRole, organization: organization || ''
+        };
         if (!isAdminCreating) {
             verificationToken = crypto.randomBytes(32).toString('hex');
             userData.emailVerified = false;
@@ -117,6 +142,8 @@ const register = async (req, res) => {
             user: {
                 id: user.id,
                 name: user.name,
+                firstName: user.firstName,
+                lastName: user.lastName,
                 email: user.email,
                 role: user.role,
                 organization: user.organization,
@@ -214,6 +241,8 @@ const login = async (req, res) => {
             user: {
                 id: user.id,
                 name: user.name,
+                firstName: user.firstName,
+                lastName: user.lastName,
                 email: user.email,
                 role: user.role,
                 organization: user.organization,
@@ -283,7 +312,22 @@ const updateProfile = async (req, res) => {
             passwordChanged = true;
         }
 
-        if (name) user.name = name;
+        if (req.body.firstName !== undefined || req.body.lastName !== undefined) {
+            const firstName = String(req.body.firstName ?? '').trim();
+            const lastName = String(req.body.lastName ?? '').trim();
+            const nameProblem = findNameProblem(firstName, lastName);
+            if (nameProblem) {
+                return res.status(400).json({ message: nameProblem });
+            }
+            user.firstName = firstName;
+            user.lastName = lastName;
+            user.name = `${firstName} ${lastName}`;
+        } else if (name && name !== user.name) {
+            // Older clients send one `name`; the separate parts no longer match it
+            user.name = name;
+            user.firstName = null;
+            user.lastName = null;
+        }
         if (organization !== undefined) user.organization = organization;
         if (profilePicture !== undefined) user.profilePicture = profilePicture;
         if (isAdmin) {
@@ -308,11 +352,11 @@ const updateProfile = async (req, res) => {
                 action: 'password_changed', category: 'account', details: 'User changed their own password', req
             });
         }
-        if (name && name !== oldName) {
+        if (user.name !== oldName) {
             logActivity({
                 userId: user.id, userName: user.name, userRole: user.role,
                 action: 'name_changed', category: 'account',
-                details: `${targetEmail}: "${oldName}" → "${name}"`, req
+                details: `${targetEmail}: "${oldName}" → "${user.name}"`, req
             });
         }
         if (isAdmin && !isSelf) {
@@ -346,6 +390,8 @@ const updateProfile = async (req, res) => {
             user: {
                 id: user.id,
                 name: user.name,
+                firstName: user.firstName,
+                lastName: user.lastName,
                 email: user.email,
                 role: user.role,
                 organization: user.organization,
@@ -381,6 +427,8 @@ const getUserById = async (req, res) => {
         res.status(200).json({
             id: user.id,
             name: user.name,
+            firstName: user.firstName,
+            lastName: user.lastName,
             email: user.email,
             role: user.role,
             organization: user.organization,

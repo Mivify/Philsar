@@ -2196,6 +2196,13 @@ body {
 }
 
 .auth-form { display: flex; flex-direction: column; gap: 18px; }
+/* First / last name side by side (sign-up, My Profile, Admin "Add New User") */
+.name-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 480px) {
+  .name-fields { grid-template-columns: 1fr; gap: 18px; }
+  .name-fields .form-group { margin-bottom: 0; }
+  .name-fields + .form-group { margin-top: 18px; }
+}
 .auth-field { display: flex; flex-direction: column; }
 
 .auth-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text-primary); }

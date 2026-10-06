@@ -11,6 +11,17 @@ const User = sequelize.define('User', {
         type: DataTypes.STRING,
         allowNull: false,
     },
+    // Asked for separately at sign-up so the Admin Panel can list users by last
+    // name; `name` stays the "First Last" display name used everywhere else.
+    // Null for accounts created before these fields existed.
+    firstName: {
+        type: DataTypes.STRING,
+        allowNull: true,
+    },
+    lastName: {
+        type: DataTypes.STRING,
+        allowNull: true,
+    },
     email: {
         type: DataTypes.STRING,
         allowNull: false,
