@@ -478,6 +478,9 @@ const CHAT_GREETING: { role: 'assistant'; content: string } = {
   content: 'Hello! I am **PHILSARBot**, your AI assistant for cattle reproductive management. I can help you understand estrus cycles, AI procedures, breeding techniques, and more. What would you like to know today?'
 };
 
+// How many earlier chat messages are sent with each question, so PHILSARBot can follow the conversation
+const CHAT_HISTORY_LIMIT = 10;
+
 
 const confirmDelete = (text: string, title = 'Are you sure?', confirmButtonText = 'Yes, delete it'): Promise<boolean> => {
   return Swal.fire({
@@ -1731,6 +1734,11 @@ export default function App() {
     try {
       const response = await axios.post(`${API_BASE}/chat/ask`, {
         message: text,
+        // The conversation so far (without the opening greeting), so a short reply like "Philsar" or "yes" keeps its meaning
+        history: chatMessages
+          .filter(m => !(m.role === 'assistant' && m.content === CHAT_GREETING.content))
+          .slice(-CHAT_HISTORY_LIMIT)
+          .map(m => ({ role: m.role, content: m.content })),
         user: currentUser ? {
           name: currentUser.name,
           role: currentUser.role,
