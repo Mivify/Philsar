@@ -1451,6 +1451,22 @@ body {
   color: var(--cream);
 }
 
+.chathead-open-full {
+  display: flex; align-items: center; gap: 10px;
+  margin: -4px;
+  padding: 4px 10px 4px 4px;
+  background: none;
+  border: none;
+  border-radius: 10px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.chathead-open-full:hover { background: rgba(255,255,255,0.12); }
+.chathead-open-full:focus-visible { outline: 2px solid var(--cream); outline-offset: 2px; }
+
 .chathead-close-btn {
   margin-left: auto;
   background: rgba(255,255,255,0.12);

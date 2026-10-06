@@ -3081,14 +3081,6 @@ export default function App() {
           </button>
 
           <button
-            className={`nav-item ${activeTab === 'chatbot' ? 'active' : ''}`}
-            onClick={() => handleTabNavigate('chatbot')}
-          >
-            <div className="nav-icon">🤖</div>
-            {t('nav.chatbot')}
-          </button>
-
-          <button
             className={`nav-item ${activeTab === 'dss' ? 'active' : ''}`}
             onClick={() => handleTabNavigate('dss')}
           >
@@ -6441,11 +6433,18 @@ export default function App() {
           <div className="chathead-panel">
             <div className="chat-window">
               <div className="chathead-panel-header">
-                <div className="ai-avatar" style={{ width: '32px', height: '32px', fontSize: '16px' }}>🤖</div>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '13px' }}>PHILSARBot</div>
-                  <div style={{ fontSize: '11px', opacity: 0.8 }}>● Online</div>
-                </div>
+                {/* The AI Assistant has no sidebar link; the bot's avatar/name here opens its full page. */}
+                <button
+                  className="chathead-open-full"
+                  onClick={() => { setChatheadOpen(false); handleTabNavigate('chatbot'); }}
+                  title="Open the full AI Assistant page"
+                >
+                  <div className="ai-avatar" style={{ width: '32px', height: '32px', fontSize: '16px' }}>🤖</div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '13px' }}>PHILSARBot</div>
+                    <div style={{ fontSize: '11px', opacity: 0.8 }}>● Online</div>
+                  </div>
+                </button>
                 <button className="chathead-close-btn" onClick={() => setChatheadOpen(false)} title="Close">✕</button>
               </div>
 
