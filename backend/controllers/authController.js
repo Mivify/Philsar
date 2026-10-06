@@ -2,6 +2,7 @@ const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const { Op } = require('sequelize');
 const Notification = require('../models/Notification');
 const { sendPasswordResetEmail, sendVerificationEmail, sendEmailChangeConfirmation, sendRoleChangedEmail } = require('../utils/email');
 const { logActivity } = require('../utils/activityLog');
@@ -74,6 +75,16 @@ const register = async (req, res) => {
         if (existingUser && existingUser.emailVerified) {
             return res.status(400).json({ message: 'User already exists' });
         }
+        // An archived account still owns its email address; an Admin adding it
+        // again is pointed to the archive instead
+        const archivedUser = await User.findOne({ where: { email, archivedAt: { [Op.ne]: null } }, paranoid: false });
+        if (archivedUser) {
+            return res.status(400).json({
+                message: req.user?.role === 'Admin'
+                    ? 'That email belongs to an archived account. Restore it from Archived Accounts instead.'
+                    : 'User already exists'
+            });
+        }
 
         // Only an already-authenticated Admin (creating a user via the Admin Panel,
         // can add another admin account) 
@@ -106,7 +117,8 @@ const register = async (req, res) => {
         // Deleted only now, after every validation above has passed, so a signup
         // rejected for (say) a weak password never discards anything.
         if (existingUser) {
-            await existingUser.destroy();
+            // force: a reservation is really removed, not archived like an account
+            await existingUser.destroy({ force: true });
         }
 
         const user = await User.create(userData);
@@ -520,15 +532,20 @@ const approveUserDeletion = async (req, res) => {
         }
 
         const approver = await User.findByPk(req.user.id, { attributes: ['name'] });
+        const approverName = approver?.name || `Sub Admin #${req.user.id}`;
         logActivity({
             userId: user.id, userName: user.name, userRole: user.role,
             action: 'account_deletion_approved', category: 'account',
-            details: `${user.email} (${user.role}) deletion approved by ${approver?.name || `Sub Admin #${req.user.id}`} — originally requested by ${user.pendingDeletionRequestedByName || 'unknown'}`, req
+            details: `${user.email} (${user.role}) deletion approved by ${approverName} — account archived (restorable); originally requested by ${user.pendingDeletionRequestedByName || 'unknown'}`, req
         });
 
+        // Archive rather than erase: the row and all the account's data stay, and
+        // an Admin can restore it from Archived Accounts
+        user.pendingDeletion = false;
+        user.archivedByName = approverName;
+        await user.save();
         await user.destroy();
-        await Notification.destroy({ where: { userId: user.id } });
-        res.status(200).json({ message: 'Deletion approved — account removed.' });
+        res.status(200).json({ message: 'Deletion approved — the account was archived. An Admin can restore it from Archived Accounts.' });
     } catch (error) {
         res.status(500).json({ message: 'Error approving user deletion', error: error.message });
     }
@@ -560,6 +577,48 @@ const rejectUserDeletion = async (req, res) => {
         res.status(200).json({ message: 'Deletion request rejected.' });
     } catch (error) {
         res.status(500).json({ message: 'Error rejecting user deletion', error: error.message });
+    }
+};
+
+// Accounts whose deletion was approved, newest first
+const getArchivedUsers = async (req, res) => {
+    try {
+        const users = await User.findAll({
+            where: { archivedAt: { [Op.ne]: null } },
+            paranoid: false,
+            attributes: ['id', 'name', 'firstName', 'lastName', 'email', 'role', 'organization', 'archivedAt', 'archivedByName', 'pendingDeletionRequestedByName'],
+            order: [['archivedAt', 'DESC']]
+        });
+        res.status(200).json(users);
+    } catch (error) {
+        res.status(500).json({ message: 'Error fetching archived accounts', error: error.message });
+    }
+};
+
+// Brings an archived account back exactly as it was (role, data, password)
+const restoreUser = async (req, res) => {
+    try {
+        const user = await User.findByPk(req.params.id, { paranoid: false });
+        if (!user || !user.archivedAt) {
+            return res.status(404).json({ message: 'Archived account not found' });
+        }
+
+        const actor = await User.findByPk(req.user.id, { attributes: ['name'] });
+        const actorName = actor?.name || `admin #${req.user.id}`;
+        await user.restore();
+        user.archivedByName = null;
+        user.pendingDeletionRequestedByName = null;
+        await user.save();
+
+        logActivity({
+            userId: user.id, userName: user.name, userRole: user.role,
+            action: 'account_restored', category: 'account',
+            details: `${user.email} (${user.role}) restored from the archive by ${actorName}`, req
+        });
+
+        res.status(200).json({ message: `${user.name}'s account has been restored.` });
+    } catch (error) {
+        res.status(500).json({ message: 'Error restoring account', error: error.message });
     }
 };
 
@@ -778,7 +837,7 @@ const verifyEmailChange = async (req, res) => {
             }
             // Clicking this link just proved this user controls the inbox, so an
             // unverified reservation on the address is discarded.
-            await stillFree.destroy();
+            await stillFree.destroy({ force: true });
         }
 
         const oldEmail = user.email;
@@ -815,6 +874,8 @@ module.exports = {
     deleteUser,
     approveUserDeletion,
     rejectUserDeletion,
+    getArchivedUsers,
+    restoreUser,
     forgotPassword,
     resetPassword,
     verifyEmail,

@@ -33,7 +33,8 @@ import {
   ChevronRight,
   Radio,
   Clock,
-  CheckCircle2
+  CheckCircle2,
+  RotateCcw
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import axios from 'axios';
@@ -58,6 +59,19 @@ interface User {
   pendingDeletionRequestedByName?: string | null;
   pendingEmail?: string | null;
   token?: string;
+}
+
+// An account whose deletion was approved: kept (not erased) and restorable by an Admin
+interface ArchivedUser {
+  id: number;
+  name: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  email: string;
+  role: User['role'];
+  archivedAt: string;
+  archivedByName?: string | null;
+  pendingDeletionRequestedByName?: string | null;
 }
 
 interface LearningModule {
@@ -226,6 +240,7 @@ const ACTIVITY_ACTION_LABELS: Record<string, string> = {
   account_deletion_requested: 'Deletion Requested',
   account_deletion_approved: 'Deletion Approved',
   account_deletion_rejected: 'Deletion Rejected',
+  account_restored: 'Account Restored',
   email_change_requested: 'Email Change Requested',
   email_changed: 'Email Changed',
   dss_assessment_run: 'DSS Assessment',
@@ -258,6 +273,7 @@ const ACTIVITY_SEVERITY: Record<string, 'high' | 'medium' | 'low'> = {
   account_status_changed: 'medium',
   account_deletion_requested: 'high',
   account_deletion_approved: 'high',
+  account_restored: 'medium',
   email_change_requested: 'medium',
   email_changed: 'high',
   certificate_revoked: 'medium',
@@ -295,9 +311,11 @@ type RegisterEmailVerdict = {
 const SURNAME_PARTICLES = new Set(['de', 'del', 'dela', 'della', 'delos', 'los', 'las', 'san', 'santa', 'sta.', 'sto.', 'da', 'di', 'van', 'von', 'la', 'le']);
 const NAME_SUFFIXES = new Set(['jr', 'jr.', 'sr', 'sr.', 'ii', 'iii', 'iv']);
 
+type PersonName = { name: string; firstName?: string | null; lastName?: string | null };
+
 // A user's first and last name. Accounts created before sign-up asked for them
 // separately only have the full name, so for those the split is a best guess.
-function nameParts(u: { name: string; firstName?: string | null; lastName?: string | null }) {
+function nameParts(u: PersonName) {
   if (u.lastName) return { firstName: u.firstName || '', lastName: u.lastName };
   const words = u.name.trim().split(/\s+/).filter(Boolean);
   if (words.length < 2) return { firstName: words[0] || '', lastName: '' };
@@ -308,13 +326,13 @@ function nameParts(u: { name: string; firstName?: string | null; lastName?: stri
 }
 
 // "Dela Cruz, Juan", the way the Admin Panel lists accounts
-function lastFirstName(u: User): string {
+function lastFirstName(u: PersonName): string {
   const { firstName, lastName } = nameParts(u);
   return lastName ? `${lastName}${firstName ? `, ${firstName}` : ''}` : u.name;
 }
 
 // Alphabetical by last name, then first name (ignoring case and accents)
-function compareByLastName(a: User, b: User): number {
+function compareByLastName(a: PersonName, b: PersonName): number {
   const pa = nameParts(a);
   const pb = nameParts(b);
   return (pa.lastName || pa.firstName).localeCompare(pb.lastName || pb.firstName, 'en', { sensitivity: 'base' })
@@ -644,6 +662,8 @@ export default function App() {
   const [editingCattleId, setEditingCattleId] = useState<number | null>(null);
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [archivedUsers, setArchivedUsers] = useState<ArchivedUser[]>([]);
+  const [showArchivedUsers, setShowArchivedUsers] = useState(false);
   const [herdStats, setHerdStats] = useState({ totalCattle: 0, readyForBreeding: 0, newThisMonth: 0 });
   const [settings, setSettings] = useState<SystemSettings>({
     certTitleText: 'Certificate of Attendance',
@@ -1234,6 +1254,16 @@ export default function App() {
       setAllUsers(usersRes.data);
     } catch (error) {
       console.error('Error fetching users:', error);
+    }
+    fetchArchivedUsers();
+  };
+
+  const fetchArchivedUsers = async () => {
+    try {
+      const archivedRes = await axios.get(`${API_BASE}/auth/users/archived`);
+      setArchivedUsers(archivedRes.data);
+    } catch (error) {
+      console.error('Error fetching archived accounts:', error);
     }
   };
 
@@ -2081,7 +2111,7 @@ export default function App() {
   // Admin has to separately approve it (see handleApproveUserDeletion below).
   const handleRequestUserDeletion = async (userId: number) => {
     if (!(await confirmDelete(
-      "This won't delete the account right away — it sends a deletion request that a Sub Admin must approve first.",
+      "This won't delete the account right away — it sends a deletion request that a Sub Admin must approve first. Once approved, the account is archived (not erased), and an Admin can restore it later.",
       'Request account deletion?',
       'Yes, request deletion'
     ))) return;
@@ -2099,14 +2129,15 @@ export default function App() {
 
   const handleApproveUserDeletion = async (user: User) => {
     if (!(await confirmDelete(
-      `Approve deleting ${user.name}'s account? This cannot be undone.`,
+      `${user.name}'s account will be archived: they can no longer sign in and it leaves the accounts list, but nothing is erased and an Admin can restore it.`,
       'Approve this deletion?',
-      'Yes, delete permanently'
+      'Yes, archive account'
     ))) return;
     try {
       await axios.post(`${API_BASE}/auth/users/${user.id}/approve-deletion`);
       setAllUsers(prev => prev.filter(u => u.id !== user.id));
-      showToast(`${user.name}'s account has been deleted.`, 'success');
+      fetchArchivedUsers();
+      showToast(`${user.name}'s account was archived. An Admin can restore it from Archived Accounts.`, 'success');
     } catch (error: any) {
       console.error(error);
       showToast(error.response?.data?.message || 'Error approving deletion.', 'error');
@@ -2123,6 +2154,19 @@ export default function App() {
     } catch (error: any) {
       console.error(error);
       showToast(error.response?.data?.message || 'Error rejecting deletion.', 'error');
+    }
+  };
+
+  // Brings an archived account back into All Accounts with everything it had
+  const handleRestoreUser = async (user: ArchivedUser) => {
+    try {
+      const res = await axios.post(`${API_BASE}/auth/users/${user.id}/restore`);
+      setArchivedUsers(prev => prev.filter(u => u.id !== user.id));
+      fetchUsersList();
+      showToast(res.data.message, 'success');
+    } catch (error: any) {
+      console.error(error);
+      showToast(error.response?.data?.message || 'Error restoring account.', 'error');
     }
   };
 
@@ -5078,6 +5122,63 @@ export default function App() {
                         </table>
                       </div>
                     </div>
+                  </div>
+
+                  {/* Approved deletions are archived, not erased; an Admin can restore them */}
+                  <div className="card archived-accounts">
+                    <div className="card-header">
+                      <div className="card-title">Archived Accounts ({archivedUsers.length})</div>
+                      <button
+                        type="button"
+                        className="archived-toggle"
+                        onClick={() => setShowArchivedUsers(s => !s)}
+                        aria-expanded={showArchivedUsers}
+                      >
+                        {showArchivedUsers ? 'Hide' : 'Show'}
+                      </button>
+                    </div>
+                    {showArchivedUsers && (
+                      <div className="card-body data-table-wrapper">
+                        <table className="data-table">
+                          <thead>
+                            <tr>
+                              <th>User</th>
+                              <th>Role</th>
+                              <th>Archived</th>
+                              <th>Requested by / Approved by</th>
+                              {isSystemAdmin && <th>Action</th>}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {archivedUsers.length === 0 && (
+                              <tr>
+                                <td colSpan={isSystemAdmin ? 5 : 4} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '28px 16px' }}>
+                                  No archived accounts.
+                                </td>
+                              </tr>
+                            )}
+                            {[...archivedUsers].sort(compareByLastName).map(u => (
+                              <tr key={u.id}>
+                                <td>
+                                  <div style={{ fontWeight: 600 }}>{lastFirstName(u)}</div>
+                                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{u.email}</div>
+                                </td>
+                                <td>{u.role}</td>
+                                <td>{new Date(u.archivedAt).toLocaleDateString('en-PH', { dateStyle: 'medium' })}</td>
+                                <td style={{ fontSize: '12px' }}>{u.pendingDeletionRequestedByName || '—'} / {u.archivedByName || '—'}</td>
+                                {isSystemAdmin && (
+                                  <td>
+                                    <button className="table-action restore-action" onClick={() => handleRestoreUser(u)} title="Restore this account">
+                                      <RotateCcw size={14} /> Restore
+                                    </button>
+                                  </td>
+                                )}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

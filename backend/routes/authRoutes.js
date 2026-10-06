@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const rateLimit = require('express-rate-limit');
-const { register, checkEmail, login, logout, updateProfile, getUserById, getUsers, deleteUser, approveUserDeletion, rejectUserDeletion, forgotPassword, resetPassword, verifyEmail, resendVerification, changeEmail, verifyEmailChange } = require('../controllers/authController');
+const { register, checkEmail, login, logout, updateProfile, getUserById, getUsers, deleteUser, approveUserDeletion, rejectUserDeletion, getArchivedUsers, restoreUser, forgotPassword, resetPassword, verifyEmail, resendVerification, changeEmail, verifyEmailChange } = require('../controllers/authController');
 const { uploadImage } = require('../controllers/moduleController');
 const { optionalAuth, requireAuth, requireAdmin, requireSubAdmin, requireSubAdminOnly } = require('../middleware/auth');
 const { logActivity } = require('../utils/activityLog');
@@ -85,6 +85,9 @@ router.get('/users', requireSubAdmin, getUsers);
 router.delete('/users/:id', requireAdmin, deleteUser);
 router.post('/users/:id/approve-deletion', requireSubAdminOnly, approveUserDeletion);
 router.post('/users/:id/reject-deletion', requireSubAdminOnly, rejectUserDeletion);
+// An approved deletion archives the account; an Admin can bring it back
+router.get('/users/archived', requireSubAdmin, getArchivedUsers);
+router.post('/users/:id/restore', requireAdmin, restoreUser);
 router.post('/upload-avatar', requireAuth, uploadImage);
 
 module.exports = router;

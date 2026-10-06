@@ -113,6 +113,13 @@ const User = sequelize.define('User', {
         type: DataTypes.STRING,
         allowNull: true,
     },
+    // Approved deletions archive the account instead of erasing it (see
+    // `paranoid` below). Kept with the requester's name above so the Archived
+    // Accounts list can show who asked and who approved.
+    archivedByName: {
+        type: DataTypes.STRING,
+        allowNull: true,
+    },
     // Changing your email doesn't take effect immediately — it's staged here
     // until the new address is confirmed via a link, the same way self-serve
     // registration isn't verified until its own token is used. `email` itself
@@ -131,6 +138,12 @@ const User = sequelize.define('User', {
     }
 }, {
     timestamps: true,
+    // Archiving: user.destroy() only sets archivedAt, keeping the row and all
+    // the account's data. Archived accounts are left out of every normal query
+    // (so they can't sign in and don't appear in lists) until user.restore().
+    // Pass { paranoid: false } to include them, or { force: true } to really delete.
+    paranoid: true,
+    deletedAt: 'archivedAt',
 });
 
 module.exports = User;
