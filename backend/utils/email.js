@@ -72,4 +72,20 @@ const sendEmailChangeConfirmation = async (to, link) => {
     `);
 };
 
-module.exports = { sendPasswordResetEmail, sendVerificationEmail, sendEmailChangeConfirmation };
+// Names are typed in by users, so they're escaped before going into the HTML
+const escapeHtml = (text) => String(text).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+const sendRoleChangedEmail = async (to, name, fromRole, toRole) => {
+    if (!emailEnabled) {
+        console.log(`[email disabled] Role change notice for ${to}: ${fromRole} → ${toRole}`);
+        return;
+    }
+
+    await sendEmail(to, 'Your PHILSAR account role was changed', `
+        <p>Hi ${escapeHtml(name)},</p>
+        <p>An administrator changed your role on the PHILSAR Cattle Reproductive Portal from <strong>${escapeHtml(fromRole)}</strong> to <strong>${escapeHtml(toRole)}</strong>.</p>
+        <p>The features you can use now match your new role. If you didn't expect this change, please contact a PHILSAR administrator.</p>
+    `);
+};
+
+module.exports = { sendPasswordResetEmail, sendVerificationEmail, sendEmailChangeConfirmation, sendRoleChangedEmail };

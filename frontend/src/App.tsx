@@ -418,6 +418,9 @@ const STRATEGIC_OBJECTIVES = [
 ];
 
 
+// A notice under the bell in the top bar (see notificationController on the backend)
+type AppNotification = { id: number; type: string; data: { from?: string; to?: string } | null; isRead: boolean; createdAt: string };
+
 type Language = 'en' | 'tl';
 const TRANSLATIONS: Record<Language, Record<string, string>> = {
   en: {
@@ -434,6 +437,10 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     'nav.profile': 'My Profile',
     'nav.admin': 'Admin Panel',
     'nav.signOut': 'Sign Out',
+    'notif.title': 'Notifications',
+    'notif.empty': 'No notifications yet.',
+    'notif.roleChangedTitle': 'Your role was changed',
+    'notif.roleChangedBody': 'An administrator changed your role from {from} to {to}.',
     'search.placeholder': 'Search modules, topics…',
     'search.noResults': 'No modules found.',
     'home.eyebrow': 'PHILSAR Cattle Reproductive Portal',
@@ -491,6 +498,10 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     'nav.profile': 'Aking Profile',
     'nav.admin': 'Admin Panel',
     'nav.signOut': 'Mag-sign Out',
+    'notif.title': 'Mga Abiso',
+    'notif.empty': 'Wala pang abiso.',
+    'notif.roleChangedTitle': 'Napalitan ang iyong role',
+    'notif.roleChangedBody': 'Pinalitan ng isang administrator ang iyong role mula {from} patungong {to}.',
     'search.placeholder': 'Maghanap ng mga modyul, paksa…',
     'search.noResults': 'Walang nahanap na modyul.',
     'home.eyebrow': 'PHILSAR Cattle Reproductive Portal',
@@ -670,6 +681,16 @@ export default function App() {
   // Floating chathead for the ai chatbot
   const [chatheadOpen, setChatheadOpen] = useState(false);
   const [chatheadSeenCount, setChatheadSeenCount] = useState(1); // CHAT_GREETING counts as already seen
+
+  // Notifications bell in the top bar
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  // The ones that were unread when the bell was opened, highlighted until it closes
+  const [freshNotificationIds, setFreshNotificationIds] = useState<number[]>([]);
+  const notificationsRef = useRef<HTMLDivElement>(null);
+  // IDs seen at the last check (null = not checked yet this session)
+  const knownNotificationIds = useRef<Set<number> | null>(null);
 
   // DSS State
   const [dssForm, setDssForm] = useState({
@@ -1093,6 +1114,85 @@ export default function App() {
 
     fetchGlobalData();
   };
+
+  // Checks for notifications every minute while signed in. A role change that
+  // arrives mid-session also reloads the profile, so the sidebar and pages switch
+  // to the new role without signing out.
+  const fetchNotifications = async (user: User) => {
+    try {
+      const { data } = await axios.get(`${API_BASE}/notifications`);
+      const list: AppNotification[] = data.notifications;
+      const known = knownNotificationIds.current;
+      if (known && list.some(n => n.type === 'role_changed' && !known.has(n.id))) {
+        refreshSessionData(user);
+      }
+      knownNotificationIds.current = new Set(list.map(n => n.id));
+      setNotifications(list);
+      setUnreadNotifications(data.unreadCount);
+    } catch (error) {
+      console.error('Error loading notifications:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (!isAuthenticated || !currentUser) return;
+    const user = currentUser;
+    knownNotificationIds.current = null;
+    setNotifications([]);
+    setUnreadNotifications(0);
+    setNotificationsOpen(false);
+    fetchNotifications(user);
+    const timer = window.setInterval(() => fetchNotifications(user), 60000);
+    return () => window.clearInterval(timer);
+  }, [isAuthenticated, currentUser?.id]);
+
+  // Opening the bell marks everything as read; the newly read ones stay
+  // highlighted while the list is open
+  const toggleNotifications = () => {
+    if (notificationsOpen) {
+      setNotificationsOpen(false);
+      return;
+    }
+    setNotificationsOpen(true);
+    setFreshNotificationIds(notifications.filter(n => !n.isRead).map(n => n.id));
+    if (unreadNotifications > 0) {
+      setUnreadNotifications(0);
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+      axios.post(`${API_BASE}/notifications/read-all`)
+        .catch(err => console.error('Error marking notifications as read:', err));
+    }
+  };
+
+  // Clicking anywhere else or pressing Escape closes the list
+  useEffect(() => {
+    if (!notificationsOpen) return;
+    const closeOnOutsideClick = (e: MouseEvent) => {
+      if (!notificationsRef.current?.contains(e.target as Node)) setNotificationsOpen(false);
+    };
+    const closeOnEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setNotificationsOpen(false);
+    };
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [notificationsOpen]);
+
+  // Lost Admin Panel access mid-session (an admin changed this user's role):
+  // leave the panel instead of showing a blank page
+  useEffect(() => {
+    if (activeTab === 'admin' && currentUser && !isModuleOrMeetingAdmin) handleTabNavigate('home');
+  }, [activeTab, isModuleOrMeetingAdmin]);
+
+  // Notification text in the current language (the server only stores type + details)
+  const describeNotification = (n: AppNotification) => n.type === 'role_changed'
+    ? {
+      title: t('notif.roleChangedTitle'),
+      body: t('notif.roleChangedBody').replace('{from}', n.data?.from ?? '').replace('{to}', n.data?.to ?? ''),
+    }
+    : { title: t('notif.title'), body: '' };
 
   const fetchUsersList = async () => {
     try {
@@ -2001,7 +2101,7 @@ export default function App() {
     try {
       await axios.put(`${API_BASE}/auth/profile/${roleChangeUser.id}`, { role: roleChangeSelection });
       setAllUsers(prev => prev.map(u => u.id === roleChangeUser.id ? { ...u, role: roleChangeSelection as User['role'] } : u));
-      showToast(`${roleChangeUser.name}'s role is now ${roleChangeSelection}.`, 'success');
+      showToast(`${roleChangeUser.name}'s role is now ${roleChangeSelection}.${roleChangeUser.id !== currentUser?.id ? " They've been notified." : ''}`, 'success');
       setRoleChangeUser(null);
     } catch (error: any) {
       showToast(error.response?.data?.message || 'Error changing role.', 'error');
@@ -3304,6 +3404,40 @@ export default function App() {
             <div className="lang-toggle">
               <button className={language === 'en' ? 'active' : ''} onClick={() => setLanguage('en')}>EN</button>
               <button className={language === 'tl' ? 'active' : ''} onClick={() => setLanguage('tl')}>TL</button>
+            </div>
+            <div className="notif-wrapper" ref={notificationsRef}>
+              <button
+                type="button"
+                className="topbar-btn"
+                onClick={toggleNotifications}
+                title={t('notif.title')}
+                aria-label={unreadNotifications > 0 ? `${t('notif.title')} (${unreadNotifications})` : t('notif.title')}
+                aria-expanded={notificationsOpen}
+              >
+                🔔
+                {unreadNotifications > 0 && (
+                  <span className="notif-badge">{unreadNotifications > 9 ? '9+' : unreadNotifications}</span>
+                )}
+              </button>
+              {notificationsOpen && (
+                <div className="notif-dropdown">
+                  <div className="notif-header">{t('notif.title')}</div>
+                  {notifications.length === 0 ? (
+                    <div className="notif-empty">{t('notif.empty')}</div>
+                  ) : notifications.map(n => {
+                    const { title, body } = describeNotification(n);
+                    return (
+                      <div key={n.id} className={`notif-item${freshNotificationIds.includes(n.id) ? ' fresh' : ''}`}>
+                        <div className="notif-item-title">{title}</div>
+                        {body && <div className="notif-item-body">{body}</div>}
+                        <div className="notif-item-time">
+                          {new Date(n.createdAt).toLocaleString(language === 'tl' ? 'fil-PH' : 'en-PH', { dateStyle: 'medium', timeStyle: 'short' })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
             <div className="topbar-btn" onClick={() => handleTabNavigate('profile')}>👤</div>
           </div>

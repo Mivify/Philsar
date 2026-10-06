@@ -2,7 +2,8 @@ const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
-const { sendPasswordResetEmail, sendVerificationEmail, sendEmailChangeConfirmation } = require('../utils/email');
+const Notification = require('../models/Notification');
+const { sendPasswordResetEmail, sendVerificationEmail, sendEmailChangeConfirmation, sendRoleChangedEmail } = require('../utils/email');
 const { logActivity } = require('../utils/activityLog');
 const { isStrongPassword, WEAK_PASSWORD_MESSAGE } = require('../utils/passwordPolicy');
 const { findEmailDomainProblem, checkMailbox, isMailboxCheckEnabled } = require('../utils/emailValidation');
@@ -323,6 +324,12 @@ const updateProfile = async (req, res) => {
                     action: 'role_changed', category: 'account',
                     details: `${targetEmail}: ${oldRole} → ${role} (changed by ${actorName})`, req
                 });
+                // Tell the user: a notice under the bell in the portal, plus an email.
+                // Neither holds up the admin's response or undoes the change if it fails.
+                Notification.create({ userId: user.id, type: 'role_changed', data: { from: oldRole, to: role } })
+                    .catch(err => console.error('Failed to create role change notification:', err));
+                sendRoleChangedEmail(user.email, user.name, oldRole, role)
+                    .catch(err => console.error('Failed to send role change email:', err));
             }
             if (status && status !== oldStatus) {
                 logActivity({
@@ -472,6 +479,7 @@ const approveUserDeletion = async (req, res) => {
         });
 
         await user.destroy();
+        await Notification.destroy({ where: { userId: user.id } });
         res.status(200).json({ message: 'Deletion approved — account removed.' });
     } catch (error) {
         res.status(500).json({ message: 'Error approving user deletion', error: error.message });
