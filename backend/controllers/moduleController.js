@@ -207,18 +207,23 @@ const backfillEmbeddings = async (req, res) => {
 
 // "Import from PDF" in the module editor: Gemini turns the PDF into module
 // content (Markdown, one ## heading per lesson) that the admin reviews in the
-// editor before saving. The PDF itself isn't stored. Uses the DSS model, so
-// imports don't use up the chatbot's quota.
+// editor before saving. Each picture comes back as a [[figure:...]] line giving
+// its page and box, which the browser cuts out of the PDF and uploads (see
+// frontend/src/pdfFigures.ts). The PDF itself isn't stored. Uses the DSS model,
+// so imports don't use up the chatbot's quota.
 const PDF_IMPORT_MODEL = 'gemini-3.1-flash-lite';
 const PDF_IMPORT_PROMPT = `Convert this PDF into the content of a learning module for the PHILSAR Cattle Reproductive Portal, written in Markdown.
 
-- Keep the document's own wording. Don't summarize, shorten, reword, translate or add anything; only rejoin lines and words that the PDF layout broke apart.
+- Keep the document's own wording. Don't summarize, shorten, reword, translate or add anything; only rejoin lines and words that the PDF layout broke apart. A title or heading that wraps onto two lines is still one line.
 - The first line is "# " followed by the document's title. Don't use a single # anywhere else.
 - Put any opening text that comes before the first main section right after the title.
 - Start each main section or chapter with "## " and its heading; each one becomes a lesson. Use "### " for sub-headings inside a section.
 - Use "- " for bullet lists, "1. " for numbered lists, **bold** where the PDF emphasizes words, and "> " for notes or quotes.
 - Tables can't be displayed, so write each table row as a bullet ("- Column: value, column: value").
-- Leave out page numbers, running headers and footers, the table of contents and pictures. Keep a figure's caption only if it carries information.
+- For each photo, chart, diagram or other picture that carries information, put a line of its own where it belongs in the text, exactly in this form:
+  [[figure:PAGE:YMIN,XMIN,YMAX,XMAX:CAPTION]]
+  PAGE is the number of the page it's on (the first page is 1). YMIN,XMIN,YMAX,XMAX is the box around the whole picture on that page, as whole numbers from 0 to 1000, where 0,0 is the page's top-left corner and 1000,1000 its bottom-right corner. For a chart or diagram, the box includes its axes, labels, legend and title. The box never includes the caption or the text around the picture. CAPTION is the picture's caption copied word for word, or nothing if it has none; don't repeat the caption elsewhere. Leave out logos, icons and decorations. Tables and scanned pages are text, not pictures: never mark them; write them out as text (a scanned page can still contain pictures to mark).
+- Leave out page numbers, running headers and footers, and the table of contents.
 - Reply with the Markdown only, with no code fences and nothing before or after it.`;
 
 const importPdf = async (req, res) => {

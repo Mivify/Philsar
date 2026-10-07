@@ -120,7 +120,7 @@ Every certificate has its own Certificate ID (in the form XXXX-XXXX-XXXX) and a 
 - Admin Panel → Modules. Fill in "Add Educational Module" (Module Title, Description, Topic, Cover Image and Content), then click "+ Create Module". To change a module, edit it from the list and click "Save Changes".
 - The Cover Image must be landscape (wider than it is tall).
 - Content uses Markdown. Each line that starts with "## " begins a new lesson, and "Insert Image" adds a picture to the content.
-- "Import from PDF" (above the Content box) turns a PDF of up to 10 MB into lessons and adds them to the content, keeping the PDF's wording. If Module Title is empty, it takes the PDF's title. Check the result before saving; pictures in the PDF aren't brought over.
+- "Import from PDF" (above the Content box) turns a PDF of up to 10 MB into lessons and adds them to the content, keeping the PDF's wording. The PDF's photos, charts and diagrams are cut out and placed in the lessons with their captions. If Module Title is empty, it takes the PDF's title. Check the result before saving.
 - PHILSARBot and Decision Support use the new lessons as soon as the module is saved.
 
 ## Admin Panel: scheduling seminars and managing certificates (Admins and Sub Admins)

@@ -483,6 +483,10 @@ const CHAT_GREETING: { role: 'assistant'; content: string } = {
 // How many earlier chat messages are sent with each question, so PHILSARBot can follow the conversation
 const CHAT_HISTORY_LIMIT = 10;
 
+// A picture in an imported PDF's content: [[figure:PAGE:YMIN,XMIN,YMAX,XMAX:CAPTION]]
+// (see PDF_IMPORT_PROMPT in the backend's moduleController)
+const PDF_FIGURE_MARKER = /\[\[figure:\s*(\d+)\s*:\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?::([^\]\n]*))?\]\]/g;
+
 
 const confirmDelete = (text: string, title = 'Are you sure?', confirmButtonText = 'Yes, delete it'): Promise<boolean> => {
   return Swal.fire({
@@ -886,7 +890,7 @@ export default function App() {
   const contentFileInputRef = useRef<HTMLInputElement>(null);
   const contentTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [contentEditorExpanded, setContentEditorExpanded] = useState(false);
-  const [importingPdf, setImportingPdf] = useState(false);
+  const [importingPdf, setImportingPdf] = useState<'' | 'converting' | 'pictures'>('');
   const pdfFileInputRef = useRef<HTMLInputElement>(null);
   const moduleEditorRef = useRef<HTMLDivElement>(null);
 
@@ -2501,13 +2505,57 @@ export default function App() {
       return;
     }
 
-    setImportingPdf(true);
+    setImportingPdf('converting');
     try {
       const response = await axios.post(`${API_BASE}/modules/import-pdf`, file, {
         params: { name: file.name },
         headers: { 'Content-Type': 'application/pdf' }
       });
-      const { content, lessons, truncated } = response.data as { content: string; lessons: number; truncated: boolean };
+      const { content: converted, lessons, truncated } = response.data as { content: string; lessons: number; truncated: boolean };
+
+      // Pictures: cut each one out of the PDF, upload it the way "Insert Image" does,
+      // and put it where Gemini marked it, with the PDF's caption under it
+      const figures = [...converted.matchAll(PDF_FIGURE_MARKER)];
+      const baseName = file.name.replace(/\.pdf$/i, '');
+      const urls: (string | null)[] = [];
+      if (figures.length > 0) {
+        setImportingPdf('pictures');
+        const { cutOutPdfFigures } = await import('./pdfFigures');
+        const images = await cutOutPdfFigures(
+          await file.arrayBuffer(),
+          figures.map(m => ({ page: Number(m[1]), box: [Number(m[2]), Number(m[3]), Number(m[4]), Number(m[5])] as [number, number, number, number] }))
+        ).catch(error => {
+          console.error('PDF pictures error:', error);
+          return figures.map(() => null);
+        });
+        for (const [i, image] of images.entries()) {
+          if (!image) {
+            urls.push(null);
+            continue;
+          }
+          try {
+            const upload = await axios.post(`${API_BASE}/modules/upload`, {
+              base64Data: image,
+              fileName: `${baseName}-picture-${i + 1}.${image.startsWith('data:image/jpeg') ? 'jpg' : 'png'}`
+            });
+            urls.push(upload.data.url);
+          } catch (uploadError) {
+            console.error('PDF picture upload error:', uploadError);
+            urls.push(null);
+          }
+        }
+      }
+      let figureIndex = 0;
+      const content = converted.replace(PDF_FIGURE_MARKER, (...match) => {
+        const url = urls[figureIndex++];
+        const caption = String(match[6] ?? '').replace(/[[\]*]/g, '').trim();
+        // A picture that couldn't be added still leaves its caption
+        if (!url) return caption ? `*${caption}*` : '';
+        return caption ? `![${caption}](${url})\n\n*${caption}*` : `![Picture from ${baseName}](${url})`;
+      }).replace(/\n{3,}/g, '\n\n');
+      const pictures = urls.filter(Boolean).length;
+      const missedPictures = figures.length - pictures;
+
       const [firstLine, ...rest] = content.split('\n');
       const pdfTitle = firstLine.startsWith('# ') ? firstLine.slice(2).trim() : '';
 
@@ -2522,17 +2570,17 @@ export default function App() {
           : `${prev.content.trimEnd()}\n\n${pdfTitle ? [`## ${pdfTitle}`, ...rest].join('\n') : content}`
       }));
 
-      const imported = lessons > 0 ? `${lessons} ${lessons === 1 ? 'lesson' : 'lessons'}` : 'the text';
-      if (truncated) {
-        showToast(`Imported ${imported} from ${file.name}, but the PDF was too long to convert in full, so only the first part was added. Check the content before saving.`, 'warning');
-      } else {
-        showToast(`Imported ${imported} from ${file.name}. Check the content before saving.`, 'success');
-      }
+      const imported = [lessons > 0 ? `${lessons} ${lessons === 1 ? 'lesson' : 'lessons'}` : 'the text'];
+      if (pictures > 0) imported.push(`${pictures} ${pictures === 1 ? 'picture' : 'pictures'}`);
+      let message = `Imported ${imported.join(' and ')} from ${file.name}.`;
+      if (missedPictures > 0) message += ` ${missedPictures} ${missedPictures === 1 ? 'picture' : 'pictures'} couldn't be added.`;
+      if (truncated) message += ' The PDF was too long to convert in full, so only the first part was added.';
+      showToast(`${message} Check the content before saving.`, truncated || missedPictures > 0 ? 'warning' : 'success');
     } catch (error: any) {
       console.error('PDF import error:', error);
       showToast(error.response?.data?.message || 'Could not import this PDF. Please try again.', 'error');
     } finally {
-      setImportingPdf(false);
+      setImportingPdf('');
     }
   };
 
@@ -5603,7 +5651,7 @@ export default function App() {
                                   </button>
                                   <button
                                     type="button"
-                                    disabled={importingPdf}
+                                    disabled={!!importingPdf}
                                     onClick={() => pdfFileInputRef.current?.click()}
                                     title="Turn a PDF into lessons and add them to the content"
                                     style={{
@@ -5623,7 +5671,7 @@ export default function App() {
                                     }}
                                   >
                                     {importingPdf ? (
-                                      <><Loader2 size={14} className="animate-spin" /> Converting PDF…</>
+                                      <><Loader2 size={14} className="animate-spin" /> {importingPdf === 'pictures' ? 'Adding pictures…' : 'Converting PDF…'}</>
                                     ) : (
                                       <><FileText size={14} /> Import from PDF</>
                                     )}
@@ -5691,7 +5739,7 @@ export default function App() {
                                 </div>
                                 <div className="markdown-legend-hint">Each <code>##</code> heading starts a new lesson; the text above the first one becomes the Introduction.</div>
                                 <div className="markdown-legend-hint">Use "Insert Image" above the content editor to add images — it writes the Markdown for you.</div>
-                                <div className="markdown-legend-hint">"Import from PDF" turns a PDF (up to 10 MB) into lessons for you to check before saving. Pictures in the PDF aren't brought over.</div>
+                                <div className="markdown-legend-hint">"Import from PDF" turns a PDF (up to 10 MB) into lessons, with its pictures and their captions, for you to check before saving.</div>
                               </div>
                             </div>
                           </div>
