@@ -34,7 +34,7 @@ How to use the PHILSAR Cattle Reproductive Portal. The pages are in the left sid
 - Profile picture: click your photo to upload a new one, or use the remove button to delete it.
 - Email address: it can't be edited in the form. Under "Change Email Address", enter the New Email Address and your Current Password and click "Send Verification Link", then open the link sent to the new address within 24 hours. The email changes only after you confirm it.
 - Only an administrator can change your role. When that happens you get a notification in the bell and by email.
-- The Learning Summary on My Profile shows your Modules Completed, Seminars Registered and DSS Assessments Run.
+- The Learning Summary on My Profile shows your Modules Completed, Seminars Registered and DSS Assessments.
 
 ## Notifications
 

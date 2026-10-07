@@ -4946,7 +4946,7 @@ export default function App() {
                       </div>
                       <div className="progress-item">
                         <div className="progress-label">
-                          <span className="progress-name">DSS Assessments Run</span>
+                          <span className="progress-name">DSS Assessments</span>
                           <span className="progress-pct">{currentUser?.dssAssessmentsRun || 0}</span>
                         </div>
                         <div className="progress-bar">
@@ -5261,7 +5261,7 @@ export default function App() {
                             <tr>
                               <th>User</th>
                               <th>Role</th>
-                              <th>Assessments Run</th>
+                              <th>DSS Assessments</th>
                               <th>Status</th>
                               <th>Action</th>
                             </tr>
