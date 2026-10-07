@@ -908,9 +908,6 @@ body {
   display: grid;
   gap: 20px;
   margin-bottom: 20px;
-}
-
-.module-editor-card {
   scroll-margin-top: 20px;
 }
 
@@ -1590,6 +1587,18 @@ body {
 }
 .chathead-open-full:hover { background: rgba(255,255,255,0.12); }
 .chathead-open-full:focus-visible { outline: 2px solid var(--cream); outline-offset: 2px; }
+.chathead-open-hint {
+  margin-left: 4px;
+  padding: 3px 9px;
+  border: 1px solid rgba(255,255,255,0.35);
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  opacity: 0.9;
+  transition: background 0.15s, opacity 0.15s;
+}
+.chathead-open-full:hover .chathead-open-hint { background: rgba(255,255,255,0.16); opacity: 1; }
 
 .chathead-close-btn {
   margin-left: auto;

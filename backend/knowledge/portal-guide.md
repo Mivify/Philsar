@@ -105,7 +105,7 @@ Every certificate has its own Certificate ID (in the form XXXX-XXXX-XXXX) and a 
 
 ## Chatting with PHILSARBot
 
-- The round chat button in the bottom-right corner opens a small chat window with PHILSARBot, and ✕ closes it. Click PHILSARBot's name at the top of that window to open the full AI Assistant page.
+- The round chat button in the bottom-right corner opens a small chat window with PHILSARBot, and ✕ closes it. Click PHILSARBot's name or "Click to open full chat ↗" at the top of that window to open the full AI Assistant page.
 - PHILSARBot answers questions about cattle reproduction and health, PHILSAR, and how to use this portal. When an answer uses the Learning Modules, the modules it used are listed under the reply.
 
 ## Admin Panel: managing user accounts (Admins and Sub Admins)
@@ -117,7 +117,7 @@ Every certificate has its own Certificate ID (in the form XXXX-XXXX-XXXX) and a 
 
 ## Admin Panel: adding or editing a Learning Module (Admins and Sub Admins)
 
-- Admin Panel → Modules. Fill in "Add Educational Module" (Module Title, Description, Topic, Cover Image and Content), then click "+ Create Module". To change a module, edit it from the list and click "Save Changes".
+- Admin Panel → Modules has two views, switched at the top: "Module Editor" and "Module List". In Module Editor, fill in "Add Educational Module" (Module Title, Description, Topic, Cover Image and Content), then click "+ Create Module". To change a module, click Edit on it in Module List, then "Save Changes"; saving or cancelling goes back to the list.
 - The Cover Image must be landscape (wider than it is tall).
 - Content uses Markdown. Each line that starts with "## " begins a new lesson, and "Insert Image" adds a picture to the content.
 - "Import from PDF" (above the Content box) turns a PDF of up to 10 MB into lessons and adds them to the content, keeping the PDF's wording. The PDF's photos, charts and diagrams are cut out and placed in the lessons with their captions. If Module Title is empty, it takes the PDF's title. Check the result before saving.

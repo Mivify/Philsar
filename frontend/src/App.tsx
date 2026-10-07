@@ -896,7 +896,9 @@ export default function App() {
   const [contentEditorExpanded, setContentEditorExpanded] = useState(false);
   const [importingPdf, setImportingPdf] = useState<'' | 'converting' | 'pictures'>('');
   const pdfFileInputRef = useRef<HTMLInputElement>(null);
-  const moduleEditorRef = useRef<HTMLDivElement>(null);
+  // Admin Panel → Modules shows either the editor or the module list
+  const [modulesView, setModulesView] = useState<'editor' | 'list'>('editor');
+  const modulesTabRef = useRef<HTMLDivElement>(null);
 
   // Landing Page Background Image Upload State
   const [uploadingLandingImage, setUploadingLandingImage] = useState(false);
@@ -1903,6 +1905,14 @@ export default function App() {
     setTimeout(clearIfStillCurrent, 3000);
   };
 
+  // The call window's × and clicking outside it: a live call is only minimized (it
+  // keeps going behind the "return to call" pill); an ended seminar's window closes
+  // for good, so nothing is left open in the background
+  const closeMeetingWindow = () => {
+    if (activeMeeting?.status === 'Ended') handleLeaveMeeting();
+    else setMeetingModalOpen(false);
+  };
+
   // "End Meeting for All" (Admins and Sub Admins): marks the seminar Ended, then
   // ends the video call for everyone in it. Each attendee's portal sees the Ended
   // status and closes their call; the host's window switches to the ended view,
@@ -2835,6 +2845,8 @@ export default function App() {
       }
       setNewModuleForm({ title: '', description: '', content: '', imageUrl: '', topic: '' });
       fetchGlobalData();
+      // Back to the list, where the saved module shows
+      setModulesView('list');
     } catch (error) {
       console.error(error);
       showToast('Error saving module.', 'error');
@@ -3106,6 +3118,31 @@ export default function App() {
     const q = text.trim().toLowerCase();
     return !q || u.name.toLowerCase().includes(q) || lastFirstName(u).toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
   };
+
+  // Admin Panel → Modules: switches between the editor and the module list (shown in
+  // the header of whichever one is open, like All Accounts / Archived under Users)
+  const moduleViewTabs = (
+    <div className="users-view-tabs" role="tablist" aria-label="Modules">
+      <button
+        type="button"
+        role="tab"
+        aria-selected={modulesView === 'editor'}
+        className={modulesView === 'editor' ? 'active' : ''}
+        onClick={() => setModulesView('editor')}
+      >
+        Module Editor
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={modulesView === 'list'}
+        className={modulesView === 'list' ? 'active' : ''}
+        onClick={() => setModulesView('list')}
+      >
+        Module List ({modules.length})
+      </button>
+    </div>
+  );
 
 
   const pendingDeletionUsers = allUsers.filter(u => u.pendingDeletion);
@@ -5523,15 +5560,17 @@ export default function App() {
               {/* TAB CONTENT: MODULES */}
               {activeAdminTab === 'modules' && (
                 <div id="admin-modules">
-                  {/* Editor on top at full width, the module list below it */}
-                  <div className="module-admin-stack">
-                    <div className="card module-editor-card" ref={moduleEditorRef}>
-                      <div className="card-header">
-                        <div className="card-title">
-                          {editingModule ? `Edit Module: ${editingModule.title}` : 'Add Educational Module'}
-                        </div>
+                  {/* One view at a time, the editor or the module list. Both stay mounted
+                      (the other is just hidden), so switching never loses unsaved edits. */}
+                  <div className="module-admin-stack" ref={modulesTabRef}>
+                    <div className="card module-editor-card" style={modulesView === 'editor' ? undefined : { display: 'none' }}>
+                      <div className="card-header users-card-header">
+                        {moduleViewTabs}
                       </div>
                       <div className="card-body">
+                        <div className="card-title" style={{ marginBottom: '18px' }}>
+                          {editingModule ? `Edit Module: ${editingModule.title}` : 'Add Educational Module'}
+                        </div>
                         <form onSubmit={handleAddModule}>
                           <div className="module-form-row">
                             <div className="form-group">
@@ -5815,6 +5854,7 @@ export default function App() {
                                 onClick={() => {
                                   setEditingModule(null);
                                   setNewModuleForm({ title: '', description: '', content: '', imageUrl: '', topic: '' });
+                                  setModulesView('list');
                                 }}
                               >
                                 Cancel
@@ -5825,9 +5865,9 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div className="card">
-                      <div className="card-header">
-                        <div className="card-title">Learning Modules ({modules.length})</div>
+                    <div className="card" style={modulesView === 'list' ? undefined : { display: 'none' }}>
+                      <div className="card-header users-card-header">
+                        {moduleViewTabs}
                       </div>
                       <div className="card-body data-table-wrapper">
                         <table className="data-table module-list-table">
@@ -5873,8 +5913,9 @@ export default function App() {
                                           imageUrl: m.imageUrl || '',
                                           topic: m.topic || ''
                                         });
-                                        // The editor is above the list, so bring it into view
-                                        moduleEditorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                        // Open it in the editor, scrolled to the top
+                                        setModulesView('editor');
+                                        modulesTabRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                                       }}
                                     >
                                       Edit
@@ -6647,7 +6688,7 @@ export default function App() {
             padding: meetingExpanded ? 0 : '20px',
             boxSizing: 'border-box'
           }}
-          onClick={() => setMeetingModalOpen(false)}
+          onClick={closeMeetingWindow}
         >
           <div
             style={{
@@ -6698,7 +6739,7 @@ export default function App() {
                   {meetingExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
                 </button>
                 <button
-                  onClick={() => setMeetingModalOpen(false)}
+                  onClick={closeMeetingWindow}
                   style={{
                     background: 'rgba(255, 255, 255, 0.05)',
                     border: 'none',
@@ -7367,7 +7408,7 @@ export default function App() {
           full AI Assistant view (redundant) and during an active meeting
           (avoids clashing with the "meeting in progress" pill in the same
           corner). */}
-      {activeTab !== 'chatbot' && !activeMeeting && (
+      {activeTab !== 'chatbot' && !(activeMeeting && (meetingModalOpen || activeMeeting.status !== 'Ended')) && (
         chatheadOpen ? (
           <div className="chathead-panel">
             <div className="chat-window">
@@ -7383,6 +7424,8 @@ export default function App() {
                     <div style={{ fontWeight: 700, fontSize: '13px' }}>PHILSARBot</div>
                     <div style={{ fontSize: '11px', opacity: 0.8 }}>● Online</div>
                   </div>
+                  {/* Visible hint that clicking here opens the full AI Assistant page */}
+                  <span className="chathead-open-hint">Click to open full chat ↗</span>
                 </button>
                 <button className="chathead-close-btn" onClick={() => setChatheadOpen(false)} title="Close">✕</button>
               </div>
