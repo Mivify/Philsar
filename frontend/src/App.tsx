@@ -34,7 +34,8 @@ import {
   Radio,
   Clock,
   CheckCircle2,
-  RotateCcw
+  RotateCcw,
+  FileText
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import axios from 'axios';
@@ -340,6 +341,7 @@ const ACTIVITY_ACTION_LABELS: Record<string, string> = {
   module_created: 'Module Created',
   module_updated: 'Module Updated',
   module_deleted: 'Module Deleted',
+  module_pdf_imported: 'Module PDF Imported',
   settings_updated: 'Settings Updated',
   announcement_created: 'Announcement Posted',
   announcement_updated: 'Announcement Edited',
@@ -884,6 +886,9 @@ export default function App() {
   const contentFileInputRef = useRef<HTMLInputElement>(null);
   const contentTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [contentEditorExpanded, setContentEditorExpanded] = useState(false);
+  const [importingPdf, setImportingPdf] = useState(false);
+  const pdfFileInputRef = useRef<HTMLInputElement>(null);
+  const moduleEditorRef = useRef<HTMLDivElement>(null);
 
   // Landing Page Background Image Upload State
   const [uploadingLandingImage, setUploadingLandingImage] = useState(false);
@@ -2481,6 +2486,53 @@ export default function App() {
     if (e.target.files && e.target.files.length > 0) {
       handleContentImageUpload(e.target.files[0]);
       e.target.value = ''; // reset so same file can be re-selected
+    }
+  };
+
+  // "Import from PDF": the server converts the PDF into lessons with Gemini, and the
+  // result is added to the content editor so the admin can check it before saving
+  const handleImportPdf = async (file: File) => {
+    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+      showToast('Please choose a PDF file.', 'warning');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      showToast('This PDF is larger than 10 MB. Please choose a smaller file.', 'warning');
+      return;
+    }
+
+    setImportingPdf(true);
+    try {
+      const response = await axios.post(`${API_BASE}/modules/import-pdf`, file, {
+        params: { name: file.name },
+        headers: { 'Content-Type': 'application/pdf' }
+      });
+      const { content, lessons, truncated } = response.data as { content: string; lessons: number; truncated: boolean };
+      const [firstLine, ...rest] = content.split('\n');
+      const pdfTitle = firstLine.startsWith('# ') ? firstLine.slice(2).trim() : '';
+
+      setNewModuleForm(prev => ({
+        ...prev,
+        // An empty Module Title takes the PDF's title
+        title: prev.title.trim() ? prev.title : pdfTitle,
+        // An empty editor takes the PDF as is. After existing content, the PDF's
+        // title becomes a lesson heading, so its opening text stays with it.
+        content: !prev.content.trim()
+          ? content
+          : `${prev.content.trimEnd()}\n\n${pdfTitle ? [`## ${pdfTitle}`, ...rest].join('\n') : content}`
+      }));
+
+      const imported = lessons > 0 ? `${lessons} ${lessons === 1 ? 'lesson' : 'lessons'}` : 'the text';
+      if (truncated) {
+        showToast(`Imported ${imported} from ${file.name}, but the PDF was too long to convert in full, so only the first part was added. Check the content before saving.`, 'warning');
+      } else {
+        showToast(`Imported ${imported} from ${file.name}. Check the content before saving.`, 'success');
+      }
+    } catch (error: any) {
+      console.error('PDF import error:', error);
+      showToast(error.response?.data?.message || 'Could not import this PDF. Please try again.', 'error');
+    } finally {
+      setImportingPdf(false);
     }
   };
 
@@ -5363,8 +5415,9 @@ export default function App() {
               {/* TAB CONTENT: MODULES */}
               {activeAdminTab === 'modules' && (
                 <div id="admin-modules">
-                  <div className="grid-2">
-                    <div className="card" style={{ height: 'fit-content' }}>
+                  {/* Editor on top at full width, the module list below it */}
+                  <div className="module-admin-stack">
+                    <div className="card module-editor-card" ref={moduleEditorRef}>
                       <div className="card-header">
                         <div className="card-title">
                           {editingModule ? `Edit Module: ${editingModule.title}` : 'Add Educational Module'}
@@ -5372,15 +5425,33 @@ export default function App() {
                       </div>
                       <div className="card-body">
                         <form onSubmit={handleAddModule}>
-                          <div className="form-group">
-                            <label className="form-label">Module Title</label>
-                            <input
-                              className="form-control"
-                              type="text"
-                              value={newModuleForm.title}
-                              onChange={e => setNewModuleForm({ ...newModuleForm, title: e.target.value })}
-                              required
-                            />
+                          <div className="module-form-row">
+                            <div className="form-group">
+                              <label className="form-label">Module Title</label>
+                              <input
+                                className="form-control"
+                                type="text"
+                                value={newModuleForm.title}
+                                onChange={e => setNewModuleForm({ ...newModuleForm, title: e.target.value })}
+                                required
+                              />
+                            </div>
+                            <div className="form-group">
+                              <label className="form-label">Topic</label>
+                              <select
+                                className="form-control"
+                                value={newModuleForm.topic}
+                                onChange={e => setNewModuleForm({ ...newModuleForm, topic: e.target.value })}
+                              >
+                                <option value="">No topic</option>
+                                <option value="Anatomy & Physiology">Anatomy & Physiology</option>
+                                <option value="Breeds & Breeding">Breeds & Breeding</option>
+                                <option value="Estrus Cycle & Detection">Estrus Cycle & Detection</option>
+                                <option value="Reproductive Biotechnology">Reproductive Biotechnology</option>
+                                <option value="Gestation & Pregnancy">Gestation & Pregnancy</option>
+                                <option value="Reproductive Health">Reproductive Health</option>
+                              </select>
+                            </div>
                           </div>
                           <div className="form-group">
                             <label className="form-label">Description</label>
@@ -5391,22 +5462,6 @@ export default function App() {
                               onChange={e => setNewModuleForm({ ...newModuleForm, description: e.target.value })}
                               required
                             />
-                          </div>
-                          <div className="form-group">
-                            <label className="form-label">Topic</label>
-                            <select
-                              className="form-control"
-                              value={newModuleForm.topic}
-                              onChange={e => setNewModuleForm({ ...newModuleForm, topic: e.target.value })}
-                            >
-                              <option value="">No topic</option>
-                              <option value="Anatomy & Physiology">Anatomy & Physiology</option>
-                              <option value="Breeds & Breeding">Breeds & Breeding</option>
-                              <option value="Estrus Cycle & Detection">Estrus Cycle & Detection</option>
-                              <option value="Reproductive Biotechnology">Reproductive Biotechnology</option>
-                              <option value="Gestation & Pregnancy">Gestation & Pregnancy</option>
-                              <option value="Reproductive Health">Reproductive Health</option>
-                            </select>
                           </div>
                           <div className="form-group">
                             <label className="form-label">Cover Image</label>
@@ -5493,83 +5548,152 @@ export default function App() {
                               onChange={handleContentFileChange}
                             />
 
-                            {/* Content Editor Toolbar */}
-                            <div style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '8px',
-                              padding: '8px 12px',
-                              background: 'var(--cream)',
-                              border: '1px solid var(--border)',
-                              borderBottom: 'none',
-                              borderRadius: 'var(--radius-sm) var(--radius-sm) 0 0',
-                              marginTop: '6px'
-                            }}>
-                              <button
-                                type="button"
-                                disabled={uploadingContentImage}
-                                onClick={() => contentFileInputRef.current?.click()}
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '6px',
-                                  padding: '5px 12px',
-                                  fontSize: '12px',
-                                  fontWeight: 600,
-                                  fontFamily: 'inherit',
-                                  color: uploadingContentImage ? 'var(--text-muted)' : 'var(--brown-mid)',
-                                  background: uploadingContentImage ? 'rgba(0,0,0,0.04)' : 'var(--warm-white)',
-                                  border: '1px solid var(--border)',
-                                  borderRadius: '6px',
-                                  cursor: uploadingContentImage ? 'not-allowed' : 'pointer',
-                                  transition: 'all 0.2s'
-                                }}
-                              >
-                                {uploadingContentImage ? (
-                                  <><Loader2 size={14} className="animate-spin" /> Uploading…</>
-                                ) : (
-                                  <><Upload size={14} /> Insert Image</>
-                                )}
-                              </button>
-                              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                                Images appear as Markdown in content
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => setContentEditorExpanded(e => !e)}
-                                style={{
-                                  marginLeft: 'auto',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '6px',
-                                  padding: '5px 12px',
-                                  fontSize: '12px',
-                                  fontWeight: 600,
-                                  fontFamily: 'inherit',
-                                  color: 'var(--brown-mid)',
-                                  background: 'var(--warm-white)',
-                                  border: '1px solid var(--border)',
-                                  borderRadius: '6px',
-                                  cursor: 'pointer'
-                                }}
-                              >
-                                {contentEditorExpanded ? <><Minimize2 size={14} /> Collapse</> : <><Maximize2 size={14} /> Expand</>}
-                              </button>
-                            </div>
-
-                            <textarea
-                              ref={contentTextareaRef}
-                              className="form-control"
-                              style={{
-                                minHeight: contentEditorExpanded ? '70vh' : '180px',
-                                borderTopLeftRadius: 0,
-                                borderTopRightRadius: 0,
-                                borderTop: 'none'
+                            {/* Hidden file input for "Import from PDF" */}
+                            <input
+                              ref={pdfFileInputRef}
+                              type="file"
+                              accept="application/pdf,.pdf"
+                              style={{ display: 'none' }}
+                              onChange={e => {
+                                if (e.target.files && e.target.files.length > 0) handleImportPdf(e.target.files[0]);
+                                e.target.value = ''; // reset so the same file can be picked again
                               }}
-                              value={newModuleForm.content}
-                              onChange={e => setNewModuleForm({ ...newModuleForm, content: e.target.value })}
-                              required
-                            ></textarea>
+                            />
+
+                            {/* Editor on the left, Markdown Guide beside it */}
+                            <div className="module-content-layout">
+                              <div className="module-content-editor">
+                                {/* Content Editor Toolbar */}
+                                <div style={{
+                                  display: 'flex',
+                                  flexWrap: 'wrap',
+                                  alignItems: 'center',
+                                  gap: '8px',
+                                  padding: '8px 12px',
+                                  background: 'var(--cream)',
+                                  border: '1px solid var(--border)',
+                                  borderBottom: 'none',
+                                  borderRadius: 'var(--radius-sm) var(--radius-sm) 0 0'
+                                }}>
+                                  <button
+                                    type="button"
+                                    disabled={uploadingContentImage}
+                                    onClick={() => contentFileInputRef.current?.click()}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '6px',
+                                      padding: '5px 12px',
+                                      fontSize: '12px',
+                                      fontWeight: 600,
+                                      fontFamily: 'inherit',
+                                      color: uploadingContentImage ? 'var(--text-muted)' : 'var(--brown-mid)',
+                                      background: uploadingContentImage ? 'rgba(0,0,0,0.04)' : 'var(--warm-white)',
+                                      border: '1px solid var(--border)',
+                                      borderRadius: '6px',
+                                      cursor: uploadingContentImage ? 'not-allowed' : 'pointer',
+                                      transition: 'all 0.2s'
+                                    }}
+                                  >
+                                    {uploadingContentImage ? (
+                                      <><Loader2 size={14} className="animate-spin" /> Uploading…</>
+                                    ) : (
+                                      <><Upload size={14} /> Insert Image</>
+                                    )}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={importingPdf}
+                                    onClick={() => pdfFileInputRef.current?.click()}
+                                    title="Turn a PDF into lessons and add them to the content"
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '6px',
+                                      padding: '5px 12px',
+                                      fontSize: '12px',
+                                      fontWeight: 600,
+                                      fontFamily: 'inherit',
+                                      color: importingPdf ? 'var(--text-muted)' : 'var(--brown-mid)',
+                                      background: importingPdf ? 'rgba(0,0,0,0.04)' : 'var(--warm-white)',
+                                      border: '1px solid var(--border)',
+                                      borderRadius: '6px',
+                                      cursor: importingPdf ? 'not-allowed' : 'pointer',
+                                      transition: 'all 0.2s'
+                                    }}
+                                  >
+                                    {importingPdf ? (
+                                      <><Loader2 size={14} className="animate-spin" /> Converting PDF…</>
+                                    ) : (
+                                      <><FileText size={14} /> Import from PDF</>
+                                    )}
+                                  </button>
+                                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                                    {importingPdf ? 'This can take up to a minute.' : 'Images and PDFs are added as Markdown'}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setContentEditorExpanded(e => !e)}
+                                    style={{
+                                      marginLeft: 'auto',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '6px',
+                                      padding: '5px 12px',
+                                      fontSize: '12px',
+                                      fontWeight: 600,
+                                      fontFamily: 'inherit',
+                                      color: 'var(--brown-mid)',
+                                      background: 'var(--warm-white)',
+                                      border: '1px solid var(--border)',
+                                      borderRadius: '6px',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    {contentEditorExpanded ? <><Minimize2 size={14} /> Collapse</> : <><Maximize2 size={14} /> Expand</>}
+                                  </button>
+                                </div>
+
+                                <textarea
+                                  ref={contentTextareaRef}
+                                  className="form-control"
+                                  style={{
+                                    minHeight: contentEditorExpanded ? '70vh' : '360px',
+                                    borderTopLeftRadius: 0,
+                                    borderTopRightRadius: 0,
+                                    borderTop: 'none'
+                                  }}
+                                  value={newModuleForm.content}
+                                  onChange={e => setNewModuleForm({ ...newModuleForm, content: e.target.value })}
+                                  required
+                                ></textarea>
+                              </div>
+
+                              {/* Markdown quick-reference legend — kept in sync with what
+                                  ReactMarkdown actually renders here (plain CommonMark, no
+                                  remark-gfm), so it never lists syntax that would just show
+                                  up as literal text instead of rendering, like tables or
+                                  strikethrough. */}
+                              <div className="markdown-legend">
+                                <div className="markdown-legend-title">Markdown Guide</div>
+                                <div className="markdown-legend-grid">
+                                  <div className="markdown-legend-row"><code># Heading 1</code></div>
+                                  <div className="markdown-legend-row"><code>## Heading 2</code> new lesson</div>
+                                  <div className="markdown-legend-row"><code>**bold text**</code></div>
+                                  <div className="markdown-legend-row"><code>*italic text*</code></div>
+                                  <div className="markdown-legend-row"><code>- bullet item</code></div>
+                                  <div className="markdown-legend-row"><code>1. numbered item</code></div>
+                                  <div className="markdown-legend-row"><code>[link text](https://…)</code></div>
+                                  <div className="markdown-legend-row"><code>![alt text](image-url)</code></div>
+                                  <div className="markdown-legend-row"><code>&gt; blockquote</code></div>
+                                  <div className="markdown-legend-row"><code>`inline code`</code></div>
+                                  <div className="markdown-legend-row"><code>---</code> horizontal rule</div>
+                                </div>
+                                <div className="markdown-legend-hint">Each <code>##</code> heading starts a new lesson; the text above the first one becomes the Introduction.</div>
+                                <div className="markdown-legend-hint">Use "Insert Image" above the content editor to add images — it writes the Markdown for you.</div>
+                                <div className="markdown-legend-hint">"Import from PDF" turns a PDF (up to 10 MB) into lessons for you to check before saving. Pictures in the PDF aren't brought over.</div>
+                              </div>
+                            </div>
                           </div>
                           <div style={{ display: 'flex', gap: '10px' }}>
                             <button className="submit-btn" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }} type="submit" disabled={savingModule}>
@@ -5594,20 +5718,40 @@ export default function App() {
                     </div>
 
                     <div className="card">
+                      <div className="card-header">
+                        <div className="card-title">Learning Modules ({modules.length})</div>
+                      </div>
                       <div className="card-body data-table-wrapper">
-                        <table className="data-table">
+                        <table className="data-table module-list-table">
                           <thead>
                             <tr>
                               <th>Module Name</th>
+                              <th>Topic</th>
                               <th>Description</th>
+                              <th>Lessons</th>
                               <th>Actions</th>
                             </tr>
                           </thead>
                           <tbody>
                             {modules.map(m => (
-                              <tr key={m.id}>
-                                <td style={{ fontWeight: 600 }}>{m.title}</td>
+                              <tr key={m.id} className={editingModule?.id === m.id ? 'row-editing' : undefined}>
+                                <td>
+                                  <div className="module-list-name">
+                                    {m.imageUrl && (
+                                      <img
+                                        src={m.imageUrl}
+                                        alt=""
+                                        className="module-list-thumb"
+                                        // A missing cover file shouldn't show a broken-image icon
+                                        onError={e => { e.currentTarget.style.visibility = 'hidden'; }}
+                                      />
+                                    )}
+                                    <span>{m.title}</span>
+                                  </div>
+                                </td>
+                                <td style={{ fontSize: '13px' }}>{m.topic || '—'}</td>
                                 <td style={{ fontSize: '13px' }}>{m.description}</td>
+                                <td style={{ fontSize: '13px' }}>{parseLessons(m.content).length}</td>
                                 <td>
                                   <div style={{ display: 'flex', gap: '8px' }}>
                                     <button
@@ -5621,6 +5765,8 @@ export default function App() {
                                           imageUrl: m.imageUrl || '',
                                           topic: m.topic || ''
                                         });
+                                        // The editor is above the list, so bring it into view
+                                        moduleEditorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                                       }}
                                     >
                                       Edit
@@ -5637,30 +5783,6 @@ export default function App() {
                             ))}
                           </tbody>
                         </table>
-                      </div>
-
-                      {/* Markdown quick-reference legend — kept in sync with what
-                          ReactMarkdown actually renders here (plain CommonMark, no
-                          remark-gfm), so it never lists syntax that would just show
-                          up as literal text instead of rendering, like tables or
-                          strikethrough. */}
-                      <div className="markdown-legend">
-                        <div className="markdown-legend-title">Markdown Guide</div>
-                        <div className="markdown-legend-grid">
-                          <div className="markdown-legend-row"><code># Heading 1</code></div>
-                          <div className="markdown-legend-row"><code>## Heading 2</code> new lesson</div>
-                          <div className="markdown-legend-row"><code>**bold text**</code></div>
-                          <div className="markdown-legend-row"><code>*italic text*</code></div>
-                          <div className="markdown-legend-row"><code>- bullet item</code></div>
-                          <div className="markdown-legend-row"><code>1. numbered item</code></div>
-                          <div className="markdown-legend-row"><code>[link text](https://…)</code></div>
-                          <div className="markdown-legend-row"><code>![alt text](image-url)</code></div>
-                          <div className="markdown-legend-row"><code>&gt; blockquote</code></div>
-                          <div className="markdown-legend-row"><code>`inline code`</code></div>
-                          <div className="markdown-legend-row"><code>---</code> horizontal rule</div>
-                        </div>
-                        <div className="markdown-legend-hint">Each <code>##</code> heading starts a new lesson; the text above the first one becomes the Introduction.</div>
-                        <div className="markdown-legend-hint">Use "Insert Image" above the content editor to add images — it writes the Markdown for you.</div>
                       </div>
                     </div>
                   </div>
