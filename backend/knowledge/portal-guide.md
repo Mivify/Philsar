@@ -81,7 +81,7 @@ Recommended Technique: Artificial Insemination (AI) when she's ready and Standin
 
 - Open Virtual Meetings. "All Sessions" lists the seminars and meetings, and you can filter it with All, Upcoming or Recorded.
 - To register, click "RSVP" on an upcoming session. It changes to "✓ Registered" and is listed under My Registered Sessions. You have to RSVP before you can join.
-- When it's live, click "Join Live" on the session (or "🎥 Join Live Stream" in the Live Now banner). The video room opens inside the portal using Jitsi Meet, so there's nothing to install and no extra account to create. Use Toggle Mic, Toggle Camera and Toggle Chat, and click "Leave Meeting" to exit.
+- When it's live, click "Join Live" on the session (or "🎥 Join Live Stream" in the Live Now banner). The video room opens inside the portal using Jitsi Meet, so there's nothing to install and no extra account to create. Use Toggle Mic, Toggle Camera and Toggle Chat, and click "Leave Meeting" to exit. When the host ends the seminar, your call closes by itself.
 - The Upcoming Seminars lists on the Announcements page and the Dashboard have RSVP buttons too.
 - Some Regular Meetings are only open to certain roles, so you may not see every meeting.
 
@@ -126,8 +126,9 @@ Every certificate has its own Certificate ID (in the form XXXX-XXXX-XXXX) and a 
 ## Admin Panel: scheduling seminars and managing certificates (Admins and Sub Admins)
 
 - Admin Panel → Meetings. Fill in "Schedule Virtual Seminar" (Seminar Title, Expert Host Name, Meeting Type (Seminar or Regular Meeting), Who Can Join (Regular Meetings only), Date & Time, Status and an optional Recording Link), then click "+ Schedule Seminar".
-- In the list, Mark as Live, Mark as Upcoming and Mark as Ended change a session's status. There are also Edit, View registrants and Delete.
-- "Manage certificates" shows each attendee's time and certificate. Click "Grant" to give one manually, "Revoke" to cancel it, or "Grant again" to restore a revoked one (the same certificate and QR code become valid again).
+- In the list, Mark as Live, Mark as Upcoming and Mark as Ended change a session's status. There are also Edit, View registrants (with the total number of registrants and a search box) and Delete.
+- During a live seminar, Admins and Sub Admins can click "End Meeting for All" in the call. Everyone in the call is disconnected and the seminar is marked Ended, with no need to use Mark as Ended. "Leave Meeting" leaves the call without ending it for the others.
+- "Manage certificates" shows each attendee's time and certificate, with a search box to find someone by name or email. Click "Grant" to give one manually, "Revoke" to cancel it, or "Grant again" to restore a revoked one (the same certificate and QR code become valid again).
 - The minutes of attendance needed for an automatic certificate are set in the Settings tab.
 
 ## Admin Panel: Announcements, settings and activity log (System Admin only)

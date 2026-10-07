@@ -500,6 +500,34 @@ const logMeetingLeave = async (req, res) => {
     }
 };
 
+// "End Meeting for All" in the call (Admins and Sub Admins): marks the meeting
+// Ended without a trip to the Admin Panel. The host's call then disconnects
+// everyone in the video room, and each attendee's portal sees the Ended status
+// when it checks in (attendance ping) and closes their call.
+const endMeeting = async (req, res) => {
+    try {
+        const meeting = await Meeting.findByPk(req.params.id);
+        if (!meeting) {
+            return res.status(404).json({ message: 'Meeting not found' });
+        }
+
+        if (meeting.status !== 'Ended') {
+            meeting.status = 'Ended';
+            await meeting.save();
+
+            const actor = await User.findByPk(req.user.id, { attributes: ['name', 'role'] });
+            logActivity({
+                userId: req.user.id, userName: actor?.name, userRole: actor?.role,
+                action: 'meeting_ended', category: 'admin', details: `"${meeting.title}" ended for everyone from the call`, req
+            });
+        }
+
+        res.status(200).json({ message: 'Meeting ended', meeting });
+    } catch (error) {
+        res.status(500).json({ message: 'Error ending meeting', error: error.message });
+    }
+};
+
 module.exports = {
     getMeetings,
     rsvpMeeting,
@@ -515,5 +543,6 @@ module.exports = {
     issueCertificate,
     getJaasToken,
     logMeetingJoin,
-    logMeetingLeave
+    logMeetingLeave,
+    endMeeting
 };

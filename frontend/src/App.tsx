@@ -336,6 +336,7 @@ const ACTIVITY_ACTION_LABELS: Record<string, string> = {
   meeting_created: 'Seminar Created',
   meeting_updated: 'Seminar Updated',
   meeting_deleted: 'Seminar Deleted',
+  meeting_ended: 'Seminar Ended',
   certificate_granted: 'Certificate Granted',
   certificate_revoked: 'Certificate Revoked',
   module_created: 'Module Created',
@@ -746,6 +747,9 @@ export default function App() {
   const [certAttendanceRows, setCertAttendanceRows] = useState<Record<number, { secondsAttended: number; eligible: boolean; granted: boolean; revoked: boolean; rsvped: boolean }>>({});
   const [registrantsModalOpen, setRegistrantsModalOpen] = useState(false);
   const [registrantsModalMeeting, setRegistrantsModalMeeting] = useState<Meeting | null>(null);
+  // Search boxes in a seminar's Certificates and Registrants windows
+  const [certSearch, setCertSearch] = useState('');
+  const [registrantsSearch, setRegistrantsSearch] = useState('');
   const [roleChangeUser, setRoleChangeUser] = useState<User | null>(null);
   const [roleChangeSelection, setRoleChangeSelection] = useState<string>('');
   const [roleChangeLoading, setRoleChangeLoading] = useState(false);
@@ -932,6 +936,8 @@ export default function App() {
 
   // Jitsi Meet External API reference
   const jitsiApiRef = useRef<any>(null);
+  // The meeting this admin just ended for everyone (so they aren't told "ended by the host")
+  const endedByMeRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (activeMeeting && activeMeeting.status !== 'Ended') {
@@ -969,9 +975,12 @@ export default function App() {
               startWithAudioMuted: true,
               startWithVideoMuted: true,
 
+              // No Jitsi hang-up button: everyone leaves with the portal's "Leave Meeting",
+              // and hosts end the seminar with "End Meeting for All", which also marks it
+              // Ended (Jitsi's own "End meeting for all" would leave it Live in the portal)
               toolbarButtons: [
                 'microphone', 'camera', 'desktop', 'fullscreen', 'fodeviceselection',
-                'hangup', 'chat', 'raisehand', 'tileview', 'settings', 'videoquality',
+                'chat', 'raisehand', 'tileview', 'settings', 'videoquality',
                 'recording'
               ]
             }
@@ -992,7 +1001,7 @@ export default function App() {
                 setMyAttendance(prev => ({ ...prev, [meetingId]: { ...prev[meetingId], ...res.data } }));
                 // if the hosts end the call
                 if (res.data.status === 'Ended') {
-                  showToast('This seminar has been ended by the host.', 'info');
+                  if (endedByMeRef.current !== meetingId) showToast('This seminar has been ended by the host.', 'info');
                   setMeetings(prev => prev.map(m => m.id === meetingId ? { ...m, status: 'Ended' } : m));
                   setActiveMeeting(prev => (prev && prev.id === meetingId) ? { ...prev, status: 'Ended' } : prev);
                 }
@@ -1009,6 +1018,9 @@ export default function App() {
             if (attendanceIntervalRef.current) {
               clearInterval(attendanceIntervalRef.current);
               attendanceIntervalRef.current = null;
+              // One last check-in: counts the time since the previous one, and if the
+              // host just ended the seminar for everyone, its reply closes this call
+              sendHeartbeat();
             }
             axios.post(`${API_BASE}/meetings/${meetingId}/attendance/leave`).catch(() => {});
           });
@@ -1891,6 +1903,47 @@ export default function App() {
     setTimeout(clearIfStillCurrent, 3000);
   };
 
+  // "End Meeting for All" (Admins and Sub Admins): marks the seminar Ended, then
+  // ends the video call for everyone in it. Each attendee's portal sees the Ended
+  // status and closes their call; the host's window switches to the ended view,
+  // where the minutes can still be finished.
+  const handleEndMeetingForAll = async () => {
+    if (!activeMeeting) return;
+    const meetingId = activeMeeting.id;
+    const confirmed = await confirmDelete(
+      'Everyone in the call will be disconnected, and the seminar will be marked as ended.',
+      'End this seminar for everyone?',
+      'Yes, end it'
+    );
+    if (!confirmed) return;
+
+    try {
+      await axios.post(`${API_BASE}/meetings/${meetingId}/end`);
+    } catch (error: any) {
+      showToast(error.response?.data?.message || 'Could not end the seminar. Please try again.', 'error');
+      return;
+    }
+    endedByMeRef.current = meetingId;
+    setMeetings(prev => prev.map(m => m.id === meetingId ? { ...m, status: 'Ended' } : m));
+
+    let done = false;
+    const showEnded = () => {
+      if (done) return;
+      done = true;
+      setActiveMeeting(prev => (prev && prev.id === meetingId) ? { ...prev, status: 'Ended' } : prev);
+      showToast('The seminar has ended for everyone.', 'success');
+    };
+    const api = jitsiApiRef.current;
+    if (!api) {
+      showEnded();
+      return;
+    }
+    // Keep the call open until Jitsi has ended it for everyone (or 4 seconds)
+    api.addEventListener('videoConferenceLeft', showEnded);
+    api.executeCommand('endConference');
+    setTimeout(showEnded, 4000);
+  };
+
   const handleSaveMinutes = async () => {
     if (!activeMeeting) return;
     setSavingMinutes(true);
@@ -2071,6 +2124,7 @@ export default function App() {
   const openCertModal = async (meeting: Meeting) => {
     setCertModalMeeting(meeting);
     setCertModalOpen(true);
+    setCertSearch('');
     setCertAttendanceRows({});
     await fetchCertAttendance(meeting.id);
   };
@@ -2086,6 +2140,7 @@ export default function App() {
   const openRegistrantsModal = async (meeting: Meeting) => {
     setRegistrantsModalMeeting(meeting);
     setRegistrantsModalOpen(true);
+    setRegistrantsSearch('');
     setCertAttendanceRows({});
     await fetchCertAttendance(meeting.id);
   };
@@ -3046,6 +3101,11 @@ export default function App() {
   };
   const filteredUsers = allUsers.filter(matchesUserSearch).sort(compareByLastName);
   const filteredArchivedUsers = archivedUsers.filter(matchesUserSearch).sort(compareByLastName);
+  // Same matching for the search in a seminar's Certificates and Registrants windows
+  const matchesSearchText = (u: PersonName & { email: string }, text: string) => {
+    const q = text.trim().toLowerCase();
+    return !q || u.name.toLowerCase().includes(q) || lastFirstName(u).toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
+  };
 
 
   const pendingDeletionUsers = allUsers.filter(u => u.pendingDeletion);
@@ -6791,10 +6851,24 @@ export default function App() {
                 <button
                   className="meeting-footer-btn"
                   onClick={handleLeaveMeeting}
-                  style={{ padding: '8px 20px', background: '#cf1322', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', fontWeight: 700, fontSize: '13px' }}
+                  title={isModuleOrMeetingAdmin ? 'Leave the call; the seminar keeps going for everyone else' : undefined}
+                  style={isModuleOrMeetingAdmin
+                    ? { padding: '8px 20px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'var(--cream)', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }
+                    : { padding: '8px 20px', background: '#cf1322', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', fontWeight: 700, fontSize: '13px' }}
                 >
                   Leave Meeting
                 </button>
+                {/* Hosts only: ends the call for everyone and marks the seminar Ended */}
+                {isModuleOrMeetingAdmin && (
+                  <button
+                    className="meeting-footer-btn"
+                    onClick={handleEndMeetingForAll}
+                    title="Disconnect everyone and mark this seminar as ended"
+                    style={{ padding: '8px 20px', background: '#cf1322', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', fontWeight: 700, fontSize: '13px' }}
+                  >
+                    End Meeting for All
+                  </button>
+                )}
               </div>
             )}
             {activeMeeting.status === 'Ended' && (
@@ -7070,6 +7144,21 @@ export default function App() {
             <div className="confirm-message" style={{ fontWeight: 700, marginBottom: '14px' }}>
               🎓 Certificates — {certModalMeeting.title}
             </div>
+            <div className="admin-users-search" style={{ marginBottom: '12px' }}>
+              <Search size={15} />
+              <input
+                className="admin-users-search-input"
+                type="text"
+                placeholder="Search by name or email…"
+                value={certSearch}
+                onChange={e => setCertSearch(e.target.value)}
+              />
+              {certSearch && (
+                <button type="button" className="admin-users-search-clear" onClick={() => setCertSearch('')} aria-label="Clear search">
+                  <X size={14} />
+                </button>
+              )}
+            </div>
             <div style={{ maxHeight: '360px', overflowY: 'auto' }}>
               <table className="data-table">
                 <thead>
@@ -7080,7 +7169,14 @@ export default function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {allUsers.map(u => {
+                  {allUsers.filter(u => matchesSearchText(u, certSearch)).length === 0 && (
+                    <tr>
+                      <td colSpan={3} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '18px' }}>
+                        No users match "{certSearch}".
+                      </td>
+                    </tr>
+                  )}
+                  {allUsers.filter(u => matchesSearchText(u, certSearch)).sort(compareByLastName).map(u => {
                     const row = certAttendanceRows[u.id];
                     const seconds = row?.secondsAttended || 0;
                     const granted = row?.granted || false;
@@ -7088,7 +7184,11 @@ export default function App() {
                     const revoked = row?.revoked || false;
                     return (
                       <tr key={u.id}>
-                        <td>{u.name}</td>
+                        <td>
+                          <div>{u.name}</div>
+                          {/* The email tells apart accounts with the same name */}
+                          <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{u.email}</div>
+                        </td>
                         <td>{Math.floor(seconds / 60)} min</td>
                         <td>
                           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -7174,27 +7274,59 @@ export default function App() {
                   </div>
                 );
               }
+              const shown = registrants.filter(u => matchesSearchText(u, registrantsSearch)).sort(compareByLastName);
               return (
-                <div style={{ maxHeight: '360px', overflowY: 'auto' }}>
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>User</th>
-                        <th>Email</th>
-                        <th>Attended</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {registrants.map(u => (
-                        <tr key={u.id}>
-                          <td>{u.name}</td>
-                          <td style={{ fontSize: '13px' }}>{u.email}</td>
-                          <td>{Math.floor((certAttendanceRows[u.id]?.secondsAttended || 0) / 60)} min</td>
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                    <div style={{ fontSize: '13px', fontWeight: 600 }}>
+                      {registrantsSearch.trim()
+                        ? `Showing ${shown.length} of ${registrants.length} registrants`
+                        : `Total registrants: ${registrants.length}`}
+                    </div>
+                    <div className="admin-users-search">
+                      <Search size={15} />
+                      <input
+                        className="admin-users-search-input"
+                        type="text"
+                        placeholder="Search by name or email…"
+                        value={registrantsSearch}
+                        onChange={e => setRegistrantsSearch(e.target.value)}
+                      />
+                      {registrantsSearch && (
+                        <button type="button" className="admin-users-search-clear" onClick={() => setRegistrantsSearch('')} aria-label="Clear search">
+                          <X size={14} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ maxHeight: '360px', overflowY: 'auto' }}>
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>User</th>
+                          <th>Email</th>
+                          <th>Attended</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {shown.length === 0 && (
+                          <tr>
+                            <td colSpan={3} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '18px' }}>
+                              No registrants match "{registrantsSearch}".
+                            </td>
+                          </tr>
+                        )}
+                        {shown.map(u => (
+                          <tr key={u.id}>
+                            <td>{u.name}</td>
+                            <td style={{ fontSize: '13px' }}>{u.email}</td>
+                            <td>{Math.floor((certAttendanceRows[u.id]?.secondsAttended || 0) / 60)} min</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               );
             })()}
             <div className="confirm-actions" style={{ marginTop: '16px' }}>

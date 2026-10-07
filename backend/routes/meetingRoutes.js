@@ -15,7 +15,8 @@ const {
     issueCertificate,
     getJaasToken,
     logMeetingJoin,
-    logMeetingLeave
+    logMeetingLeave,
+    endMeeting
 } = require('../controllers/meetingController');
 const { requireAuth, requireSubAdmin, requireMinutesAccess } = require('../middleware/auth');
 
@@ -43,5 +44,7 @@ router.post('/:id/attendance/revoke', requireSubAdmin, revokeCertificate);
 router.post('/', requireSubAdmin, createMeeting);
 router.put('/:id', requireSubAdmin, updateMeeting);
 router.delete('/:id', requireSubAdmin, deleteMeeting);
+// "End Meeting for All" from inside the call
+router.post('/:id/end', requireSubAdmin, endMeeting);
 
 module.exports = router;
