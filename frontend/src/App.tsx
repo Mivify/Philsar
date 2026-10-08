@@ -41,6 +41,7 @@ import ReactMarkdown from 'react-markdown';
 import axios from 'axios';
 import Swal from 'sweetalert2';
 import philsarLogo from './assets/logo-transparent.png';
+import type { CallRecording } from './meetingRecorder';
 
 // Interfaces mapping database entities
 interface User {
@@ -337,6 +338,9 @@ const ACTIVITY_ACTION_LABELS: Record<string, string> = {
   meeting_updated: 'Seminar Updated',
   meeting_deleted: 'Seminar Deleted',
   meeting_ended: 'Seminar Ended',
+  recording_started: 'Recording Started',
+  recording_saved: 'Recording Saved',
+  recording_deleted: 'Recording Deleted',
   certificate_granted: 'Certificate Granted',
   certificate_revoked: 'Certificate Revoked',
   module_created: 'Module Created',
@@ -940,6 +944,14 @@ export default function App() {
   const jitsiApiRef = useRef<any>(null);
   // The meeting this admin just ended for everyone (so they aren't told "ended by the host")
   const endedByMeRef = useRef<number | null>(null);
+  // A host recording the call from this browser (see meetingRecorder.ts)
+  const [recordingState, setRecordingState] = useState<'idle' | 'starting' | 'recording' | 'saving'>('idle');
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const callRecordingRef = useRef<{ recording: CallRecording; recordingId: number; meetingId: number; startedAt: number } | null>(null);
+  // Attendees: a host is recording this call (from the attendance check-in)
+  const [callBeingRecorded, setCallBeingRecorded] = useState(false);
+  // Saved recordings of the ended seminar whose window is open
+  const [meetingRecordings, setMeetingRecordings] = useState<{ id: number; status: string; durationSec: number | null; partial: boolean; url: string | null }[]>([]);
 
   useEffect(() => {
     if (activeMeeting && activeMeeting.status !== 'Ended') {
@@ -980,10 +992,11 @@ export default function App() {
               // No Jitsi hang-up button: everyone leaves with the portal's "Leave Meeting",
               // and hosts end the seminar with "End Meeting for All", which also marks it
               // Ended (Jitsi's own "End meeting for all" would leave it Live in the portal)
+              // No Jitsi record button either: hosts use the portal's "⏺ Record", which
+              // records in their browser for free (Jitsi's is JaaS's paid cloud recording)
               toolbarButtons: [
                 'microphone', 'camera', 'desktop', 'fullscreen', 'fodeviceselection',
-                'chat', 'raisehand', 'tileview', 'settings', 'videoquality',
-                'recording'
+                'chat', 'raisehand', 'tileview', 'settings', 'videoquality'
               ]
             }
           });
@@ -1001,6 +1014,7 @@ export default function App() {
                 lastPingAt = now;
 
                 setMyAttendance(prev => ({ ...prev, [meetingId]: { ...prev[meetingId], ...res.data } }));
+                setCallBeingRecorded(!!res.data.beingRecorded);
                 // if the hosts end the call
                 if (res.data.status === 'Ended') {
                   if (endedByMeRef.current !== meetingId) showToast('This seminar has been ended by the host.', 'info');
@@ -1016,7 +1030,13 @@ export default function App() {
             attendanceIntervalRef.current = window.setInterval(sendHeartbeat, 30000);
             axios.post(`${API_BASE}/meetings/${meetingId}/attendance/join`).catch(() => {});
           });
+          // The host's microphone in their recording follows their mute button in the call
+          jitsiApiRef.current.addEventListener('audioMuteStatusChanged', ({ muted }: { muted: boolean }) => {
+            callRecordingRef.current?.recording.setMicMuted(muted);
+          });
           jitsiApiRef.current.addEventListener('videoConferenceLeft', () => {
+            // The call is over for this host, so their recording stops and is saved
+            if (callRecordingRef.current?.meetingId === meetingId) handleStopRecording();
             if (attendanceIntervalRef.current) {
               clearInterval(attendanceIntervalRef.current);
               attendanceIntervalRef.current = null;
@@ -1041,6 +1061,7 @@ export default function App() {
           jitsiApiRef.current.dispose();
           jitsiApiRef.current = null;
         }
+        setCallBeingRecorded(false);
       };
     }
   }, [activeMeeting]);
@@ -1927,6 +1948,9 @@ export default function App() {
     );
     if (!confirmed) return;
 
+    // A recording in progress is stopped and saved first
+    if (callRecordingRef.current) await handleStopRecording();
+
     try {
       await axios.post(`${API_BASE}/meetings/${meetingId}/end`);
     } catch (error: any) {
@@ -1952,6 +1976,134 @@ export default function App() {
     api.addEventListener('videoConferenceLeft', showEnded);
     api.executeCommand('endConference');
     setTimeout(showEnded, 4000);
+  };
+
+  // "⏺ Record" (Admins and Sub Admins): records the call in this browser and uploads
+  // it in parts while the seminar runs (meetingRecorder.ts). Attendees can watch it
+  // once the seminar has ended.
+  const handleStartRecording = async () => {
+    if (!activeMeeting || recordingState !== 'idle') return;
+    const meetingId = activeMeeting.id;
+    setRecordingState('starting');
+    let recordingId: number | null = null;
+    try {
+      const { canRecordCalls, startCallRecording } = await import('./meetingRecorder');
+      if (!canRecordCalls()) {
+        showToast('Recording works in Chrome or Edge on a computer.', 'warning');
+        setRecordingState('idle');
+        return;
+      }
+      const micMuted = await Promise.resolve(jitsiApiRef.current?.isAudioMuted?.()).catch(() => true);
+      const recording = await startCallRecording({
+        cropTo: document.getElementById('jaas-container'),
+        micMuted: micMuted !== false,
+        createRecording: async mimeType => {
+          const res = await axios.post(`${API_BASE}/meetings/${meetingId}/recordings`, { mimeType });
+          recordingId = res.data.recordingId;
+          return async (partNumber, part) => {
+            await axios.put(`${API_BASE}/meetings/${meetingId}/recordings/${recordingId}/parts/${partNumber}`, part, {
+              headers: { 'Content-Type': 'application/octet-stream' }
+            });
+          };
+        },
+        onSharingStopped: () => { handleStopRecording(); },
+        onUploadFailed: () => {
+          showToast("Part of the recording couldn't be uploaded, so recording stopped. What was already uploaded is kept.", 'error');
+          handleStopRecording();
+        }
+      });
+      callRecordingRef.current = { recording, recordingId: recordingId!, meetingId, startedAt: Date.now() };
+      setRecordingSeconds(0);
+      setRecordingState('recording');
+      // Everyone in the call is told, in the call chat as well as by the "● Recording" badge
+      jitsiApiRef.current?.executeCommand('sendChatMessage', '🔴 This seminar is now being recorded. The recording will be available on the PHILSAR portal after the seminar ends.');
+      if (recording.hasCallSound) {
+        showToast('Recording started. Keep this call window open while recording.', 'success');
+      } else {
+        showToast('The tab\'s sound wasn\'t shared, so only your microphone is being recorded. To record everyone, stop and start again with "Also share tab audio" on.', 'warning');
+      }
+    } catch (error: any) {
+      setRecordingState('idle');
+      if (recordingId) axios.delete(`${API_BASE}/meetings/${meetingId}/recordings/${recordingId}`).catch(() => {});
+      // Cancelling Chrome's share prompt isn't an error
+      if (error?.name === 'NotAllowedError' || error?.name === 'AbortError') return;
+      showToast(error?.response?.data?.message || 'Could not start recording.', 'error');
+    }
+  };
+
+  // Stops this host's recording and saves it. Also runs when they leave, end the
+  // seminar, or the call drops.
+  const handleStopRecording = async () => {
+    const current = callRecordingRef.current;
+    if (!current) return;
+    callRecordingRef.current = null;
+    setRecordingState('saving');
+    jitsiApiRef.current?.executeCommand('sendChatMessage', '⏹ Recording stopped.');
+    try {
+      const { durationSec } = await current.recording.stop();
+      await axios.post(`${API_BASE}/meetings/${current.meetingId}/recordings/${current.recordingId}/finish`, { durationSec });
+      showToast('Recording saved. Attendees can watch it after the seminar ends.', 'success');
+    } catch (error) {
+      console.error('Recording save error:', error);
+      showToast("The recording couldn't be finished. The parts already uploaded will still be saved.", 'warning');
+    } finally {
+      setRecordingState('idle');
+    }
+  };
+
+  // "Leave Meeting": a host who is recording is asked first, and the recording is saved
+  const handleLeaveClick = async () => {
+    if (callRecordingRef.current) {
+      const confirmed = await confirmDelete('Your recording will stop and be saved.', 'Stop recording and leave?', 'Yes, leave');
+      if (!confirmed) return;
+      await handleStopRecording();
+    }
+    handleLeaveMeeting();
+  };
+
+  // While recording: a ticking REC clock, and a warning before the tab is closed
+  useEffect(() => {
+    if (recordingState !== 'recording') return;
+    const tick = window.setInterval(() => {
+      const startedAt = callRecordingRef.current?.startedAt;
+      if (startedAt) setRecordingSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    const warnBeforeClosing = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warnBeforeClosing);
+    return () => {
+      clearInterval(tick);
+      window.removeEventListener('beforeunload', warnBeforeClosing);
+    };
+  }, [recordingState]);
+
+  // The saved recordings, when an ended seminar's window is open
+  useEffect(() => {
+    if (!activeMeeting || !meetingModalOpen || activeMeeting.status !== 'Ended') {
+      setMeetingRecordings([]);
+      return;
+    }
+    let cancelled = false;
+    axios.get(`${API_BASE}/meetings/${activeMeeting.id}/recordings`)
+      .then(res => { if (!cancelled) setMeetingRecordings(res.data.recordings || []); })
+      .catch(() => { if (!cancelled) setMeetingRecordings([]); });
+    return () => { cancelled = true; };
+  }, [activeMeeting?.id, activeMeeting?.status, meetingModalOpen]);
+
+  const handleDeleteRecording = async (recordingId: number) => {
+    if (!activeMeeting) return;
+    if (!(await confirmDelete('Attendees will no longer be able to watch it.', 'Delete this recording?', 'Yes, delete it'))) return;
+    try {
+      await axios.delete(`${API_BASE}/meetings/${activeMeeting.id}/recordings/${recordingId}`);
+      setMeetingRecordings(prev => prev.filter(r => r.id !== recordingId));
+      showToast('Recording deleted.', 'success');
+    } catch {
+      showToast('Could not delete the recording.', 'error');
+    }
+  };
+
+  const formatClock = (totalSeconds: number) => {
+    const h = Math.floor(totalSeconds / 3600), m = Math.floor((totalSeconds % 3600) / 60), s = totalSeconds % 60;
+    return `${h ? `${h}:${String(m).padStart(2, '0')}` : m}:${String(s).padStart(2, '0')}`;
   };
 
   const handleSaveMinutes = async () => {
@@ -6707,10 +6859,35 @@ export default function App() {
             onClick={e => e.stopPropagation()}
           >
             <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.15)' }}>
-              <div style={{ color: 'var(--cream, #eef2fc)', fontWeight: 600, fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ color: 'var(--cream, #eef2fc)', fontWeight: 600, fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', minWidth: 0 }}>
                 <span style={{ color: '#ff4d4f', fontSize: '12px' }}>🔴</span> {activeMeeting.title}
+                {activeMeeting.status !== 'Ended' && (recordingState === 'recording' ? (
+                  <span className="rec-badge" title="You're recording this call">● REC {formatClock(recordingSeconds)}</span>
+                ) : recordingState === 'saving' ? (
+                  <span className="rec-badge rec-badge-saving">Saving recording…</span>
+                ) : callBeingRecorded && (
+                  <span className="rec-badge" title="A host is recording this call">● Being recorded</span>
+                ))}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {/* Hosts only: record the call in this browser */}
+                {isModuleOrMeetingAdmin && activeMeeting.status !== 'Ended' && (
+                  recordingState === 'recording' ? (
+                    <button type="button" className="record-btn recording" onClick={handleStopRecording} title="Stop and save the recording">
+                      ⏹ Stop Recording
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="record-btn"
+                      onClick={handleStartRecording}
+                      disabled={recordingState !== 'idle'}
+                      title='Record this call in your browser. Choose "This tab" and keep "Also share tab audio" on.'
+                    >
+                      {recordingState === 'starting' ? 'Starting…' : recordingState === 'saving' ? 'Saving…' : '⏺ Record'}
+                    </button>
+                  )
+                )}
                 <button
                   onClick={() => setMeetingExpanded(!meetingExpanded)}
                   title={meetingExpanded ? 'Exit fullscreen' : 'Fill screen'}
@@ -6781,13 +6958,42 @@ export default function App() {
                 position: 'relative'
               }}
             >
-              {activeMeeting.status === 'Ended' ? (
+              {activeMeeting.status === 'Ended' && meetingRecordings.some(r => r.status === 'ready' && r.url) ? (
+                // Recordings made with "⏺ Record", played right here
+                <div className="meeting-recordings">
+                  <div className="meeting-recordings-note">This session has ended. Watch the recording below.</div>
+                  {meetingRecordings.filter(r => r.status === 'ready' && r.url).map((r, i, shown) => (
+                    <div key={r.id} className="meeting-recording">
+                      <div className="meeting-recording-label">
+                        <span>
+                          🎬 {shown.length > 1 ? `Recording ${i + 1}` : 'Recording'}
+                          {r.durationSec ? ` · ${formatClock(r.durationSec)}` : ''}
+                          {r.partial ? ' · ended early' : ''}
+                        </span>
+                        {isModuleOrMeetingAdmin && (
+                          <button type="button" className="meeting-recording-delete" onClick={() => handleDeleteRecording(r.id)} title="Delete this recording">
+                            <Trash size={14} />
+                          </button>
+                        )}
+                      </div>
+                      <video src={r.url!} controls preload="metadata" playsInline />
+                    </div>
+                  ))}
+                  {activeMeeting.recordingUrl && (
+                    <a href={activeMeeting.recordingUrl} target="_blank" rel="noreferrer" className="meeting-recordings-link">
+                      ▶ Watch the linked recording
+                    </a>
+                  )}
+                </div>
+              ) : activeMeeting.status === 'Ended' ? (
                 <>
                   <div style={{ fontSize: '60px' }}>{activeMeeting.recordingUrl ? '🎬' : '📼'}</div>
                   <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '14px', fontWeight: 500, textAlign: 'center', maxWidth: '380px' }}>
                     {activeMeeting.recordingUrl
                       ? 'This session has ended. A recording is available below.'
-                      : 'This session has ended. No recording has been uploaded for it yet.'}
+                      : meetingRecordings.some(r => r.status === 'recording')
+                        ? 'This session has ended. Its recording is still being saved and will appear here soon.'
+                        : 'This session has ended. No recording has been uploaded for it yet.'}
                   </div>
                   {activeMeeting.recordingUrl && (
                     <a
@@ -6891,7 +7097,7 @@ export default function App() {
                 )}
                 <button
                   className="meeting-footer-btn"
-                  onClick={handleLeaveMeeting}
+                  onClick={handleLeaveClick}
                   title={isModuleOrMeetingAdmin ? 'Leave the call; the seminar keeps going for everyone else' : undefined}
                   style={isModuleOrMeetingAdmin
                     ? { padding: '8px 20px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'var(--cream)', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }
@@ -6952,6 +7158,8 @@ export default function App() {
         >
           <span style={{ color: '#ff4d4f' }}>🔴</span>
           Meeting in progress — {activeMeeting.title}
+          {/* The recording shows the call window, so the host is reminded to reopen it */}
+          {recordingState === 'recording' && <span className="rec-badge">● REC {formatClock(recordingSeconds)} · reopen to keep the video</span>}
           <span style={{ opacity: 0.7 }}>▲</span>
         </div>
       )}

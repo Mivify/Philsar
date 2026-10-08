@@ -5,6 +5,8 @@ require('dotenv').config();
 
 const { connectDB, sequelize } = require('./config/db');
 const { getKnowledgeChunks } = require('./utils/chatbotKnowledge');
+const { saveAbandonedRecordings } = require('./controllers/meetingController');
+const { checkRecordingStorage } = require('./utils/recordingStorage');
 
 // Import routes
 const authRoutes = require('./routes/authRoutes');
@@ -96,6 +98,13 @@ const startServer = async () => {
     getKnowledgeChunks()
         .then(chunks => console.log(`Chatbot knowledge files loaded (${chunks.length} sections).`))
         .catch(error => console.error('Could not load the chatbot knowledge files yet (will retry on the next question):', error.message));
+
+    // Saves seminar recordings whose host's browser stopped sending (closed tab,
+    // crash, lost connection) from the parts that did arrive
+    checkRecordingStorage().then(message => console.log(message));
+    const runRecordingSweep = () => saveAbandonedRecordings().catch(error => console.error('Recording sweep failed:', error.message));
+    runRecordingSweep();
+    setInterval(runRecordingSweep, 5 * 60 * 1000);
 };
 
 startServer();

@@ -2554,6 +2554,102 @@ body {
   z-index: 99;
 }
 
+/* Recording the call ("⏺ Record" in the call window's header) */
+.rec-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(207, 19, 34, 0.18);
+  border: 1px solid rgba(255, 77, 79, 0.45);
+  color: #ff7875;
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  animation: rec-pulse 2s ease-in-out infinite;
+}
+.rec-badge-saving {
+  animation: none;
+  color: var(--cream);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+@keyframes rec-pulse {
+  50% { opacity: 0.55; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rec-badge { animation: none; }
+}
+
+.record-btn {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--cream);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.record-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.14); }
+.record-btn:disabled { opacity: 0.6; cursor: default; }
+.record-btn.recording { background: #cf1322; border-color: #cf1322; color: #fff; }
+.record-btn.recording:hover { background: #a8071a; }
+
+/* An ended seminar's recordings, played inside the call window */
+.meeting-recordings {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  padding: 18px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-sizing: border-box;
+}
+.meeting-recordings-note {
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 13.5px;
+  font-weight: 500;
+}
+.meeting-recording-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--cream);
+  font-size: 13.5px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.meeting-recording video {
+  display: block;
+  width: 100%;
+  max-height: 380px;
+  background: #000;
+  border-radius: 10px;
+}
+.meeting-recording-delete {
+  background: rgba(255, 255, 255, 0.08);
+  border: none;
+  border-radius: 6px;
+  color: #ff7875;
+  padding: 5px 7px;
+  cursor: pointer;
+  display: inline-flex;
+}
+.meeting-recording-delete:hover { background: rgba(255, 77, 79, 0.18); }
+.meeting-recordings-link {
+  align-self: flex-start;
+  color: var(--amber);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 /* Call window footer: hosts get up to six buttons (Write Minutes, End Meeting for
    All), so labels stay on one line and the row wraps instead of squeezing them.
    The phone rules below override the padding. */

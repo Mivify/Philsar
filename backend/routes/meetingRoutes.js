@@ -16,7 +16,12 @@ const {
     getJaasToken,
     logMeetingJoin,
     logMeetingLeave,
-    endMeeting
+    endMeeting,
+    startRecording,
+    uploadRecordingPart,
+    finishRecording,
+    getMeetingRecordings,
+    deleteRecording
 } = require('../controllers/meetingController');
 const { requireAuth, requireSubAdmin, requireMinutesAccess } = require('../middleware/auth');
 
@@ -46,5 +51,14 @@ router.put('/:id', requireSubAdmin, updateMeeting);
 router.delete('/:id', requireSubAdmin, deleteMeeting);
 // "End Meeting for All" from inside the call
 router.post('/:id/end', requireSubAdmin, endMeeting);
+
+// Recordings made in a host's browser: uploaded in parts while recording (each
+// part is the raw request body, 8 MB from the browser); attendees can list and
+// watch them once the seminar has ended
+router.get('/:id/recordings', requireAuth, getMeetingRecordings);
+router.post('/:id/recordings', requireSubAdmin, startRecording);
+router.put('/:id/recordings/:recordingId/parts/:partNumber', requireSubAdmin, express.raw({ type: '*/*', limit: '16mb' }), uploadRecordingPart);
+router.post('/:id/recordings/:recordingId/finish', requireSubAdmin, finishRecording);
+router.delete('/:id/recordings/:recordingId', requireSubAdmin, deleteRecording);
 
 module.exports = router;

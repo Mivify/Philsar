@@ -87,7 +87,7 @@ Recommended Technique: Artificial Insemination (AI) when she's ready and Standin
 
 ## Watching a recording or reading the minutes
 
-- For a session that has ended, click "Watch Replay" in Virtual Meetings (the Recorded filter lists them). If a recording was uploaded, click "▶ Watch Recording".
+- For a session that has ended, click "Watch Replay" in Virtual Meetings (the Recorded filter lists them). Recordings made during the seminar play right there in the window (a seminar recorded in several parts lists each one); a recording added as a link opens with "▶ Watch Recording". Recordings can be watched once the seminar has ended.
 - The Meeting Minutes appear there once the seminar ends. Click "Download PDF" to save them.
 - Admins, Sub Admins and Secretaries write the minutes during the meeting with "📝 Write Minutes", then click "Save Minutes".
 
@@ -127,6 +127,7 @@ Every certificate has its own Certificate ID (in the form XXXX-XXXX-XXXX) and a 
 
 - Admin Panel → Meetings. Fill in "Schedule Virtual Seminar" (Seminar Title, Expert Host Name, Meeting Type (Seminar or Regular Meeting), Who Can Join (Regular Meetings only), Date & Time, Status and an optional Recording Link), then click "+ Schedule Seminar".
 - In the list, Mark as Live, Mark as Upcoming and Mark as Ended change a session's status. There are also Edit, View registrants (with the total number of registrants and a search box) and Delete.
+- To record a live seminar, Admins and Sub Admins click "⏺ Record" at the top of the call window, in Chrome or Edge on a computer. Chrome asks what to share: choose "This tab" and keep "Also share tab audio" on, then keep the call window open while recording. Everyone in the call sees "● Being recorded" and a note in the call chat. "⏹ Stop Recording" saves it (so do Leave Meeting and End Meeting for All), and attendees can watch it after the seminar ends. A host can delete a recording from the ended seminar's window.
 - During a live seminar, Admins and Sub Admins can click "End Meeting for All" in the call. Everyone in the call is disconnected and the seminar is marked Ended, with no need to use Mark as Ended. "Leave Meeting" leaves the call without ending it for the others.
 - "Manage certificates" shows each attendee's time and certificate, with a search box to find someone by name or email. Click "Grant" to give one manually, "Revoke" to cancel it, or "Grant again" to restore a revoked one (the same certificate and QR code become valid again).
 - The minutes of attendance needed for an automatic certificate are set in the Settings tab.

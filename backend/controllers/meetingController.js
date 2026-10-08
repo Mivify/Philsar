@@ -7,6 +7,8 @@ const Certificate = require('../models/Certificate');
 const Setting = require('../models/Setting');
 const { generateJaasToken } = require('../utils/jaasToken');
 const { logActivity } = require('../utils/activityLog');
+const MeetingRecording = require('../models/MeetingRecording');
+const recordingStorage = require('../utils/recordingStorage');
 
 const HEARTBEAT_SECONDS = 30;
 const MAX_ELAPSED_PER_PING_SECONDS = 5 * 60;
@@ -198,6 +200,7 @@ const deleteMeeting = async (req, res) => {
             action: 'meeting_deleted', category: 'admin', details: `"${meeting.title}" deleted`, req
         });
 
+        await removeMeetingRecordings(meeting.id);
         await meeting.destroy();
         res.status(200).json({ message: 'Meeting deleted successfully' });
     } catch (error) {
@@ -230,11 +233,14 @@ const pingAttendance = async (req, res) => {
         await record.save();
 
         const thresholdSeconds = await getCertificateThresholdSeconds();
+        // Tells everyone in the call when a host is recording it
+        const beingRecorded = await MeetingRecording.count({ where: { meetingId: id, status: 'recording' } }) > 0;
         res.status(200).json({
             secondsAttended: record.secondsAttended,
             eligible: isEligible(record, thresholdSeconds, meeting.meetingType),
             status: meeting.status,
-            rsvped: record.rsvped
+            rsvped: record.rsvped,
+            beingRecorded
         });
     } catch (error) {
         res.status(500).json({ message: 'Error recording attendance', error: error.message });
@@ -528,6 +534,218 @@ const endMeeting = async (req, res) => {
     }
 };
 
+// ── Recordings ────────────────────────────────────────────────────────────
+// A host's browser records the call and uploads it in parts while the seminar
+// runs (see frontend/src/meetingRecorder.ts); each part goes through these
+// endpoints into an R2 multipart upload. Attendees can watch the recordings
+// once the seminar has ended.
+
+const RECORDING_TYPES = { 'video/mp4': 'mp4', 'video/webm': 'webm' };
+const isHost = role => role === 'Admin' || role === 'Sub Admin';
+
+const logRecordingActivity = async (req, action, details) => {
+    const actor = await User.findByPk(req.user.id, { attributes: ['name', 'role'] });
+    logActivity({ userId: req.user.id, userName: actor?.name, userRole: actor?.role, action, category: 'admin', details, req });
+};
+
+// The recording being uploaded for this meeting, or a reply saying why not
+const findOpenRecording = async (req, res) => {
+    const recording = await MeetingRecording.findOne({ where: { id: req.params.recordingId, meetingId: req.params.id } });
+    if (!recording) {
+        res.status(404).json({ message: 'Recording not found' });
+        return null;
+    }
+    if (recording.status !== 'recording') {
+        res.status(409).json({ message: 'This recording has already been saved.' });
+        return null;
+    }
+    return recording;
+};
+
+// POST /meetings/:id/recordings — a host starts recording
+const startRecording = async (req, res) => {
+    try {
+        if (!recordingStorage.isRecordingStorageConfigured()) {
+            return res.status(503).json({ message: "Recording storage isn't set up yet, so recordings can't be saved." });
+        }
+        const meeting = await Meeting.findByPk(req.params.id);
+        if (!meeting) {
+            return res.status(404).json({ message: 'Meeting not found' });
+        }
+        if (meeting.status === 'Ended') {
+            return res.status(400).json({ message: 'This seminar has already ended.' });
+        }
+        const mimeType = String(req.body?.mimeType || '').split(';')[0].trim();
+        const extension = RECORDING_TYPES[mimeType];
+        if (!extension) {
+            return res.status(400).json({ message: 'Unsupported recording format.' });
+        }
+
+        const storageKey = `recordings/meeting-${meeting.id}/${Date.now()}.${extension}`;
+        const uploadId = await recordingStorage.startUpload(storageKey, mimeType);
+        const recording = await MeetingRecording.create({
+            meetingId: meeting.id, startedBy: req.user.id, status: 'recording',
+            storageKey, mimeType, uploadId, parts: [], sizeBytes: 0
+        });
+        logRecordingActivity(req, 'recording_started', `Started recording "${meeting.title}"`);
+        res.status(201).json({ recordingId: recording.id });
+    } catch (error) {
+        console.error('Recording start error:', error);
+        res.status(500).json({ message: 'Could not start the recording.' });
+    }
+};
+
+// PUT /meetings/:id/recordings/:recordingId/parts/:partNumber — one uploaded part (raw body)
+const uploadRecordingPart = async (req, res) => {
+    try {
+        const partNumber = parseInt(req.params.partNumber, 10);
+        if (!Number.isInteger(partNumber) || partNumber < 1 || partNumber > 10000) {
+            return res.status(400).json({ message: 'Invalid part number.' });
+        }
+        if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+            return res.status(400).json({ message: 'Empty recording part.' });
+        }
+        const recording = await findOpenRecording(req, res);
+        if (!recording) return;
+
+        const etag = await recordingStorage.uploadPart(recording.storageKey, recording.uploadId, partNumber, req.body);
+        // A retried part replaces the earlier copy
+        const parts = (recording.parts || []).filter(p => p.PartNumber !== partNumber)
+            .concat({ PartNumber: partNumber, ETag: etag, size: req.body.length })
+            .sort((a, b) => a.PartNumber - b.PartNumber);
+        recording.parts = parts;
+        recording.sizeBytes = parts.reduce((sum, p) => sum + p.size, 0);
+        recording.changed('parts', true);
+        await recording.save();
+        res.status(200).json({ ok: true });
+    } catch (error) {
+        console.error('Recording part error:', error);
+        res.status(500).json({ message: 'Could not save that part of the recording.' });
+    }
+};
+
+// POST /meetings/:id/recordings/:recordingId/finish — the host stopped recording
+const finishRecording = async (req, res) => {
+    try {
+        const recording = await findOpenRecording(req, res);
+        if (!recording) return;
+        if (!(recording.parts || []).length) {
+            // Nothing was recorded
+            await recordingStorage.abortUpload(recording.storageKey, recording.uploadId).catch(() => {});
+            await recording.destroy();
+            return res.status(200).json({ saved: false });
+        }
+
+        await recordingStorage.finishUpload(recording.storageKey, recording.uploadId, recording.parts);
+        const durationSec = Math.round(Number(req.body?.durationSec));
+        recording.status = 'ready';
+        recording.uploadId = null;
+        recording.endedAt = new Date();
+        recording.durationSec = Number.isFinite(durationSec) && durationSec > 0 ? durationSec : Math.round((Date.now() - recording.createdAt) / 1000);
+        await recording.save();
+
+        const meeting = await Meeting.findByPk(req.params.id, { attributes: ['title'] });
+        logRecordingActivity(req, 'recording_saved', `Recording of "${meeting?.title || `seminar #${req.params.id}`}" saved (${Math.max(1, Math.round(recording.durationSec / 60))} min)`);
+        res.status(200).json({ saved: true });
+    } catch (error) {
+        console.error('Recording finish error:', error);
+        res.status(500).json({ message: 'Could not save the recording.' });
+    }
+};
+
+// GET /meetings/:id/recordings — attendees see them once the seminar has ended; hosts always
+const getMeetingRecordings = async (req, res) => {
+    try {
+        const meeting = await Meeting.findByPk(req.params.id);
+        if (!meeting) {
+            return res.status(404).json({ message: 'Meeting not found' });
+        }
+        if (!canViewMeeting(meeting, req.user.role)) {
+            return res.status(403).json({ message: 'This meeting is not open to your role.' });
+        }
+        if (!isHost(req.user.role) && meeting.status !== 'Ended') {
+            return res.status(200).json({ recordings: [] });
+        }
+
+        const rows = await MeetingRecording.findAll({ where: { meetingId: meeting.id }, order: [['createdAt', 'ASC']] });
+        const canWatch = recordingStorage.isRecordingStorageConfigured();
+        const recordings = await Promise.all(rows.map(async r => ({
+            id: r.id,
+            status: r.status,
+            durationSec: r.durationSec,
+            sizeBytes: Number(r.sizeBytes),
+            partial: r.partial,
+            startedAt: r.createdAt,
+            url: r.status === 'ready' && canWatch ? await recordingStorage.watchUrl(r.storageKey) : null
+        })));
+        res.status(200).json({ recordings });
+    } catch (error) {
+        console.error('Recordings list error:', error);
+        res.status(500).json({ message: 'Could not load the recordings.' });
+    }
+};
+
+const discardRecording = async recording => {
+    if (recording.status === 'recording' && recording.uploadId) {
+        await recordingStorage.abortUpload(recording.storageKey, recording.uploadId).catch(() => {});
+    } else {
+        await recordingStorage.deleteObject(recording.storageKey).catch(() => {});
+    }
+    await recording.destroy();
+};
+
+// DELETE /meetings/:id/recordings/:recordingId — a host removes a recording
+const deleteRecording = async (req, res) => {
+    try {
+        const recording = await MeetingRecording.findOne({ where: { id: req.params.recordingId, meetingId: req.params.id } });
+        if (!recording) {
+            return res.status(404).json({ message: 'Recording not found' });
+        }
+        await discardRecording(recording);
+        const meeting = await Meeting.findByPk(req.params.id, { attributes: ['title'] });
+        logRecordingActivity(req, 'recording_deleted', `Deleted a recording of "${meeting?.title || `seminar #${req.params.id}`}"`);
+        res.status(200).json({ message: 'Recording deleted' });
+    } catch (error) {
+        console.error('Recording delete error:', error);
+        res.status(500).json({ message: 'Could not delete the recording.' });
+    }
+};
+
+// Deleting a seminar deletes its recordings too
+const removeMeetingRecordings = async meetingId => {
+    const recordings = await MeetingRecording.findAll({ where: { meetingId } });
+    for (const recording of recordings) await discardRecording(recording);
+};
+
+// A recording whose host's browser stopped sending parts (tab closed, crash,
+// lost connection) is saved from the parts that arrived, so it isn't lost; one
+// with no parts is discarded. server.js runs this every few minutes.
+const ABANDONED_AFTER_MS = 15 * 60 * 1000;
+const saveAbandonedRecordings = async () => {
+    if (!recordingStorage.isRecordingStorageConfigured()) return;
+    const abandoned = await MeetingRecording.findAll({
+        where: { status: 'recording', updatedAt: { [Op.lt]: new Date(Date.now() - ABANDONED_AFTER_MS) } }
+    });
+    for (const recording of abandoned) {
+        try {
+            if (!(recording.parts || []).length) {
+                await discardRecording(recording);
+                continue;
+            }
+            await recordingStorage.finishUpload(recording.storageKey, recording.uploadId, recording.parts);
+            recording.status = 'ready';
+            recording.partial = true;
+            recording.uploadId = null;
+            recording.endedAt = recording.updatedAt;
+            recording.durationSec = Math.max(0, Math.round((recording.updatedAt - recording.createdAt) / 1000));
+            await recording.save();
+            console.log(`Saved an interrupted recording of meeting #${recording.meetingId} from ${recording.parts.length} part(s).`);
+        } catch (error) {
+            console.error(`Could not save the interrupted recording #${recording.id}:`, error.message);
+        }
+    }
+};
+
 module.exports = {
     getMeetings,
     rsvpMeeting,
@@ -544,5 +762,11 @@ module.exports = {
     getJaasToken,
     logMeetingJoin,
     logMeetingLeave,
-    endMeeting
+    endMeeting,
+    startRecording,
+    uploadRecordingPart,
+    finishRecording,
+    getMeetingRecordings,
+    deleteRecording,
+    saveAbandonedRecordings
 };
