@@ -6712,7 +6712,7 @@ export default function App() {
                             },
                             { key: 'lockouts', icon: '⛔', label: 'Account Lockouts (24h)', value: activitySummary.lockouts, sub: null },
                             { key: 'roleChanges', icon: '🛡️', label: 'Role / Status Changes (24h)', value: activitySummary.roleOrStatusChanges, sub: null },
-                            { key: 'deletions', icon: '🗑️', label: 'Accounts Deleted (24h)', value: activitySummary.deletions, sub: null },
+                            { key: 'deletions', icon: '🗑️', label: 'Account Archived (24h)', value: activitySummary.deletions, sub: null },
                           ].map(tile => {
                             const isAlert = tile.value > 0;
                             return (
