@@ -994,9 +994,12 @@ export default function App() {
               // Ended (Jitsi's own "End meeting for all" would leave it Live in the portal)
               // No Jitsi record button either: hosts use the portal's "⏺ Record", which
               // records in their browser for free (Jitsi's is JaaS's paid cloud recording)
+              // Hosts (who can record) don't get Jitsi's fullscreen either: it takes the call
+              // out of the page and breaks their recording; the portal's ⤢ button is used instead
               toolbarButtons: [
-                'microphone', 'camera', 'desktop', 'fullscreen', 'fodeviceselection',
-                'chat', 'raisehand', 'tileview', 'settings', 'videoquality'
+                'microphone', 'camera', 'desktop',
+                ...(currentUser?.role === 'Admin' || currentUser?.role === 'Sub Admin' ? [] : ['fullscreen']),
+                'fodeviceselection', 'chat', 'raisehand', 'tileview', 'settings', 'videoquality'
               ]
             }
           });
@@ -2061,7 +2064,9 @@ export default function App() {
     handleLeaveMeeting();
   };
 
-  // While recording: a ticking REC clock, and a warning before the tab is closed
+  // While recording: a ticking REC clock, a warning before the tab is closed, and
+  // no Jitsi fullscreen (its "S" shortcut still works without the button), which
+  // takes the call out of the page and breaks the recording
   useEffect(() => {
     if (recordingState !== 'recording') return;
     const tick = window.setInterval(() => {
@@ -2069,10 +2074,19 @@ export default function App() {
       if (startedAt) setRecordingSeconds(Math.floor((Date.now() - startedAt) / 1000));
     }, 1000);
     const warnBeforeClosing = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    const undoCallFullscreen = () => {
+      if (document.fullscreenElement?.tagName === 'IFRAME') {
+        document.exitFullscreen().catch(() => {});
+        showToast("Jitsi's full screen breaks the recording, so use the ⤢ button at the top of the call window instead.", 'warning');
+      }
+    };
     window.addEventListener('beforeunload', warnBeforeClosing);
+    document.addEventListener('fullscreenchange', undoCallFullscreen);
+    undoCallFullscreen();
     return () => {
       clearInterval(tick);
       window.removeEventListener('beforeunload', warnBeforeClosing);
+      document.removeEventListener('fullscreenchange', undoCallFullscreen);
     };
   }, [recordingState]);
 
