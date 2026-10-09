@@ -13,9 +13,13 @@ const { chunkModuleContent, embedText } = require('./embeddings');
 // - portal-guide.md explains the portal's pages, buttons and steps, so the
 //   chatbot can guide users around the system
 // Update these files when those pages change.
+// `label` names a source in the chatbot's prompt (the title when there's none).
+// Users can't see the portal guide, and when the bot was shown it as "Portal
+// Guide" it cited it ("based on our Portal Guide"). The title is still what
+// gets embedded, so the saved embeddings stay valid.
 const KNOWLEDGE_SOURCES = [
     { file: 'philsar-about.md', title: 'Our Community (About PHILSAR)' },
-    { file: 'portal-guide.md', title: 'Portal Guide' }
+    { file: 'portal-guide.md', title: 'Portal Guide', label: 'How the portal works' }
 ];
 
 const hashOf = (text) => crypto.createHash('sha256').update(text).digest('hex');
@@ -29,12 +33,12 @@ let loading = null;
 const getKnowledgeChunks = () => {
     if (!loading) {
         loading = (async () => {
-            const sections = KNOWLEDGE_SOURCES.flatMap(({ file, title }) =>
+            const sections = KNOWLEDGE_SOURCES.flatMap(({ file, title, label }) =>
                 chunkModuleContent(fs.readFileSync(path.join(__dirname, '../knowledge', file), 'utf8')).map(chunk => {
                     // The section title is embedded too ("Getting a seminar
                     // certificate"), which helps short questions find the right part
                     const documentText = `${title}: ${chunk.lessonTitle}\n${chunk.content}`;
-                    return { ...chunk, file, sourceTitle: title, documentText, contentHash: hashOf(documentText) };
+                    return { ...chunk, file, sourceTitle: label || title, documentText, contentHash: hashOf(documentText) };
                 })
             );
             const hashes = sections.map(s => s.contentHash);

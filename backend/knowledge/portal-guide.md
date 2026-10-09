@@ -1,4 +1,4 @@
-# Portal Guide
+# Using the PHILSAR portal
 
 How to use the PHILSAR Cattle Reproductive Portal. The pages are in the left sidebar: Announcements, Dashboard, Learning Modules, Decision Support, Virtual Meetings, Our Community and My Profile, plus the Admin Panel for Admins and Sub Admins. On a phone, open the sidebar with the menu button in the top bar.
 
