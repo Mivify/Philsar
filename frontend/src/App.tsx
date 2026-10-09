@@ -727,6 +727,11 @@ export default function App() {
   // Authentication State
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  // This tab's signed-in user, for loading data. localStorage is shared by every tab,
+  // so when another tab signs out (or its 15-minute inactivity sign-out runs) the
+  // stored user disappears even though this tab is still signed in.
+  const sessionUserRef = useRef<User | null>(null);
+  useEffect(() => { sessionUserRef.current = currentUser; }, [currentUser]);
 
   // role checker
   const isSystemAdmin = currentUser?.role === 'Admin';
@@ -1247,11 +1252,11 @@ export default function App() {
   }, [activeTab]);
 
 
-  const fetchGlobalData = async () => {
+  // `user` is passed right after signing in, before currentUser has been updated
+  const fetchGlobalData = async (user: User | null = sessionUserRef.current) => {
     try {
       setDataLoading(true);
-      const storedUser = localStorage.getItem('philsar_user');
-      const userId = storedUser ? JSON.parse(storedUser).id : null;
+      const userId = user?.id ?? null;
 
       const [modulesRes, meetingsRes, settingsRes, landingImagesRes, announcementsRes] = await Promise.all([
         axios.get(`${API_BASE}/modules`),
@@ -1305,7 +1310,7 @@ export default function App() {
       .catch(err => console.error('Error refreshing user data:', err));
 
 
-    fetchGlobalData();
+    fetchGlobalData(user);
   };
 
   // Checks for notifications every minute while signed in. A role change that
