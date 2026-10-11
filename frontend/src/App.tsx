@@ -1104,6 +1104,13 @@ export default function App() {
     activityEvents.forEach(evt => window.addEventListener(evt, markActivity, { passive: true }));
 
     const intervalId = window.setInterval(() => {
+      // Being in a meeting or seminar call (even minimized), or watching its recording,
+      // counts as activity: clicks inside the video call's frame never reach this page
+      const watchingRecording = Array.from(document.querySelectorAll('video')).some(v => !v.paused && !v.ended);
+      if (jitsiApiRef.current || watchingRecording) {
+        lastActivityAt = Date.now();
+        return;
+      }
       if (Date.now() - lastActivityAt >= INACTIVITY_LIMIT_MS) {
         handleLogout('inactivity');
         showToast("You've been signed out due to inactivity.", 'info');
