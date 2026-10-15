@@ -43,7 +43,7 @@ import Swal from 'sweetalert2';
 import philsarLogo from './assets/logo-transparent.png';
 import certScriptFontUrl from './assets/fonts/GreatVibes-Regular.ttf?url';
 import type { CallRecording } from './meetingRecorder';
-import { drawCertificate, loadImage, loadScriptFont, logoForPdf, prepareSignature } from './certificate';
+import { CERT_PAPER, drawCertificate, loadImage, loadScriptFont, logoForPdf, prepareSignature } from './certificate';
 
 // Interfaces mapping database entities
 interface User {
@@ -2260,7 +2260,7 @@ export default function App() {
       host: meeting.host,
       issuedOn: issuedAt.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
       code,
-      qrDataUrl: await toDataURL(`${window.location.origin}/verify/${code}`, { margin: 1, width: 320, errorCorrectionLevel: 'M' }),
+      qrDataUrl: await toDataURL(`${window.location.origin}/verify/${code}`, { margin: 1, width: 320, errorCorrectionLevel: 'M', color: { dark: '#111111', light: CERT_PAPER } }),
       style: {
         title: style.certTitleText,
         statement: style.certBodyText,
@@ -6596,7 +6596,7 @@ export default function App() {
                             onChange={e => setSettings({ ...settings, certBodyText: e.target.value })}
                           />
                           <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                            Printed under the attendee's name, after "This certificate is presented to".
+                            Starts the sentence under the attendee's name; the seminar's title and host follow it.
                           </div>
                         </div>
                         <div className="form-group">

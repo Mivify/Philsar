@@ -1,17 +1,18 @@
-// Draws a seminar certificate: diagonal bands in the primary color with accent-colored
-// outlines in two corners, the PHILSAR seal, the title, the recipient's name in script,
-// the seminar, a signature block, and the QR code that opens the certificate's
-// verification page. With a custom background image the corner bands and the seal are
-// left out and the image is used instead. Kept out of App.tsx so the layout can be drawn
-// and checked on its own.
+// Draws a seminar certificate: a cream card framed by a band in the primary color, with
+// curved swooshes (primary, edged in the accent color) in the top-left and bottom-right
+// corners and thin frame lines in the other two. Under the title and the recipient's name
+// in script comes a sentence naming the seminar; the bottom row holds the signature, the
+// PHILSAR seal, and the QR code that opens the certificate's verification page. With a
+// custom background image, the image replaces the frame, swooshes and seal. Kept out of
+// App.tsx so the layout can be drawn and checked on its own.
 import type { jsPDF } from 'jspdf';
 
 export interface CertificateStyle {
-  title: string;          // "Certificate of Attendance" prints as CERTIFICATE / ATTENDANCE
-  statement: string;      // the line under the name
+  title: string;          // "Certificate of Attendance" prints as CERTIFICATE / OF ATTENDANCE
+  statement: string;      // starts the sentence under the name, before the seminar's title
   closing: string;        // organization line, after the issue date
-  primaryColor: string;   // the corner bands
-  accentColor: string;    // the outlines over them
+  primaryColor: string;   // the frame, swooshes and headings
+  accentColor: string;    // the band along each swoosh
   signatoryName: string;
   signatoryTitle: string;
 }
@@ -25,21 +26,25 @@ export interface CertificateContent {
   qrDataUrl: string;
   style: CertificateStyle;
   backgroundImage?: HTMLImageElement | string | null;
-  logoImage?: string | null;   // the seal above the title, as a data URL (see logoForPdf)
+  logoImage?: string | null;   // the seal between the signature and the QR code (see logoForPdf)
   signatureImage?: HTMLImageElement | string | null;
   scriptFont?: string | null;  // base64 TrueType font for the name; Times Italic without it
 }
 
-// The layout is laid out on the 1068 × 741 grid of the reference design and scaled to the page
-const GRID_W = 1068;
-const GRID_H = 741;
-// Direction of the diagonal bands (down and to the left), and the direction across them
-const U: [number, number] = [-0.495, 0.869];
-const V: [number, number] = [-0.869, -0.495];
-const INK: [number, number, number] = [17, 17, 17];
+// The card's cream; the seal and the QR code's light squares are set on it
+export const CERT_PAPER = '#F7F3EA';
+
+// The layout is drawn on the 793 × 558 grid of the reference design and scaled to the page
+const GRID_W = 793;
+const GRID_H = 558;
 
 type Pt = [number, number];
 type Rgb = [number, number, number];
+// A straight segment to a point, or a cubic curve through two control points to a point
+type Segment = [Pt] | [Pt, Pt, Pt];
+
+const BODY_INK: Rgb = [51, 51, 51];
+const MUTED_INK: Rgb = [100, 100, 100];
 
 const hexToRgb = (hex: string, fallback: Rgb): Rgb => {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
@@ -48,14 +53,7 @@ const hexToRgb = (hex: string, fallback: Rgb): Rgb => {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 };
 
-const along = (p: Pt, dir: Pt, t: number): Pt => [p[0] + dir[0] * t, p[1] + dir[1] * t];
-
-// A rectangle from a corner and two edges, each given as a direction and a length
-const band = (corner: Pt, dirA: Pt, lenA: number, dirB: Pt, lenB: number): Pt[] => {
-  const a = along(corner, dirA, lenA);
-  return [corner, a, along(a, dirB, lenB), along(corner, dirB, lenB)];
-};
-const neg = (d: Pt): Pt => [-d[0], -d[1]];
+const mix = (a: Rgb, b: Rgb, t: number): Rgb => a.map((v, i) => Math.round(v + (b[i] - v) * t)) as Rgb;
 
 export function drawCertificate(doc: jsPDF, c: CertificateContent): void {
   const w = doc.internal.pageSize.getWidth();
@@ -65,51 +63,63 @@ export function drawCertificate(doc: jsPDF, c: CertificateContent): void {
   const cx = w / 2;
   const primary = hexToRgb(c.style.primaryColor, [12, 85, 25]);
   const accent = hexToRgb(c.style.accentColor, [246, 204, 15]);
-  // The pale bands are the primary color at 10% on white
-  const tint = primary.map(v => Math.round(255 - (255 - v) * 0.1)) as Rgb;
+  const paper = hexToRgb(CERT_PAPER, [247, 243, 234]);
+  const at = ([x, y]: Pt): Pt => [x * sx, y * sy];
 
-  // Shapes that run past the page edge are cut off by the page itself
-  const polygon = (gridPts: Pt[], mode: 'F' | 'S') => {
-    const pts = gridPts.map(([x, y]) => [x * sx, y * sy]);
-    const deltas = pts.slice(1).map((p, i) => [p[0] - pts[i][0], p[1] - pts[i][1]]);
-    doc.lines(deltas, pts[0][0], pts[0][1], [1, 1], mode, true);
+  // A filled shape from straight and curved segments; parts past the page edge are cut off
+  const shape = (start: Pt, segments: Segment[], color: Rgb) => {
+    let current = at(start);
+    const relative = segments.map(segment => {
+      const points = segment.map(at);
+      const out = points.flatMap(([x, y]) => [x - current[0], y - current[1]]);
+      current = points[points.length - 1];
+      return out;
+    });
+    doc.setFillColor(...color);
+    doc.lines(relative, at(start)[0], at(start)[1], [1, 1], 'F', true);
+  };
+
+  // A thin frame line, solid at the corner (`from`) and fading into the card toward `to`
+  const fadingLine = (from: Pt, to: Pt) => {
+    const [x1, y1] = at(from);
+    const [x2, y2] = at(to);
+    const length = Math.hypot(x2 - x1, y2 - y1);
+    const back = 0.8 / length;  // starts half a line width early, so the two lines meet squarely
+    const steps = 30;
+    doc.setLineWidth(1.6);
+    for (let i = 0; i < steps; i++) {
+      const t0 = i === 0 ? -back : i / steps;
+      const t1 = (i + 1) / steps;
+      doc.setDrawColor(...mix(primary, paper, Math.max(0, (i / steps - 0.45) / 0.55)));
+      doc.line(x1 + (x2 - x1) * t0, y1 + (y2 - y1) * t0, x1 + (x2 - x1) * t1, y1 + (y2 - y1) * t1);
+    }
   };
 
   if (c.backgroundImage) {
     doc.addImage(c.backgroundImage, 'JPEG', 0, 0, w, h);
   } else {
-    doc.setFillColor(...tint);
-    polygon(band([142, 441], V, 66, U, 500), 'F');            // bottom left
-    polygon(band([157, 625], V, 66, U, 400), 'F');
-    polygon(band([885, 205], neg(V), 72, neg(U), 400), 'F');  // top right
-    polygon(band([905, 365], neg(V), 80, neg(U), 500), 'F');
-
     doc.setFillColor(...primary);
-    polygon(band(along([310, 8], U, -300), U, 734, V, 600), 'F');              // top left
-    polygon(band(along([1068, 290], U, -300), U, 900, neg(V), 600), 'F');      // bottom right
-
-    doc.setDrawColor(...accent);
-    doc.setLineWidth(5.5);
-    doc.setLineJoin('miter');
-    polygon(band([105, 250], neg(U), 400, V, 400), 'S');            // top left
-    polygon(band([110, 318], V, 400, U, 400), 'S');
-    polygon(band([890, 512], U, 400, neg(V), 400), 'S');            // bottom right
-    polygon(band([975, 515], neg(U), 400, neg(V), 400), 'S');
+    doc.rect(0, 0, w, h, 'F');
+    doc.setFillColor(...paper);
+    doc.rect(11 * sx, 9 * sy, 771 * sx, 539 * sy, 'F');
+    // Top-left swoosh: the accent color, then the primary corner over it, leaving a
+    // crescent of accent along the edge
+    shape([0, 0], [[[310, 0]], [[160, 14], [55, 70], [0, 123]]], accent);
+    shape([0, 0], [[[290, 0]], [[140, 2], [40, 58], [0, 117]]], primary);
+    // Bottom-right swoosh
+    shape([793, 558], [[[440, 558]], [[600, 545], [730, 490], [793, 438]]], accent);
+    shape([793, 558], [[[470, 558]], [[610, 556], [724, 515], [793, 452]]], primary);
+    // Thin frame lines in the other two corners
+    fadingLine([767, 24], [558, 24]);
+    fadingLine([767, 24], [767, 248]);
+    fadingLine([25, 533], [25, 312]);
+    fadingLine([25, 533], [250, 533]);
   }
 
-  // The seal centered above the title, which moves down to make room for it
-  const logo = c.backgroundImage ? null : c.logoImage;
-  if (logo) {
-    const { width: lw, height: lh } = doc.getImageProperties(logo);
-    const scale = 66 / Math.max(lw, lh);
-    doc.addImage(logo, logo.startsWith('data:image/png') ? 'PNG' : 'JPEG', cx - (lw * scale) / 2, 14, lw * scale, lh * scale);
-  }
-  const titleY = logo ? 128 : 98;
-
-  // Centered text; letter spacing is added to the width so it stays centered
-  const centered = (text: string, y: number, charSpace = 0) => {
+  // Text centered on x (the page's middle by default); letter spacing counts toward the width
+  const centered = (text: string, y: number, charSpace = 0, x = cx) => {
     const width = doc.getTextWidth(text) + charSpace * Math.max(text.length - 1, 0);
-    doc.text(text, cx - width / 2, y, { charSpace });
+    doc.text(text, x - width / 2, y, { charSpace });
   };
   // The largest size up to `max` at which the text fits `maxWidth`
   const fit = (text: string, max: number, maxWidth: number, charSpace = 0) => {
@@ -120,101 +130,116 @@ export function drawCertificate(doc: jsPDF, c: CertificateContent): void {
     return size;
   };
 
-  // Title: "Certificate of Attendance" → CERTIFICATE above ATTENDANCE
+  // Title: "Certificate of Attendance" → CERTIFICATE above OF ATTENDANCE
   const title = (c.style.title || 'Certificate of Attendance').trim();
-  const split = /^(.+?)\s+of\s+(.+)$/i.exec(title);
+  const split = /^(.+?)\s+(of\s+.+)$/i.exec(title);
   const mainTitle = (split ? split[1] : title).toUpperCase();
   const subTitle = split ? split[2].toUpperCase() : '';
-  doc.setTextColor(...INK);
-  doc.setFont('times', 'bold');
-  fit(mainTitle, 48, 420, 1);
-  centered(mainTitle, subTitle ? titleY : titleY + 14, 1);
+  doc.setTextColor(...primary);
+  doc.setFont('times', 'normal');
+  fit(mainTitle, 60, 520, 7);
+  centered(mainTitle, subTitle ? 130 : 145, 7);
   if (subTitle) {
-    doc.setFont('times', 'italic');
-    fit(subTitle, 24, 420, 1);
-    centered(subTitle, titleY + 32, 1);
+    fit(subTitle, 26, 420, 6);
+    centered(subTitle, 170, 6);
   }
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(14);
-  centered('This certificate is presented to', 198, 0.8);
+  doc.setTextColor(...BODY_INK);
+  doc.setFontSize(18);
+  centered('This certificate is proudly presented to', 227);
 
+  doc.setTextColor(...primary);
   if (c.scriptFont) {
     doc.addFileToVFS('GreatVibes-Regular.ttf', c.scriptFont);
     doc.addFont('GreatVibes-Regular.ttf', 'GreatVibes', 'normal');
     doc.setFont('GreatVibes', 'normal');
-    fit(c.recipientName, 64, 420);
+    fit(c.recipientName, 62, 470);
   } else {
     doc.setFont('times', 'italic');
-    fit(c.recipientName, 44, 420);
+    fit(c.recipientName, 44, 470);
   }
-  centered(c.recipientName, 285);
+  centered(c.recipientName, 306);
+  doc.setDrawColor(95, 95, 95);
+  doc.setLineWidth(0.9);
+  doc.line(148, 320, w - 148, 320);
 
-  doc.setDrawColor(110, 110, 110);
-  doc.setLineWidth(0.8);
-  doc.line(211, 320, w - 211, 320);
-
-  doc.setFont('helvetica', 'italic');
-  doc.setFontSize(13);
-  centered(c.style.statement || 'for successfully attending the virtual seminar', 345);
-
-  // The seminar, then who hosted it and when the certificate was issued
-  doc.setTextColor(...primary);
-  doc.setFont('helvetica', 'bold');
-  const seminar = `“${c.seminarTitle}”`;
-  let y = 371;
-  if (fit(seminar, 15, 520) < 11) {
-    doc.setFontSize(11);
-    for (const line of (doc.splitTextToSize(seminar, 520) as string[]).slice(0, 2)) {
-      centered(line, y);
-      y += 14;
-    }
-    y -= 14;
-  } else {
-    centered(seminar, y);
+  // The sentence naming the seminar: the statement, then the seminar and its host on the
+  // next line (shrinking, then wrapping to a third line, for a very long title)
+  const statement = (c.style.statement || 'for successfully attending the virtual seminar').trim();
+  const seminar = `“${c.seminarTitle}”${c.host ? ` hosted by ${c.host}` : ''}.`;
+  doc.setTextColor(...BODY_INK);
+  doc.setFont('times', 'normal');
+  let size = 17;
+  let seminarLines: string[];
+  for (;;) {
+    doc.setFontSize(size);
+    seminarLines = doc.splitTextToSize(seminar, 470) as string[];
+    if (seminarLines.length === 1 || size <= 12) break;
+    size -= 1;
   }
-  const details = [c.host && `Hosted by ${c.host}`, `Issued on ${c.issuedOn}`, c.style.closing].filter(Boolean).join('  ·  ');
-  doc.setTextColor(90, 90, 90);
-  doc.setFont('helvetica', 'normal');
-  fit(details, 10, 520);
-  centered(details, y + 19);
+  const lines = [`${statement.charAt(0).toUpperCase()}${statement.slice(1)}`, ...seminarLines.slice(0, 2)];
+  lines.forEach((line, i) => centered(line, 364 + i * size * 1.4));
 
-  // Signature block: the uploaded signature (if any) dips slightly into the line, as a pen would
-  const lineY = 492;
+  // Bottom row: signature on the left, the seal in the middle, the QR code on the right
+  const lineY = 468;
+  const leftX = 245;
+  const rightX = 597;
+  doc.setDrawColor(150, 150, 150);
+  doc.setLineWidth(1);
+  doc.line(leftX - 96, lineY, leftX + 96, lineY);
+  doc.line(rightX - 96, lineY, rightX + 96, lineY);
+
+  // The uploaded signature (if any) dips slightly into the line, as a pen would
   if (c.signatureImage) {
     const { width: iw, height: ih } = doc.getImageProperties(c.signatureImage);
-    const scale = Math.min(180 / iw, 76 / ih);
-    doc.addImage(c.signatureImage, 'PNG', cx - (iw * scale) / 2, lineY + 4 - ih * scale, iw * scale, ih * scale);
+    const scale = Math.min(170 / iw, 62 / ih);
+    doc.addImage(c.signatureImage, 'PNG', leftX - (iw * scale) / 2, lineY + 4 - ih * scale, iw * scale, ih * scale);
   }
-  doc.setDrawColor(110, 110, 110);
-  doc.setLineWidth(0.8);
-  doc.line(310, lineY, w - 310, lineY);
-  doc.setTextColor(...INK);
-  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(...primary);
+  doc.setFont('times', 'bold');
   if (c.style.signatoryName) {
-    fit(c.style.signatoryName.toUpperCase(), 13, 330, 0.5);
-    centered(c.style.signatoryName.toUpperCase(), 515, 0.5);
+    fit(c.style.signatoryName, 15, 230);
+    centered(c.style.signatoryName, 492, 0, leftX);
   }
+  doc.setTextColor(...MUTED_INK);
+  doc.setFont('times', 'normal');
   if (c.style.signatoryTitle) {
-    doc.setFontSize(11);
-    centered(c.style.signatoryTitle.toUpperCase(), 557, 0.5);
+    doc.setFontSize(12);
+    centered(c.style.signatoryTitle, 509, 0, leftX);
   }
 
-  // QR code + certificate ID in the empty space at the lower left. Scanning it opens
-  // /verify/<code>, which shows the certificate's current status (so this copy reads
-  // "Revoked" if it's revoked later). The white backing keeps it readable on a
-  // custom background image.
-  const qrSize = 62;
-  const qrX = 150;
-  const qrY = 470;
-  doc.setFillColor(255, 255, 255);
-  doc.roundedRect(qrX - 6, qrY - 6, qrSize + 12, qrSize + 30, 4, 4, 'F');
+  // The seal, centered between the two lines
+  const logo = c.backgroundImage ? null : c.logoImage;
+  if (logo) {
+    const { width: lw, height: lh } = doc.getImageProperties(logo);
+    const scale = 100 / Math.max(lw, lh);
+    doc.addImage(logo, logo.startsWith('data:image/png') ? 'PNG' : 'JPEG', cx - (lw * scale) / 2, 478 - (lh * scale) / 2, lw * scale, lh * scale);
+  }
+
+  // QR code + certificate ID. Scanning it opens /verify/<code>, which shows the
+  // certificate's current status (so this copy reads "Revoked" if it's revoked later).
+  // On a custom background image it gets a cream backing so it stays readable.
+  const qrSize = 56;
+  const qrX = rightX - qrSize / 2;
+  const qrY = lineY - 4 - qrSize;
+  if (c.backgroundImage) {
+    doc.setFillColor(...paper);
+    doc.roundedRect(qrX - 5, qrY - 5, qrSize + 10, qrSize + 10, 3, 3, 'F');
+  }
   doc.addImage(c.qrDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  doc.setTextColor(90, 100, 120);
-  doc.text('Scan to verify', qrX + qrSize / 2, qrY + qrSize + 9, { align: 'center' });
-  doc.text(c.code, qrX + qrSize / 2, qrY + qrSize + 18, { align: 'center' });
+  doc.setTextColor(...primary);
+  doc.setFont('times', 'bold');
+  doc.setFontSize(15);
+  centered('Scan to verify', 492, 0, rightX);
+  doc.setTextColor(...MUTED_INK);
+  doc.setFont('times', 'normal');
+  doc.setFontSize(12);
+  centered(`Certificate ID: ${c.code}`, 509, 0, rightX);
+
+  // When it was issued, and by whom
+  doc.setFont('times', 'italic');
+  doc.setFontSize(10.5);
+  centered([`Issued on ${c.issuedOn}`, c.style.closing].filter(Boolean).join('  ·  '), 550);
 }
 
 // A signature scanned on white paper: near-white pixels become transparent (with a soft
@@ -275,15 +300,15 @@ export function loadImage(url: string): Promise<HTMLImageElement | null> {
   });
 }
 
-// The seal shrunk to 400 pixels and set on white, as a JPEG: it sits on the white top of
-// the certificate, and the full-size PNG would add megabytes to every PDF. Needs a browser.
+// The seal shrunk to 400 pixels and set on the card's cream, as a JPEG: the full-size PNG
+// would add megabytes to every PDF. Needs a browser.
 export function logoForPdf(img: HTMLImageElement): string {
   const scale = Math.min(1, 400 / Math.max(img.naturalWidth, img.naturalHeight));
   const canvas = document.createElement('canvas');
   canvas.width = Math.round(img.naturalWidth * scale);
   canvas.height = Math.round(img.naturalHeight * scale);
   const ctx = canvas.getContext('2d')!;
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = CERT_PAPER;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
   return canvas.toDataURL('image/jpeg', 0.92);
