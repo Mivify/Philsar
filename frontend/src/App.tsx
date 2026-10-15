@@ -41,7 +41,9 @@ import ReactMarkdown from 'react-markdown';
 import axios from 'axios';
 import Swal from 'sweetalert2';
 import philsarLogo from './assets/logo-transparent.png';
+import certScriptFontUrl from './assets/fonts/GreatVibes-Regular.ttf?url';
 import type { CallRecording } from './meetingRecorder';
+import { drawCertificate, loadScriptFont, prepareSignature } from './certificate';
 
 // Interfaces mapping database entities
 interface User {
@@ -143,8 +145,14 @@ interface SystemSettings {
   certPrimaryColor: string;
   certAccentColor: string;
   certBackgroundImage: string;
+  certSignatoryName: string;
+  certSignatoryTitle: string;
+  certSignatureImage: string;
   certAttendanceThresholdMinutes: string;
 }
+
+// The certificate settings that hold an uploaded image
+type CertImageField = 'certBackgroundImage' | 'certSignatureImage';
 
 interface ActivityLogEntry {
   id: number;
@@ -255,15 +263,6 @@ async function landscapeProblem(file: File): Promise<string | null> {
   if (size.width > size.height) return null;
   const shape = size.width === size.height ? 'square' : 'portrait (taller than wide)';
   return `Please use a landscape (wide) photo. This one is ${size.width} × ${size.height} pixels, which is ${shape}.`;
-}
-
-// jsPDF's color setters take separate r/g/b numbers, not CSS hex strings
-function hexToRgb(hex: string): [number, number, number] {
-  const clean = hex.replace('#', '');
-  const bigint = parseInt(clean.length === 3
-    ? clean.split('').map(c => c + c).join('')
-    : clean, 16);
-  return [(bigint >> 16) & 255, (bigint >> 8) & 255, bigint & 255];
 }
 
 function parseLessons(content: string): { title: string; content: string }[] {
@@ -749,8 +748,8 @@ export default function App() {
   const [viewingAnnouncement, setViewingAnnouncement] = useState<Announcement | null>(null);
   const [myAttendance, setMyAttendance] = useState<Record<number, { secondsAttended: number; eligible: boolean; revoked?: boolean; rsvped: boolean }>>({});
   const attendanceIntervalRef = useRef<number | null>(null);
-  const logoImgRef = useRef<HTMLImageElement | null>(null);
   const certBgImgRef = useRef<HTMLImageElement | null>(null);
+  const certSignatureImgRef = useRef<HTMLImageElement | null>(null);
   const [certModalOpen, setCertModalOpen] = useState(false);
   const [certModalMeeting, setCertModalMeeting] = useState<Meeting | null>(null);
   const [certAttendanceRows, setCertAttendanceRows] = useState<Record<number, { secondsAttended: number; eligible: boolean; granted: boolean; revoked: boolean; rsvped: boolean }>>({});
@@ -777,11 +776,14 @@ export default function App() {
   const [herdStats, setHerdStats] = useState({ totalCattle: 0, readyForBreeding: 0, newThisMonth: 0 });
   const [settings, setSettings] = useState<SystemSettings>({
     certTitleText: 'Certificate of Attendance',
-    certBodyText: 'has successfully attended the virtual seminar',
+    certBodyText: 'for successfully attending the virtual seminar',
     certClosingText: 'PHILSAR Cattle Reproductive Portal',
-    certPrimaryColor: '#305CDE',
-    certAccentColor: '#7B93E0',
+    certPrimaryColor: '#5A0016',
+    certAccentColor: '#FFD25F',
     certBackgroundImage: '',
+    certSignatoryName: 'Danilda Hufana-Duran, Ph.D., L.Agr.',
+    certSignatoryTitle: 'President',
+    certSignatureImage: '',
     certAttendanceThresholdMinutes: '30'
   });
 
@@ -834,8 +836,9 @@ export default function App() {
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
 
   // Certificate Background Upload State
-  const [uploadingCertBg, setUploadingCertBg] = useState(false);
+  const [uploadingCertImage, setUploadingCertImage] = useState<CertImageField | null>(null);
   const certBgFileInputRef = useRef<HTMLInputElement>(null);
+  const certSignatureFileInputRef = useRef<HTMLInputElement>(null);
 
   // Chat State
   const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'assistant'; content: string; sources?: { moduleId: number; moduleTitle: string }[] }[]>([CHAT_GREETING]);
@@ -1153,11 +1156,6 @@ export default function App() {
       }
     }
 
-    // Preload the logo so certificate PDFs can embed it synchronously on click
-    const logoImg = new Image();
-    logoImg.src = philsarLogo;
-    logoImgRef.current = logoImg;
-
 
     if (
       window.location.pathname !== '/reset-password' &&
@@ -1232,6 +1230,17 @@ export default function App() {
       certBgImgRef.current = null;
     }
   }, [settings.certBackgroundImage]);
+
+  useEffect(() => {
+    if (settings.certSignatureImage) {
+      const signatureImg = new Image();
+      signatureImg.crossOrigin = 'anonymous';
+      signatureImg.src = settings.certSignatureImage;
+      certSignatureImgRef.current = signatureImg;
+    } else {
+      certSignatureImgRef.current = null;
+    }
+  }, [settings.certSignatureImage]);
 
 
   useEffect(() => {
@@ -2215,83 +2224,46 @@ export default function App() {
     if (!recipientName) return;
 
     const style = styleOverride || settings;
-    const [pr, pg, pb] = hexToRgb(style.certPrimaryColor || '#305CDE');
-    const [ar, ag, ab] = hexToRgb(style.certAccentColor || '#7B93E0');
-
-    // Loaded on demand — jsPDF (plus its html2canvas dependency) is only needed here,
-    // so keeping it out of the main bundle noticeably shrinks everyone's initial load.
-    const { jsPDF } = await import('jspdf');
-    const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
-    const w = doc.internal.pageSize.getWidth();
-    const h = doc.internal.pageSize.getHeight();
-
-    const bgImg = certBgImgRef.current;
-    const hasBackground = style.certBackgroundImage && bgImg && bgImg.complete && bgImg.naturalWidth > 0;
-
-    if (hasBackground) {
-      doc.addImage(bgImg as HTMLImageElement, 'JPEG', 0, 0, w, h);
-    } else {
-      // Outer border
-      doc.setDrawColor(pr, pg, pb);
-      doc.setLineWidth(4);
-      doc.rect(24, 24, w - 48, h - 48);
-      doc.setDrawColor(ar, ag, ab);
-      doc.setLineWidth(1);
-      doc.rect(34, 34, w - 68, h - 68);
-
-      const logoImg = logoImgRef.current;
-      if (logoImg && logoImg.complete && logoImg.naturalWidth > 0) {
-        doc.addImage(logoImg, 'PNG', w / 2 - 40, 50, 80, 80);
+    const loaded = (img: HTMLImageElement | null) => (img && img.complete && img.naturalWidth > 0 ? img : null);
+    const bgImg = style.certBackgroundImage ? loaded(certBgImgRef.current) : null;
+    const signatureImg = style.certSignatureImage ? loaded(certSignatureImgRef.current) : null;
+    let signature: HTMLImageElement | string | null = signatureImg;
+    if (signatureImg) {
+      try {
+        signature = prepareSignature(signatureImg);
+      } catch (error) {
+        console.warn('Signature image used as uploaded:', error);
       }
     }
 
-    doc.setTextColor(pr, pg, pb);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(30);
-    doc.text(style.certTitleText || 'Certificate of Attendance', w / 2, 165, { align: 'center' });
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(14);
-    doc.text('This certifies that', w / 2, 205, { align: 'center' });
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(26);
-    doc.text(recipientName, w / 2, 240, { align: 'center' });
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(14);
-    doc.text(style.certBodyText || 'has successfully attended the virtual seminar', w / 2, 270, { align: 'center' });
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(18);
-    doc.text(`"${meeting.title}"`, w / 2, 300, { align: 'center' });
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(14);
-    doc.text(`hosted by ${meeting.host}`, w / 2, 325, { align: 'center' });
-
-    const dateStr = issuedAt.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-    doc.setFontSize(11);
-    doc.setTextColor(ar, ag, ab);
-    doc.text(`Issued on ${dateStr} · ${style.certClosingText || 'PHILSAR Cattle Reproductive Portal'}`, w / 2, h - 60, { align: 'center' });
-
-    // QR code + certificate ID in the bottom-right corner. Scanning it opens
-    // /verify/<code>, which shows the certificate's current status (so this
-    // copy reads "Revoked" if it's revoked later). White backing keeps it
-    // readable on a custom background image.
-    const { toDataURL } = await import('qrcode');
-    const qrDataUrl = await toDataURL(`${window.location.origin}/verify/${code}`, { margin: 1, width: 320, errorCorrectionLevel: 'M' });
-    const qrSize = 72;
-    const qrX = w - 52 - qrSize;
-    const qrY = h - 64 - qrSize - 14;
-    doc.setFillColor(255, 255, 255);
-    doc.roundedRect(qrX - 6, qrY - 6, qrSize + 12, qrSize + 30, 4, 4, 'F');
-    doc.addImage(qrDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
-    doc.setTextColor(90, 100, 120);
-    doc.text('Scan to verify', qrX + qrSize / 2, qrY + qrSize + 9, { align: 'center' });
-    doc.text(code, qrX + qrSize / 2, qrY + qrSize + 18, { align: 'center' });
+    // Loaded on demand — jsPDF (plus its html2canvas dependency) is only needed here,
+    // so keeping it out of the main bundle noticeably shrinks everyone's initial load.
+    const [{ jsPDF }, { toDataURL }, scriptFont] = await Promise.all([
+      import('jspdf'),
+      import('qrcode'),
+      loadScriptFont(certScriptFontUrl)
+    ]);
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4', compress: true });
+    drawCertificate(doc, {
+      recipientName,
+      seminarTitle: meeting.title,
+      host: meeting.host,
+      issuedOn: issuedAt.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+      code,
+      qrDataUrl: await toDataURL(`${window.location.origin}/verify/${code}`, { margin: 1, width: 320, errorCorrectionLevel: 'M' }),
+      style: {
+        title: style.certTitleText,
+        statement: style.certBodyText,
+        closing: style.certClosingText,
+        primaryColor: style.certPrimaryColor,
+        accentColor: style.certAccentColor,
+        signatoryName: style.certSignatoryName,
+        signatoryTitle: style.certSignatoryTitle
+      },
+      backgroundImage: bgImg,
+      signatureImage: signature,
+      scriptFont
+    });
 
     doc.save(`Certificate - ${meeting.title} - ${recipientName}.pdf`);
   };
@@ -2416,7 +2388,8 @@ export default function App() {
     }
   };
 
-  const handleCertBackgroundUpload = async (file: File) => {
+  // Uploads the certificate's background or signature image; it's kept once the settings are saved
+  const handleCertImageUpload = async (file: File, field: CertImageField) => {
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
@@ -2430,7 +2403,8 @@ export default function App() {
       return;
     }
 
-    setUploadingCertBg(true);
+    const what = field === 'certSignatureImage' ? 'signature' : 'background';
+    setUploadingCertImage(field);
     try {
       const reader = new FileReader();
       reader.onload = async () => {
@@ -2440,35 +2414,35 @@ export default function App() {
             base64Data,
             fileName: file.name
           });
-          setSettings(prev => ({ ...prev, certBackgroundImage: uploadRes.data.url }));
+          setSettings(prev => ({ ...prev, [field]: uploadRes.data.url }));
         } catch (uploadError: any) {
-          console.error('Certificate background upload error:', uploadError);
-          showToast(uploadError.response?.data?.message || 'Failed to upload background image.', 'error');
+          console.error(`Certificate ${what} upload error:`, uploadError);
+          showToast(uploadError.response?.data?.message || `Failed to upload ${what} image.`, 'error');
         } finally {
-          setUploadingCertBg(false);
+          setUploadingCertImage(null);
         }
       };
       reader.onerror = () => {
         showToast('Error reading the image file.', 'error');
-        setUploadingCertBg(false);
+        setUploadingCertImage(null);
       };
       reader.readAsDataURL(file);
     } catch (error) {
       console.error('FileReader error:', error);
       showToast('Error processing the file.', 'error');
-      setUploadingCertBg(false);
+      setUploadingCertImage(null);
     }
   };
 
-  const handleCertBackgroundFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCertImageFileChange = (field: CertImageField) => (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      handleCertBackgroundUpload(e.target.files[0]);
+      handleCertImageUpload(e.target.files[0], field);
       e.target.value = '';
     }
   };
 
-  const handleRemoveCertBackground = () => {
-    setSettings(prev => ({ ...prev, certBackgroundImage: '' }));
+  const handleRemoveCertImage = (field: CertImageField) => {
+    setSettings(prev => ({ ...prev, [field]: '' }));
   };
 
   // Admin Dashboard CRUD Operations
@@ -6587,7 +6561,7 @@ export default function App() {
                             onChange={e => setSettings({ ...settings, certAttendanceThresholdMinutes: e.target.value })}
                           />
                           <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                            Attendees who stay in a seminar for at least this many minutes automatically qualify for a certificate. The Admin and Sub Admin can also grant one manually from the Meetings tab to someone below this threshold; only manually granted certificates can be revoked.
+                            Attendees who stay in a seminar for at least this many minutes automatically qualify for a certificate. The Admin and Sub Admin can also grant one manually from the Meetings tab to someone below this threshold, and can revoke any certificate there.
                           </div>
                         </div>
                         <div style={{ borderTop: '1px solid var(--border)', margin: '20px 0 16px', paddingTop: '16px', fontWeight: 700, fontSize: '14px' }}>
@@ -6610,6 +6584,9 @@ export default function App() {
                             value={settings.certBodyText}
                             onChange={e => setSettings({ ...settings, certBodyText: e.target.value })}
                           />
+                          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                            Printed under the attendee's name, after "This certificate is presented to".
+                          </div>
                         </div>
                         <div className="form-group">
                           <label className="form-label">Footer / Organization Line</label>
@@ -6642,8 +6619,61 @@ export default function App() {
                             />
                           </div>
                         </div>
+                        <div style={{ display: 'flex', gap: '16px' }}>
+                          <div className="form-group" style={{ flex: 2 }}>
+                            <label className="form-label">Signatory Name</label>
+                            <input
+                              className="form-control"
+                              type="text"
+                              value={settings.certSignatoryName}
+                              onChange={e => setSettings({ ...settings, certSignatoryName: e.target.value })}
+                            />
+                          </div>
+                          <div className="form-group" style={{ flex: 1 }}>
+                            <label className="form-label">Signatory Title</label>
+                            <input
+                              className="form-control"
+                              type="text"
+                              value={settings.certSignatoryTitle}
+                              onChange={e => setSettings({ ...settings, certSignatoryTitle: e.target.value })}
+                            />
+                          </div>
+                        </div>
                         <div className="form-group">
-                          <label className="form-label">Custom Background (optional — replaces the border/logo layout)</label>
+                          <label className="form-label">Signature Image (optional — printed above the signatory's name)</label>
+                          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                            {settings.certSignatureImage && (
+                              <img
+                                src={settings.certSignatureImage}
+                                alt="Signature"
+                                style={{ width: '110px', height: '56px', objectFit: 'contain', background: '#fff', borderRadius: '6px', border: '1px solid var(--border)' }}
+                              />
+                            )}
+                            <input
+                              ref={certSignatureFileInputRef}
+                              type="file"
+                              accept="image/*"
+                              style={{ display: 'none' }}
+                              onChange={handleCertImageFileChange('certSignatureImage')}
+                            />
+                            <button
+                              type="button"
+                              className="btn"
+                              onClick={() => certSignatureFileInputRef.current?.click()}
+                              disabled={uploadingCertImage !== null}
+                            >
+                              {uploadingCertImage === 'certSignatureImage' ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} Upload
+                            </button>
+                            {settings.certSignatureImage && (
+                              <button type="button" className="btn" onClick={() => handleRemoveCertImage('certSignatureImage')}>Remove</button>
+                            )}
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                            A clear scan of the signature on white paper works; the white background is removed and the margins trimmed automatically.
+                          </div>
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">Custom Background (optional — replaces the corner design)</label>
                           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                             {settings.certBackgroundImage && (
                               <img
@@ -6657,18 +6687,18 @@ export default function App() {
                               type="file"
                               accept="image/*"
                               style={{ display: 'none' }}
-                              onChange={handleCertBackgroundFileChange}
+                              onChange={handleCertImageFileChange('certBackgroundImage')}
                             />
                             <button
                               type="button"
                               className="btn"
                               onClick={() => certBgFileInputRef.current?.click()}
-                              disabled={uploadingCertBg}
+                              disabled={uploadingCertImage !== null}
                             >
-                              {uploadingCertBg ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} Upload
+                              {uploadingCertImage === 'certBackgroundImage' ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} Upload
                             </button>
                             {settings.certBackgroundImage && (
-                              <button type="button" className="btn" onClick={handleRemoveCertBackground}>Remove</button>
+                              <button type="button" className="btn" onClick={() => handleRemoveCertImage('certBackgroundImage')}>Remove</button>
                             )}
                           </div>
                         </div>
