@@ -184,10 +184,10 @@ export function drawCertificate(doc: jsPDF, c: CertificateContent): void {
   const lineY = 468;
   const leftX = 245;
   const rightX = 597;
+  // Only the signature gets a line; the QR code stands on its own
   doc.setDrawColor(150, 150, 150);
   doc.setLineWidth(1);
   doc.line(leftX - 96, lineY, leftX + 96, lineY);
-  doc.line(rightX - 96, lineY, rightX + 96, lineY);
 
   // The uploaded signature (if any) dips slightly into the line, as a pen would
   if (c.signatureImage) {
