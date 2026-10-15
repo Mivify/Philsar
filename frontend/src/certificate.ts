@@ -1,8 +1,9 @@
 // Draws a seminar certificate: diagonal bands in the primary color with accent-colored
-// outlines in two corners, the title, the recipient's name in script, the seminar, a
-// signature block, and the QR code that opens the certificate's verification page.
-// With a custom background image the corner bands are left out and the image is used
-// instead. Kept out of App.tsx so the layout can be drawn and checked on its own.
+// outlines in two corners, the PHILSAR seal, the title, the recipient's name in script,
+// the seminar, a signature block, and the QR code that opens the certificate's
+// verification page. With a custom background image the corner bands and the seal are
+// left out and the image is used instead. Kept out of App.tsx so the layout can be drawn
+// and checked on its own.
 import type { jsPDF } from 'jspdf';
 
 export interface CertificateStyle {
@@ -24,6 +25,7 @@ export interface CertificateContent {
   qrDataUrl: string;
   style: CertificateStyle;
   backgroundImage?: HTMLImageElement | string | null;
+  logoImage?: string | null;   // the seal above the title, as a data URL (see logoForPdf)
   signatureImage?: HTMLImageElement | string | null;
   scriptFont?: string | null;  // base64 TrueType font for the name; Times Italic without it
 }
@@ -61,8 +63,8 @@ export function drawCertificate(doc: jsPDF, c: CertificateContent): void {
   const sx = w / GRID_W;
   const sy = h / GRID_H;
   const cx = w / 2;
-  const primary = hexToRgb(c.style.primaryColor, [90, 0, 22]);
-  const accent = hexToRgb(c.style.accentColor, [255, 210, 95]);
+  const primary = hexToRgb(c.style.primaryColor, [12, 85, 25]);
+  const accent = hexToRgb(c.style.accentColor, [246, 204, 15]);
   // The pale bands are the primary color at 10% on white
   const tint = primary.map(v => Math.round(255 - (255 - v) * 0.1)) as Rgb;
 
@@ -95,6 +97,15 @@ export function drawCertificate(doc: jsPDF, c: CertificateContent): void {
     polygon(band([975, 515], neg(U), 400, neg(V), 400), 'S');
   }
 
+  // The seal centered above the title, which moves down to make room for it
+  const logo = c.backgroundImage ? null : c.logoImage;
+  if (logo) {
+    const { width: lw, height: lh } = doc.getImageProperties(logo);
+    const scale = 66 / Math.max(lw, lh);
+    doc.addImage(logo, logo.startsWith('data:image/png') ? 'PNG' : 'JPEG', cx - (lw * scale) / 2, 14, lw * scale, lh * scale);
+  }
+  const titleY = logo ? 128 : 98;
+
   // Centered text; letter spacing is added to the width so it stays centered
   const centered = (text: string, y: number, charSpace = 0) => {
     const width = doc.getTextWidth(text) + charSpace * Math.max(text.length - 1, 0);
@@ -117,11 +128,11 @@ export function drawCertificate(doc: jsPDF, c: CertificateContent): void {
   doc.setTextColor(...INK);
   doc.setFont('times', 'bold');
   fit(mainTitle, 48, 420, 1);
-  centered(mainTitle, subTitle ? 98 : 112, 1);
+  centered(mainTitle, subTitle ? titleY : titleY + 14, 1);
   if (subTitle) {
     doc.setFont('times', 'italic');
     fit(subTitle, 24, 420, 1);
-    centered(subTitle, 130, 1);
+    centered(subTitle, titleY + 32, 1);
   }
 
   doc.setFont('helvetica', 'normal');
@@ -251,6 +262,31 @@ export function prepareSignature(img: HTMLImageElement): string {
   trimmed.height = ink.height;
   trimmed.getContext('2d')!.drawImage(canvas, ink.x, ink.y, ink.width, ink.height, 0, 0, ink.width, ink.height);
   return trimmed.toDataURL('image/png');
+}
+
+// An image for the certificate, or null if it can't be loaded. Needs a browser.
+export function loadImage(url: string): Promise<HTMLImageElement | null> {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+}
+
+// The seal shrunk to 400 pixels and set on white, as a JPEG: it sits on the white top of
+// the certificate, and the full-size PNG would add megabytes to every PDF. Needs a browser.
+export function logoForPdf(img: HTMLImageElement): string {
+  const scale = Math.min(1, 400 / Math.max(img.naturalWidth, img.naturalHeight));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(img.naturalWidth * scale);
+  canvas.height = Math.round(img.naturalHeight * scale);
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', 0.92);
 }
 
 // The name font, read once and kept as base64 for jsPDF; null if it can't be loaded

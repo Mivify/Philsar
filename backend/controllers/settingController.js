@@ -6,8 +6,8 @@ const DEFAULT_SETTINGS = {
     certTitleText: 'Certificate of Attendance',
     certBodyText: 'for successfully attending the virtual seminar',
     certClosingText: 'PHILSAR Cattle Reproductive Portal',
-    certPrimaryColor: '#5A0016',
-    certAccentColor: '#FFD25F',
+    certPrimaryColor: '#0C5519',
+    certAccentColor: '#F6CC0F',
     certBackgroundImage: '',
     certSignatoryName: 'Danilda Hufana-Duran, Ph.D., L.Agr.',
     certSignatoryTitle: 'President',
@@ -15,13 +15,13 @@ const DEFAULT_SETTINGS = {
     certAttendanceThresholdMinutes: '30'
 };
 
-// Defaults from before the maroon-and-gold certificate. A saved value that is still one of
-// these was never customized, so it follows the current default instead (the old statement
-// also wouldn't read right after "This certificate is presented to").
+// Defaults of earlier certificate designs (brown, blue, then maroon and gold). A saved value
+// that is still one of these was never customized, so it follows the current default
+// instead (the old statement also wouldn't read right after "This certificate is presented to").
 const RETIRED_DEFAULTS = {
     certBodyText: ['has successfully attended the virtual seminar'],
-    certPrimaryColor: ['#8B5E3C', '#305CDE'],
-    certAccentColor: ['#D4A574', '#7B93E0']
+    certPrimaryColor: ['#8B5E3C', '#305CDE', '#5A0016'],
+    certAccentColor: ['#D4A574', '#7B93E0', '#FFD25F']
 };
 
 const toSettingsMap = (rows) => {

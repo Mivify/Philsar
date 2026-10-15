@@ -43,7 +43,7 @@ import Swal from 'sweetalert2';
 import philsarLogo from './assets/logo-transparent.png';
 import certScriptFontUrl from './assets/fonts/GreatVibes-Regular.ttf?url';
 import type { CallRecording } from './meetingRecorder';
-import { drawCertificate, loadScriptFont, prepareSignature } from './certificate';
+import { drawCertificate, loadImage, loadScriptFont, logoForPdf, prepareSignature } from './certificate';
 
 // Interfaces mapping database entities
 interface User {
@@ -778,8 +778,8 @@ export default function App() {
     certTitleText: 'Certificate of Attendance',
     certBodyText: 'for successfully attending the virtual seminar',
     certClosingText: 'PHILSAR Cattle Reproductive Portal',
-    certPrimaryColor: '#5A0016',
-    certAccentColor: '#FFD25F',
+    certPrimaryColor: '#0C5519',
+    certAccentColor: '#F6CC0F',
     certBackgroundImage: '',
     certSignatoryName: 'Danilda Hufana-Duran, Ph.D., L.Agr.',
     certSignatoryTitle: 'President',
@@ -2238,11 +2238,21 @@ export default function App() {
 
     // Loaded on demand — jsPDF (plus its html2canvas dependency) is only needed here,
     // so keeping it out of the main bundle noticeably shrinks everyone's initial load.
-    const [{ jsPDF }, { toDataURL }, scriptFont] = await Promise.all([
+    // A custom background replaces the seal along with the corner design.
+    const [{ jsPDF }, { toDataURL }, scriptFont, logoImg] = await Promise.all([
       import('jspdf'),
       import('qrcode'),
-      loadScriptFont(certScriptFontUrl)
+      loadScriptFont(certScriptFontUrl),
+      bgImg ? Promise.resolve(null) : loadImage(philsarLogo)
     ]);
+    let logo: string | null = null;
+    if (logoImg) {
+      try {
+        logo = logoForPdf(logoImg);
+      } catch (error) {
+        console.warn('Certificate printed without the seal:', error);
+      }
+    }
     const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4', compress: true });
     drawCertificate(doc, {
       recipientName,
@@ -2261,6 +2271,7 @@ export default function App() {
         signatoryTitle: style.certSignatoryTitle
       },
       backgroundImage: bgImg,
+      logoImage: logo,
       signatureImage: signature,
       scriptFont
     });
@@ -6673,7 +6684,7 @@ export default function App() {
                           </div>
                         </div>
                         <div className="form-group">
-                          <label className="form-label">Custom Background (optional — replaces the corner design)</label>
+                          <label className="form-label">Custom Background (optional — replaces the corner design and the PHILSAR seal)</label>
                           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                             {settings.certBackgroundImage && (
                               <img
