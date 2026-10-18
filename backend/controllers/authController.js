@@ -317,7 +317,8 @@ const updateProfile = async (req, res) => {
             }
             const currentMatches = await bcrypt.compare(currentPassword || '', user.password);
             if (!currentMatches) {
-                return res.status(401).json({ message: 'Incorrect current password' });
+                // 400, not 401: the session is fine, and the app signs out on a 401
+                return res.status(400).json({ message: 'Incorrect current password' });
             }
             user.password = await bcrypt.hash(password, 10);
             user.passwordChangedAt = Date.now();
@@ -765,7 +766,8 @@ const changeEmail = async (req, res) => {
 
         const currentMatches = await bcrypt.compare(currentPassword || '', user.password);
         if (!currentMatches) {
-            return res.status(401).json({ message: 'Incorrect current password' });
+            // 400, not 401: the session is fine, and the app signs out on a 401
+            return res.status(400).json({ message: 'Incorrect current password' });
         }
 
         if (newEmail.toLowerCase() === user.email.toLowerCase()) {

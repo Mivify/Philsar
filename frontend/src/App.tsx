@@ -731,6 +731,13 @@ export default function App() {
   // stored user disappears even though this tab is still signed in.
   const sessionUserRef = useRef<User | null>(null);
   useEffect(() => { sessionUserRef.current = currentUser; }, [currentUser]);
+  // Goes up whenever the signed-in account changes (sign-in, sign-out, an expired session),
+  // so replies to requests made for the previous account are ignored instead of shown
+  const sessionRef = useRef(0);
+  // Whether this account's dashboard numbers and lesson progress have arrived; until then
+  // the Dashboard shows placeholders rather than zeros
+  const [userDataLoaded, setUserDataLoaded] = useState(false);
+  const [progressLoaded, setProgressLoaded] = useState(false);
 
   // role checker
   const isSystemAdmin = currentUser?.role === 'Admin';
@@ -1078,20 +1085,45 @@ export default function App() {
   }, [activeMeeting]);
 
 
+  // Forgets the signed-in account's data, so the next account to sign in starts empty
+  const clearSessionData = () => {
+    sessionRef.current += 1;
+    setUserDataLoaded(false);
+    setProgressLoaded(false);
+    setCompletedLessonsMap({});
+    setAssessments([]);
+    setHerdStats({ totalCattle: 0, readyForBreeding: 0, newThisMonth: 0 });
+    setMyAttendance({});
+    setCattleList([]);
+    setCattleModalOpen(false);
+    setDssResult(null);
+  };
+
   useEffect(() => {
+    // Each request remembers the session it was sent in, so a 401 for an earlier
+    // session (another account, before a sign-out) can't sign out the current one
+    const requestId = axios.interceptors.request.use(config => {
+      (config as typeof config & { session?: number }).session = sessionRef.current;
+      return config;
+    });
     const interceptorId = axios.interceptors.response.use(
       response => response,
       error => {
-        if (error.response?.status === 401) {
+        const sentInSession = (error.config as { session?: number } | undefined)?.session;
+        if (error.response?.status === 401 && sentInSession === sessionRef.current && axios.defaults.headers.common['Authorization']) {
           delete axios.defaults.headers.common['Authorization'];
           localStorage.removeItem('philsar_user');
           setIsAuthenticated(false);
           setCurrentUser(null);
+          clearSessionData();
         }
         return Promise.reject(error);
       }
     );
-    return () => axios.interceptors.response.eject(interceptorId);
+    return () => {
+      axios.interceptors.request.eject(requestId);
+      axios.interceptors.response.eject(interceptorId);
+    };
   }, []);
 
   // Auto-logout after 15 minutes with no user interaction
@@ -1270,6 +1302,7 @@ export default function App() {
 
   // `user` is passed right after signing in, before currentUser has been updated
   const fetchGlobalData = async (user: User | null = sessionUserRef.current) => {
+    const session = sessionRef.current;
     try {
       setDataLoading(true);
       const userId = user?.id ?? null;
@@ -1281,6 +1314,8 @@ export default function App() {
         axios.get(`${API_BASE}/landing-images`),
         axios.get(`${API_BASE}/announcements`)
       ]);
+      // The account changed while this loaded (meetings depend on the role)
+      if (session !== sessionRef.current) return;
 
       setModules(modulesRes.data);
       setMeetings(meetingsRes.data);
@@ -1294,9 +1329,11 @@ export default function App() {
           axios.get(`${API_BASE}/assessments/stats`, { params: { userId } }),
           axios.get(`${API_BASE}/meetings/attendance/${userId}`)
         ]);
+        if (session !== sessionRef.current) return;
         setAssessments(assessmentsRes.data);
         setHerdStats(herdStatsRes.data);
         setMyAttendance(attendanceRes.data);
+        setUserDataLoaded(true);
       } else {
         setAssessments([]);
         setHerdStats({ totalCattle: 0, readyForBreeding: 0, newThisMonth: 0 });
@@ -1311,14 +1348,21 @@ export default function App() {
 
 
   const refreshSessionData = (user: User) => {
+    // Replies that arrive after this account signed out are dropped
+    const session = sessionRef.current;
     // Lesson completion is server-persisted so it survives cleared storage / device changes
     axios.get(`${API_BASE}/progress/${user.id}`)
-      .then(res => setCompletedLessonsMap(res.data))
+      .then(res => {
+        if (session !== sessionRef.current) return;
+        setCompletedLessonsMap(res.data);
+        setProgressLoaded(true);
+      })
       .catch(err => console.error('Error loading lesson progress:', err));
     // Refresh from the server rather than trusting a possibly-stale cached snapshot
     // (e.g. modulesCompleted/dssAssessmentsRun changed via some other path/device since login)
     axios.get(`${API_BASE}/auth/profile/${user.id}`)
       .then(res => {
+        if (session !== sessionRef.current) return;
         const refreshed = { ...res.data, token: user.token };
         setCurrentUser(refreshed);
         localStorage.setItem('philsar_user', JSON.stringify(refreshed));
@@ -1333,8 +1377,10 @@ export default function App() {
   // arrives mid-session also reloads the profile, so the sidebar and pages switch
   // to the new role without signing out.
   const fetchNotifications = async (user: User) => {
+    const session = sessionRef.current;
     try {
       const { data } = await axios.get(`${API_BASE}/notifications`);
+      if (session !== sessionRef.current) return;
       const list: AppNotification[] = data.notifications;
       const known = knownNotificationIds.current;
       if (known && list.some(n => n.type === 'role_changed' && !known.has(n.id))) {
@@ -1464,6 +1510,7 @@ export default function App() {
         password: authForm.password
       });
       const user = { ...response.data.user, token: response.data.token };
+      clearSessionData();
       axios.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
       localStorage.setItem('philsar_user', JSON.stringify(user));
       setCurrentUser(user);
@@ -1653,12 +1700,11 @@ export default function App() {
     delete axios.defaults.headers.common['Authorization'];
     setIsAuthenticated(false);
     setCurrentUser(null);
-    setCompletedLessonsMap({});
+    clearSessionData();
     setActiveTab('home');
 
     setChatMessages([CHAT_GREETING]);
     setInputMessage('');
-    setDssResult(null);
   };
 
   // Profile Updates
@@ -3255,6 +3301,8 @@ export default function App() {
   // Registered sessions that haven't ended — live ones included, since the user
   // can still join them.
   const myRegisteredSessions = rsvpedMeetingsList.filter(m => m.status !== 'Ended');
+  // Until both have arrived, the Dashboard's numbers would read 0
+  const dashboardReady = userDataLoaded && progressLoaded;
   const filteredSessions = sessionFilter === 'upcoming'
     ? meetings.filter(m => m.status !== 'Ended')
     : sessionFilter === 'recorded'
@@ -4163,7 +4211,7 @@ export default function App() {
                           </div>
                           {session.status === 'Live' ? (
                             <div className="session-join">LIVE</div>
-                          ) : myAttendance[session.id]?.rsvped ? (
+                          ) : !userDataLoaded ? null : myAttendance[session.id]?.rsvped ? (
                             <div className="session-join" style={{ color: 'var(--green-mid)', background: 'rgba(45,106,79,0.1)', border: '1px solid rgba(45,106,79,0.25)' }}>
                               ✓ Registered
                             </div>
@@ -4298,9 +4346,11 @@ export default function App() {
               <div className="stats-grid">
                 <div className="stat-card amber" style={{ cursor: 'pointer' }} onClick={() => openCattleModal('all')}>
                   <div className="stat-icon">🐄</div>
-                  <div className="stat-value">{herdStats.totalCattle}</div>
+                  <div className="stat-value">{dashboardReady ? herdStats.totalCattle : '—'}</div>
                   <div className="stat-label">Total Cattle</div>
-                  {herdStats.newThisMonth > 0 ? (
+                  {!dashboardReady ? (
+                    <div className="stat-change neutral">Loading…</div>
+                  ) : herdStats.newThisMonth > 0 ? (
                     <div className="stat-change up">↑ {herdStats.newThisMonth} this month</div>
                   ) : (
                     <div className="stat-change neutral">No new cattle this month</div>
@@ -4309,25 +4359,25 @@ export default function App() {
                 </div>
                 <div className="stat-card green" style={{ cursor: 'pointer' }} onClick={() => openCattleModal('ready')}>
                   <div className="stat-icon">🌿</div>
-                  <div className="stat-value">{herdStats.readyForBreeding}</div>
+                  <div className="stat-value">{dashboardReady ? herdStats.readyForBreeding : '—'}</div>
                   <div className="stat-label">Ready for Breeding</div>
                   <div className="stat-change neutral">
-                    {herdStats.totalCattle > 0 ? Math.round((herdStats.readyForBreeding / herdStats.totalCattle) * 100) : 0}% of your herd
+                    {!dashboardReady ? 'Loading…' : `${herdStats.totalCattle > 0 ? Math.round((herdStats.readyForBreeding / herdStats.totalCattle) * 100) : 0}% of your herd`}
                   </div>
                   <div className="stat-card-hint">Click to view cattle →</div>
                 </div>
                 <div className="stat-card brown" style={{ cursor: 'pointer' }} onClick={() => setModulesCompletedModalOpen(true)}>
                   <div className="stat-icon">📖</div>
-                  <div className="stat-value">{completedModulesList.length}</div>
+                  <div className="stat-value">{dashboardReady ? completedModulesList.length : '—'}</div>
                   <div className="stat-label">Modules Completed</div>
-                  <div className="stat-change neutral">Active learner</div>
+                  <div className="stat-change neutral">{dashboardReady ? 'Active learner' : 'Loading…'}</div>
                   <div className="stat-card-hint">Click to view modules →</div>
                 </div>
                 <div className="stat-card sage" style={{ cursor: 'pointer' }} onClick={() => setSeminarsAttendedModalOpen(true)}>
                   <div className="stat-icon">🎓</div>
-                  <div className="stat-value">{rsvpedMeetingsList.length}</div>
+                  <div className="stat-value">{dashboardReady ? rsvpedMeetingsList.length : '—'}</div>
                   <div className="stat-label">Seminars Registered</div>
-                  <div className="stat-change neutral">{myRegisteredSessions.length} upcoming</div>
+                  <div className="stat-change neutral">{dashboardReady ? `${myRegisteredSessions.length} upcoming` : 'Loading…'}</div>
                   <div className="stat-card-hint">Click to view seminars →</div>
                 </div>
               </div>
@@ -4340,7 +4390,11 @@ export default function App() {
                     <button className="card-action" onClick={() => handleTabNavigate('dss')}>Run new</button>
                   </div>
                   <div className="card-body">
-                    {assessments.length === 0 ? (
+                    {!userDataLoaded ? (
+                      <div style={{ color: 'var(--text-muted)', fontSize: '13px', textAlign: 'center', padding: '20px' }}>
+                        Loading your assessments…
+                      </div>
+                    ) : assessments.length === 0 ? (
                       <div style={{ color: 'var(--text-muted)', fontSize: '13px', textAlign: 'center', padding: '20px' }}>
                         No breeding evaluations recorded yet. Run a DSS evaluation to populate this log.
                       </div>
@@ -4388,7 +4442,7 @@ export default function App() {
                         </div>
                         {session.status === 'Live' ? (
                           <div className="session-join">LIVE</div>
-                        ) : myAttendance[session.id]?.rsvped ? (
+                        ) : !userDataLoaded ? null : myAttendance[session.id]?.rsvped ? (
                           <div className="session-join" style={{ color: 'var(--green-mid)', background: 'rgba(45,106,79,0.1)', border: '1px solid rgba(45,106,79,0.25)' }}>
                             ✓ Registered
                           </div>
@@ -4419,12 +4473,12 @@ export default function App() {
                       const parsedLessonsList = parseLessons(mod.content);
                       const totalL = parsedLessonsList.length || 1;
                       const completedL = (completedLessonsMap[mod.id] || []).length;
-                      const pct = Math.round((completedL / totalL) * 100);
+                      const pct = progressLoaded ? Math.round((completedL / totalL) * 100) : 0;
                       return (
                         <div key={mod.id} className="progress-item">
                           <div className="progress-label">
                             <span className="progress-name">🐄 {mod.title}</span>
-                            <span className="progress-pct">{pct}%</span>
+                            <span className="progress-pct">{progressLoaded ? `${pct}%` : '—'}</span>
                           </div>
                           <div className="progress-bar">
                             <div
@@ -5007,7 +5061,7 @@ export default function App() {
                       {session.status === 'Live' ? (
                         <button className="meeting-action live">Join Live</button>
                       ) : session.status === 'Upcoming' ? (
-                        myAttendance[session.id]?.rsvped ? (
+                        !userDataLoaded ? null : myAttendance[session.id]?.rsvped ? (
                           <button className="meeting-action" style={{ background: 'var(--green-pale)', color: 'var(--green-dark)', cursor: 'default' }} disabled>
                             ✓ Registered
                           </button>
