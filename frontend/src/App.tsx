@@ -4469,29 +4469,32 @@ export default function App() {
                     <button className="card-action" onClick={() => handleTabNavigate('learning')}>Enter Center →</button>
                   </div>
                   <div className="card-body">
-                    {modules.map((mod) => {
-                      const parsedLessonsList = parseLessons(mod.content);
-                      const totalL = parsedLessonsList.length || 1;
-                      const completedL = (completedLessonsMap[mod.id] || []).length;
-                      const pct = progressLoaded ? Math.round((completedL / totalL) * 100) : 0;
-                      return (
-                        <div key={mod.id} className="progress-item">
-                          <div className="progress-label">
-                            <span className="progress-name">🐄 {mod.title}</span>
-                            <span className="progress-pct">{progressLoaded ? `${pct}%` : '—'}</span>
+                    {/* About four modules tall, then it scrolls, so new modules don't lengthen the page */}
+                    <div style={{ maxHeight: '230px', overflowY: 'auto', paddingRight: '8px' }}>
+                      {modules.map((mod) => {
+                        const parsedLessonsList = parseLessons(mod.content);
+                        const totalL = parsedLessonsList.length || 1;
+                        const completedL = (completedLessonsMap[mod.id] || []).length;
+                        const pct = progressLoaded ? Math.round((completedL / totalL) * 100) : 0;
+                        return (
+                          <div key={mod.id} className="progress-item">
+                            <div className="progress-label">
+                              <span className="progress-name">🐄 {mod.title}</span>
+                              <span className="progress-pct">{progressLoaded ? `${pct}%` : '—'}</span>
+                            </div>
+                            <div className="progress-bar">
+                              <div
+                                className="progress-fill"
+                                style={{
+                                  width: `${pct}%`,
+                                  background: pct === 100 ? 'var(--green-light)' : pct > 0 ? 'var(--amber)' : 'var(--sage)'
+                                }}
+                              ></div>
+                            </div>
                           </div>
-                          <div className="progress-bar">
-                            <div
-                              className="progress-fill"
-                              style={{
-                                width: `${pct}%`,
-                                background: pct === 100 ? 'var(--green-light)' : pct > 0 ? 'var(--amber)' : 'var(--sage)'
-                              }}
-                            ></div>
-                          </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
 
