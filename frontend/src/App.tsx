@@ -41,9 +41,8 @@ import ReactMarkdown from 'react-markdown';
 import axios from 'axios';
 import Swal from 'sweetalert2';
 import philsarLogo from './assets/logo-transparent.png';
-import certScriptFontUrl from './assets/fonts/GreatVibes-Regular.ttf?url';
 import type { CallRecording } from './meetingRecorder';
-import { CERT_PAPER, drawCertificate, loadImage, loadScriptFont, logoForPdf, prepareSignature } from './certificate';
+import { CERT_PAPER, drawCertificate, loadImage, logoForPdf, prepareSignature } from './certificate';
 
 // Interfaces mapping database entities
 interface User {
@@ -2284,12 +2283,10 @@ export default function App() {
 
     // Loaded on demand — jsPDF (plus its html2canvas dependency) is only needed here,
     // so keeping it out of the main bundle noticeably shrinks everyone's initial load.
-    // A custom background replaces the seal along with the corner design.
-    const [{ jsPDF }, { toDataURL }, scriptFont, logoImg] = await Promise.all([
+    const [{ jsPDF }, { toDataURL }, logoImg] = await Promise.all([
       import('jspdf'),
       import('qrcode'),
-      loadScriptFont(certScriptFontUrl),
-      bgImg ? Promise.resolve(null) : loadImage(philsarLogo)
+      loadImage(philsarLogo)
     ]);
     let logo: string | null = null;
     if (logoImg) {
@@ -2304,7 +2301,7 @@ export default function App() {
       recipientName,
       seminarTitle: meeting.title,
       host: meeting.host,
-      issuedOn: issuedAt.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+      issuedAt,
       code,
       qrDataUrl: await toDataURL(`${window.location.origin}/verify/${code}`, { margin: 1, width: 320, errorCorrectionLevel: 'M', color: { dark: '#111111', light: CERT_PAPER } }),
       style: {
@@ -2318,8 +2315,7 @@ export default function App() {
       },
       backgroundImage: bgImg,
       logoImage: logo,
-      signatureImage: signature,
-      scriptFont
+      signatureImage: signature
     });
 
     doc.save(`Certificate - ${meeting.title} - ${recipientName}.pdf`);
@@ -6741,7 +6737,7 @@ export default function App() {
                           </div>
                         </div>
                         <div className="form-group">
-                          <label className="form-label">Custom Background (optional — replaces the corner design and the PHILSAR seal)</label>
+                          <label className="form-label">Custom Background (optional — replaces the corner design)</label>
                           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                             {settings.certBackgroundImage && (
                               <img
