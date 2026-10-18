@@ -4469,7 +4469,7 @@ export default function App() {
                     <button className="card-action" onClick={() => handleTabNavigate('learning')}>Enter Center →</button>
                   </div>
                   <div className="card-body">
-                    {modules.slice(0, 4).map((mod) => {
+                    {modules.map((mod) => {
                       const parsedLessonsList = parseLessons(mod.content);
                       const totalL = parsedLessonsList.length || 1;
                       const completedL = (completedLessonsMap[mod.id] || []).length;
