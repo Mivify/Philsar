@@ -4066,7 +4066,11 @@ export default function App() {
           <div className="topbar-left">
             <button
               className="mobile-menu-btn"
-              onClick={() => setSidebarOpen(!sidebarOpen)}
+              onClick={() => {
+                // This button is only shown on phones, where the chat window would cover the menu
+                setChatheadOpen(false);
+                setSidebarOpen(!sidebarOpen);
+              }}
             >
               <Menu size={20} />
             </button>
