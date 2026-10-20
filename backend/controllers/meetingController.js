@@ -447,6 +447,12 @@ const getJaasToken = async (req, res) => {
         if (!canViewMeeting(meeting, user.role)) {
             return res.status(403).json({ message: 'This meeting is not open to your role.' });
         }
+        // The call opens when the seminar goes live; its hosts can join earlier to get ready
+        if (!isHost(user.role) && meeting.status !== 'Live') {
+            return res.status(403).json({
+                message: meeting.status === 'Ended' ? 'This seminar has already ended.' : "This seminar hasn't started yet. You can join once it's live."
+            });
+        }
 
         if (!process.env.JAAS_PRIVATE_KEY) {
             return res.status(503).json({ message: 'Video call authentication is not configured' });

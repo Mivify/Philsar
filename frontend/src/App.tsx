@@ -975,13 +975,25 @@ export default function App() {
       (async () => {
 
         let jaasJwt: string | undefined;
+        // Set when the server won't let this user into the call (the seminar isn't live yet)
+        let refusal: string | undefined;
         try {
           const tokenRes = await axios.get(`${API_BASE}/meetings/${activeMeeting.id}/jaas-token`);
           jaasJwt = tokenRes.data.token;
         } catch (err) {
-          console.error('Failed to get JaaS token, joining anonymously:', err);
+          if (axios.isAxiosError(err) && err.response?.status === 403) {
+            refusal = err.response.data?.message || "You can't join this call right now.";
+          } else {
+            console.error('Failed to get JaaS token, joining anonymously:', err);
+          }
         }
         if (cancelled) return;
+        if (refusal) {
+          showToast(refusal, 'info');
+          setMeetingModalOpen(false);
+          setActiveMeeting(null);
+          return;
+        }
 
       timer = window.setTimeout(() => {
         const JitsiMeet = (window as any).JitsiMeetExternalAPI;
@@ -1947,7 +1959,7 @@ export default function App() {
       }
 
       if (!alreadyRsvped) {
-        showToast('RSVP registered successfully! You can now join this seminar\'s video room. We added this meeting to your schedule.', 'success');
+        showToast('RSVP registered successfully! You can join this seminar\'s video room once it goes live. We added this meeting to your schedule.', 'success');
       }
     } catch (error) {
       console.error(error);
@@ -1955,7 +1967,26 @@ export default function App() {
     }
   };
 
-  const handleJoinMeeting = (meeting: Meeting) => {
+  const handleJoinMeeting = async (meeting: Meeting) => {
+    // An upcoming seminar has no call to join yet (its hosts can still open the room early).
+    // The list may be out of date if the host has just gone live, so the status is checked
+    // with the server first
+    if (meeting.status === 'Upcoming' && !isModuleOrMeetingAdmin) {
+      const session = sessionRef.current;
+      const latest = await axios.get(`${API_BASE}/meetings`)
+        .then(res => {
+          if (session === sessionRef.current) setMeetings(res.data);
+          return (res.data as Meeting[]).find(m => m.id === meeting.id);
+        })
+        .catch(() => undefined);
+      if (!latest || latest.status === 'Upcoming') {
+        showToast(myAttendance[meeting.id]?.rsvped
+          ? "This seminar hasn't started yet. You can join once it's live."
+          : "This seminar hasn't started yet. RSVP now, and you can join once it's live.", 'info');
+        return;
+      }
+      meeting = latest;
+    }
     // The video room only actually embeds for non-Ended meetings — gate those behind
     // having RSVP'd, so the room isn't open to every logged-in account by default.
     // Admin/Sub Admin/Secretary (who host, manage, or take minutes for these) are exempt.
