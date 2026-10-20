@@ -101,14 +101,14 @@ const toConversationTurns = (history) => {
 
 const handleChat = async (req, res) => {
     try {
-        const { message, user, history } = req.body;
+        const { message, history } = req.body;
 
         if (!message) {
             return res.status(400).json({ message: 'No chat message provided' });
         }
 
         // Logged the users message in the admin log page
-        const actor = await User.findByPk(req.user.id, { attributes: ['name', 'role'] });
+        const actor = await User.findByPk(req.user.id, { attributes: ['name', 'role', 'organization'] });
         const truncatedMessage = message.length > MAX_LOGGED_MESSAGE_LENGTH
             ? `${message.slice(0, MAX_LOGGED_MESSAGE_LENGTH)}…`
             : message;
@@ -117,9 +117,11 @@ const handleChat = async (req, res) => {
             action: 'chatbot_message', category: 'chatbot', details: `Asked: "${truncatedMessage}"`, req
         });
 
+        // Who the user is comes from their account, not from the request, so nobody can
+        // claim another name or role to the chatbot
         let userContext = '';
-        if (user && user.name) {
-            userContext = `\nThe user you are talking to is named "${user.name}"${user.role ? `, their role is "${user.role}"` : ''}${user.organization ? `, and they are from the organization "${user.organization}"` : ''}. You should address them by name and be aware of their profile role when answering.`;
+        if (actor && actor.name) {
+            userContext = `\nThe user you are talking to is named "${actor.name}"${actor.role ? `, their role is "${actor.role}"` : ''}${actor.organization ? `, and they are from the organization "${actor.organization}"` : ''}. You should address them by name and be aware of their profile role when answering.`;
         }
 
         // Add current date/time context so the AI knows the date today

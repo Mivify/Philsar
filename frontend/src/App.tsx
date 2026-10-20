@@ -1963,7 +1963,9 @@ export default function App() {
       }
     } catch (error) {
       console.error(error);
-      showToast('Error registering RSVP.', 'error');
+      // e.g. the seminar started or ended after this page loaded the list
+      const reason = axios.isAxiosError(error) ? error.response?.data?.message : undefined;
+      showToast(reason || 'Error registering RSVP.', 'error');
     }
   };
 

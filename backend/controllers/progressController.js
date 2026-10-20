@@ -70,10 +70,15 @@ const markLessonComplete = async (req, res) => {
         if (!user) return res.status(404).json({ message: 'User not found' });
 
         const totalLessons = countLessons(moduleItem.content);
+        // Only a lesson the module really has can be marked complete
+        const index = Number(lessonIndex);
+        if (!Number.isInteger(index) || index < 0 || index >= totalLessons) {
+            return res.status(400).json({ message: 'That lesson is not part of this module' });
+        }
         const countBefore = await LessonProgress.count({ where: { userId, moduleId } });
         const wasComplete = totalLessons > 0 && countBefore >= totalLessons;
 
-        await LessonProgress.findOrCreate({ where: { userId, moduleId, lessonIndex } });
+        await LessonProgress.findOrCreate({ where: { userId, moduleId, lessonIndex: index } });
 
         const countAfter = await LessonProgress.count({ where: { userId, moduleId } });
         const isNowComplete = totalLessons > 0 && countAfter >= totalLessons;

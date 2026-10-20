@@ -14,6 +14,11 @@ const HEARTBEAT_SECONDS = 30;
 const MAX_ELAPSED_PER_PING_SECONDS = 5 * 60;
 const DEFAULT_CERTIFICATE_THRESHOLD_MINUTES = 30;
 
+// When each attendee last checked in from a call ("meetingId:userId" -> time), as this server
+// measured it: a check-in can't count more time than has really passed since the previous one
+const lastCheckIns = new Map();
+const STALE_CHECK_IN_MS = 60 * 60 * 1000;
+
 // Admin-configurable via the Settings tab
 const getCertificateThresholdSeconds = async () => {
     const setting = await Setting.findByPk('certAttendanceThresholdMinutes');
@@ -44,12 +49,26 @@ const canViewMeeting = (meeting, role) => {
     return meeting.allowedRoles.split(',').map(r => r.trim()).filter(Boolean).includes(role);
 };
 
+// Admins, Sub Admins and Secretaries keep the minutes: as in the app, they're in a meeting's
+// call without RSVPing and see its minutes before it ends
+const MINUTES_ROLES = ['Admin', 'Sub Admin', 'Secretary'];
+const keepsMinutes = role => MINUTES_ROLES.includes(role);
+
+// A meeting as this role may see it: its minutes only once it has ended (unless they keep
+// them), and its video link only to its hosts
+const meetingForRole = (meeting, role) => {
+    const data = meeting.toJSON();
+    if (!keepsMinutes(role) && data.status !== 'Ended') data.minutes = null;
+    if (!isHost(role)) data.videoLink = null;
+    return data;
+};
+
 const getMeetings = async (req, res) => {
     try {
         const meetings = await Meeting.findAll({
             order: [['createdAt', 'DESC']]
         });
-        res.status(200).json(meetings.filter(m => canViewMeeting(m, req.user.role)));
+        res.status(200).json(meetings.filter(m => canViewMeeting(m, req.user.role)).map(m => meetingForRole(m, req.user.role)));
     } catch (error) {
         res.status(500).json({ message: 'Error retrieving meetings', error: error.message });
     }
@@ -66,6 +85,12 @@ const rsvpMeeting = async (req, res) => {
         }
         if (!canViewMeeting(meeting, req.user.role)) {
             return res.status(403).json({ message: 'This meeting is not open to your role.' });
+        }
+        // As in the app, RSVPs are only taken before a seminar starts
+        if (meeting.status !== 'Upcoming') {
+            return res.status(400).json({
+                message: meeting.status === 'Ended' ? 'This seminar has already ended.' : 'This seminar has already started, so RSVPs are closed.'
+            });
         }
 
 
@@ -90,7 +115,7 @@ const rsvpMeeting = async (req, res) => {
             }
         }
 
-        res.status(200).json({ message: 'RSVP registered successfully', meeting });
+        res.status(200).json({ message: 'RSVP registered successfully', meeting: meetingForRole(meeting, req.user.role) });
     } catch (error) {
         res.status(500).json({ message: 'Error registering RSVP', error: error.message });
     }
@@ -225,21 +250,33 @@ const pingAttendance = async (req, res) => {
             ? Math.min(Math.max(parsedElapsed, 1), MAX_ELAPSED_PER_PING_SECONDS)
             : HEARTBEAT_SECONDS;
 
-        const [record] = await MeetingAttendance.findOrCreate({
-            where: { userId, meetingId: id },
-            defaults: { secondsAttended: 0 }
-        });
-        record.secondsAttended += safeElapsed;
-        await record.save();
+        // Time only counts while the seminar is live, for someone allowed in its call, and
+        // never more than has really passed since their previous check-in
+        const now = Date.now();
+        const checkInKey = `${meeting.id}:${userId}`;
+        const previousCheckIn = lastCheckIns.get(checkInKey);
+        lastCheckIns.set(checkInKey, now);
+        if (lastCheckIns.size > 1000) {
+            for (const [key, at] of lastCheckIns) if (now - at > STALE_CHECK_IN_MS) lastCheckIns.delete(key);
+        }
+
+        const inCall = meeting.status === 'Live' && canViewMeeting(meeting, req.user.role);
+        const record = inCall && keepsMinutes(req.user.role)
+            ? (await MeetingAttendance.findOrCreate({ where: { userId, meetingId: id }, defaults: { secondsAttended: 0 } }))[0]
+            : await MeetingAttendance.findOne({ where: { userId, meetingId: id } });
+        if (inCall && record && (record.rsvped || keepsMinutes(req.user.role)) && previousCheckIn) {
+            record.secondsAttended += Math.min(safeElapsed, Math.floor((now - previousCheckIn) / 1000));
+            await record.save();
+        }
 
         const thresholdSeconds = await getCertificateThresholdSeconds();
         // Tells everyone in the call when a host is recording it
         const beingRecorded = await MeetingRecording.count({ where: { meetingId: id, status: 'recording' } }) > 0;
         res.status(200).json({
-            secondsAttended: record.secondsAttended,
-            eligible: isEligible(record, thresholdSeconds, meeting.meetingType),
+            secondsAttended: record?.secondsAttended || 0,
+            eligible: record ? isEligible(record, thresholdSeconds, meeting.meetingType) : false,
             status: meeting.status,
-            rsvped: record.rsvped,
+            rsvped: !!record?.rsvped,
             beingRecorded
         });
     } catch (error) {
@@ -404,6 +441,11 @@ const issueCertificate = async (req, res) => {
         if (!meeting || !user) {
             return res.status(404).json({ message: 'Seminar or user not found' });
         }
+        // As in the app, attendees get their certificate once the seminar has ended; staff
+        // downloading one on someone's behalf aren't held to that
+        if (!isStaff && meeting.status !== 'Ended') {
+            return res.status(403).json({ message: 'Certificates are available once the seminar has ended.' });
+        }
         const thresholdSeconds = await getCertificateThresholdSeconds();
         if (!record || !isEligible(record, thresholdSeconds, meeting.meetingType)) {
             return res.status(403).json({ message: 'No certificate is available for this seminar.' });
@@ -452,6 +494,13 @@ const getJaasToken = async (req, res) => {
             return res.status(403).json({
                 message: meeting.status === 'Ended' ? 'This seminar has already ended.' : "This seminar hasn't started yet. You can join once it's live."
             });
+        }
+        // As in the app, the call is for those who RSVP'd; staff who host it or keep its minutes don't need to
+        if (!keepsMinutes(user.role)) {
+            const record = await MeetingAttendance.findOne({ where: { userId: user.id, meetingId: meeting.id } });
+            if (!record?.rsvped) {
+                return res.status(403).json({ message: "Only those who RSVP'd before this seminar started can join its call." });
+            }
         }
 
         if (!process.env.JAAS_PRIVATE_KEY) {
