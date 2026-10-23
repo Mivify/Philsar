@@ -42,7 +42,9 @@ body {
 .sidebar {
   position: fixed;
   left: 0; top: 0;
-  width: 260px; height: 100vh;
+  /* 100dvh is the height actually on screen; on phones 100vh also counts the space behind the
+     address bar, which pushed Sign Out off the bottom. 100vh stays for older browsers. */
+  width: 260px; height: 100vh; height: 100dvh;
   background: var(--brown-dark);
   display: flex;
   flex-direction: column;
